@@ -1,0 +1,151 @@
+"""向量存储 - Chroma 嵌入式"""
+
+import os
+import uuid
+from dataclasses import dataclass, field
+from pathlib import Path
+
+os.environ["ANONYMIZED_TELEMETRY"] = "False"
+
+try:
+    import chromadb
+    import sentence_transformers
+    from chromadb.config import Settings
+
+    CHROMA_AVAILABLE = True
+except ImportError:
+    CHROMA_AVAILABLE = False
+    chromadb = None
+    sentence_transformers = None
+
+
+
+@dataclass
+class Document:
+    id: str
+    content: str
+    metadata: dict = field(default_factory=dict)
+
+
+@dataclass
+class SearchResult:
+    id: str
+    content: str
+    metadata: dict
+    distance: float
+
+
+class VectorStore:
+    """向量存储基类"""
+
+    def add_document(self, doc: Document):
+        raise NotImplementedError
+
+    def add_documents(self, docs: list[Document]):
+        raise NotImplementedError
+
+    def search(self, query: str, top_k: int = 5) -> list[SearchResult]:
+        raise NotImplementedError
+
+    def persist(self):
+        raise NotImplementedError
+
+
+class ChromaVectorStore(VectorStore):
+    """Chroma 嵌入式向量存储"""
+
+    def __init__(
+        self,
+        persist_directory: str = ".reqradar/vectorstore",
+        embedding_model: str = "BAAI/bge-large-zh",
+    ):
+        if not CHROMA_AVAILABLE:
+            raise ImportError(
+                "chroma or sentence-transformers not installed. "
+                "Run: pip install chromadb sentence-transformers"
+            )
+
+        self.persist_directory = Path(persist_directory)
+        self.persist_directory.mkdir(parents=True, exist_ok=True)
+
+        self.client = chromadb.Client(
+            Settings(
+                persist_directory=str(self.persist_directory),
+                anonymized_telemetry=False,
+            )
+        )
+
+        self.embedding_model = sentence_transformers.SentenceTransformer(embedding_model)
+
+        self.collection = self.client.get_or_create_collection(
+            name="requirements", metadata={"hnsw:space": "cosine"}
+        )
+
+    def add_documents(self, docs: list[Document]):
+        """批量添加文档"""
+        if not docs:
+            return
+
+        ids = [doc.id or str(uuid.uuid4()) for doc in docs]
+        contents = [doc.content for doc in docs]
+        metadatas = [doc.metadata for doc in docs]
+        embeddings = self.embedding_model.encode(contents).tolist()
+
+        self.collection.add(
+            ids=ids,
+            documents=contents,
+            metadatas=metadatas,
+            embeddings=embeddings,
+        )
+
+    def add_document(self, doc: Document):
+        """添加单个文档"""
+        self.add_documents([doc])
+
+    def search(self, query: str, top_k: int = 5) -> list[SearchResult]:
+        """搜索相似文档"""
+        query_embedding = self.embedding_model.encode([query]).tolist()
+
+        results = self.collection.query(
+            query_embeddings=query_embedding,
+            n_results=top_k,
+        )
+
+        search_results = []
+        if results["documents"] and results["documents"][0]:
+            for i, doc in enumerate(results["documents"][0]):
+                search_results.append(
+                    SearchResult(
+                        id=results["ids"][0][i],
+                        content=doc,
+                        metadata=results["metadatas"][0][i] if results["metadatas"] else {},
+                        distance=results["distances"][0][i] if results["distances"] else 0.0,
+                    )
+                )
+
+        return search_results
+
+    def persist(self):
+        """持久化（Chroma 自动持久化，这里保留接口一致性）"""
+        pass
+
+
+def chunk_text(text: str, chunk_size: int = 300, overlap: int = 50) -> list[str]:
+    """将文本分块"""
+    if len(text) <= chunk_size:
+        return [text]
+
+    chunks = []
+    start = 0
+
+    while start < len(text):
+        end = start + chunk_size
+        chunk = text[start:end]
+
+        if start > 0:
+            chunk = f"[接上文]\n{chunk}"
+
+        chunks.append(chunk)
+        start = end - overlap
+
+    return chunks

@@ -1,0 +1,103 @@
+"""默认报告模板"""
+
+DEFAULT_TEMPLATE = """# 需求透视报告：{{ requirement_title }}
+
+> 分析时间：{{ timestamp }}
+> 需求文件：{{ requirement_path }}
+
+---
+
+## 一、需求摘要
+
+{{ summary | default("无法生成摘要") }}
+
+**关键词**：{{ keywords | join(", ") | default("无") }}
+
+**约束条件**：
+{% if constraints %}
+{% for c in constraints %}
+- {{ c }}
+{% endfor %}
+{% else %}
+- 无
+{% endif %}
+
+---
+
+## 二、相似历史需求
+
+{% if similar_requirements %}
+{% for req in similar_requirements %}
+- **{{ req.metadata.title | default(req.id) }}** (相似度: {{ (1 - req.distance) | round(2) }})
+  {{ req.metadata.outcome | default("") }}
+{% endfor %}
+{% else %}
+*未发现相似历史需求*
+{% endif %}
+
+---
+
+## 三、技术影响分析
+
+{% if impact_modules %}
+### 3.1 涉及模块
+
+| 模块 | 相关函数 |
+|:---|:---|
+{% for m in impact_modules %}
+| {{ m.path }} | {{ m.symbols | join(", ") }} |
+{% endfor %}
+
+{% else %}
+暂无代码影响分析数据
+{% endif %}
+
+---
+
+## 四、建议评审人
+
+{% if contributors %}
+{% for c in contributors %}
+- **{{ c.name }}**（{{ c.reason }}）
+  - 文件：{{ c.file }}
+{% endfor %}
+{% else %}
+*未找到相关评审人信息*
+{% endif %}
+
+---
+
+## 五、风险评估
+
+**总体风险等级**：{{ risk_level | default("unknown") }}
+
+{% if risk_details %}
+{% for r in risk_details %}
+- **{{ r }}**
+{% endfor %}
+{% endif %}
+
+---
+
+## 六、自然语言描述
+
+{{ understanding | default("无") }}
+
+---
+
+## 七、数据完整性说明
+
+- 分析置信度：{{ confidence | round(2) }}%
+- 数据完整度：{{ completeness }}
+
+{% if warnings %}
+### ⚠️ 警告
+{% for w in warnings %}
+- {{ w }}
+{% endfor %}
+{% endif %}
+
+---
+
+*本报告由 ReqRadar 自动生成，仅供参考。*
+"""

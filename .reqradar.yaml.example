@@ -1,0 +1,29 @@
+llm:
+  provider: openai
+  model: gpt-4o-mini
+  api_key: ${OPENAI_API_KEY}
+  base_url: https://api.openai.com/v1  # 可替换为其他 OpenAI 兼容 API
+  timeout: 60
+  max_retries: 2
+
+index:
+  embedding_model: BAAI/bge-large-zh
+  chunk_size: 300
+  chunk_overlap: 50
+  storage_path: .reqradar/index
+
+analysis:
+  max_similar_reqs: 5
+  max_code_files: 10
+  contributors_lookback_months: 6
+
+git:
+  lookback_months: 6
+
+output:
+  report_template: default
+  format: markdown
+
+log:
+  level: INFO
+  format: console
