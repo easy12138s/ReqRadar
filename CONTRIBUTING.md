@@ -105,7 +105,7 @@ git commit -m "docs: update DESIGN.md with new module description"
 - **流程固定**：分析步骤顺序不可变
 - **模板固定**：报告结构由模板预定义
 - **确定性优先**：相同输入产生一致输出
-- **隐私优先**：敏感数据本地处理
+- **隐私优先**：敏感数据本地处理，聊天记录仅输出摘要片段
 - **容错降级**：子模块失败不阻塞整体流程
 
 ### 代码结构
@@ -113,11 +113,24 @@ git commit -m "docs: update DESIGN.md with new module description"
 ```
 src/reqradar/
 ├── cli/              # CLI 入口（Click）
-├── core/             # 核心调度器、上下文、报告
-├── modules/          # 能力模块（解析器、检索器等）
-├── agent/            # 5步工作流实现
-├── infrastructure/    # 配置、日志、错误、注册表
-└── templates/        # 报告模板
+├── core/             # 核心调度器、上下文、报告、异常定义
+├── modules/          # 能力模块
+│   ├── code_parser.py    # Python AST 代码解析
+│   ├── vector_store.py   # Chroma 向量检索
+│   ├── git_analyzer.py   # Git 贡献者分析
+│   ├── llm_client.py     # OpenAI/Ollama LLM 客户端（含视觉能力）
+│   ├── memory.py          # 项目记忆管理器
+│   └── loaders/           # 文档加载器
+│       ├── base.py           # DocumentLoader ABC + 注册表
+│       ├── text_loader.py    # Markdown/Text/RST
+│       ├── pdf_loader.py     # PDF（可选依赖 pdfplumber）
+│       ├── docx_loader.py    # Word DOCX（可选依赖 python-docx）
+│       ├── image_loader.py   # 图片（需要 vision LLM 配置）
+│       ├── chat_loader.py    # 飞书 JSON + 通用 CSV
+│       └── chat_types.py     # ChatMessage/ChatConversation
+├── agent/            # 5步工作流实现（含记忆注入）
+├── infrastructure/    # 配置（含 Vision/Memory/Loader）、日志、注册表
+└── templates/         # 报告模板
 ```
 
 ## 报告 Bug

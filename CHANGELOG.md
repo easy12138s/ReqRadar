@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-04-15
+
+### Added
+
+- Document loader framework: `DocumentLoader` ABC, `LoadedDocument`, `LoaderRegistry`
+- TextLoader: migrated from CLI, supports .md/.txt/.rst with GBK fallback
+- PDFLoader: pdfplumber-based, optional dependency (`pip install pdfplumber`)
+- DocxLoader: python-docx-based, optional dependency (`pip install python-docx`)
+- ImageLoader: LLM vision integration for UI screenshots (.png/.jpg/.jpeg/.gif/.bmp/.webp)
+- ChatLoader: Feishu JSON + generic CSV chat record parsing
+- `VisionConfig`: independent vision LLM configuration block (provider/model/api_key/base_url)
+- `MemoryConfig`: project memory configuration (enabled/storage_path)
+- `LoaderConfig`: loader configuration (chunk_size/chunk_overlap/format toggles)
+- `MemoryManager`: per-project memory system (terminology/team/analysis_history)
+  - Auto-accumulates terminology extracted from analysis
+  - Auto-records team members from Git contributors
+  - Persists analysis history (capped at 50 records)
+  - Terminology injection into step_extract prompt
+  - Post-generate hook updates memory after each analysis
+- `complete_vision()` method on OpenAIClient for image understanding
+- `create_vision_client()` factory function
+- `VisionNotConfiguredError`: clear error when vision is needed but not configured
+- `LoaderException` exception class
+- CLI `index` command refactored to use LoaderRegistry (supports all file types)
+
+### Changed
+
+- `AnalysisContext` now includes `memory_data` field for project memory injection
+- `step_extract` injects known project terminology into LLM prompt
+- `analyze` command loads memory before pipeline and updates it after
+- `.reqradar.yaml.example` updated with vision, memory, and loader config sections
+
+### Removed
+
+- `infrastructure/errors.py`: dead code, superseded by `core/exceptions.py`
+
 ## [0.1.0] - 2026-04-14
 
 ### Added

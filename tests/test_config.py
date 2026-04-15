@@ -1,7 +1,6 @@
 """测试基础设施层"""
 
 
-
 def test_config_default():
     from reqradar.infrastructure.config import Config
 

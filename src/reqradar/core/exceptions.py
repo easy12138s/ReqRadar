@@ -10,6 +10,12 @@ class ReqRadarException(Exception):
         self.cause = cause
 
 
+class FatalError(ReqRadarException):
+    """致命错误 - 终止流程"""
+
+    pass
+
+
 class ConfigException(ReqRadarException):
     """配置错误"""
 
@@ -48,5 +54,17 @@ class IndexException(ReqRadarException):
 
 class ReportException(ReqRadarException):
     """报告生成错误"""
+
+    pass
+
+
+class LoaderException(ReqRadarException):
+    """加载器错误"""
+
+    pass
+
+
+class VisionNotConfiguredError(ReqRadarException):
+    """视觉模型未配置错误"""
 
     pass

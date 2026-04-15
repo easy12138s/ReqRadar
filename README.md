@@ -26,6 +26,14 @@ poetry install
 poetry shell
 ```
 
+可选依赖（按需安装）：
+
+```bash
+poetry install --all-extras   # 安装全部可选依赖（PDF、DOCX）
+pip install pdfplumber         # 仅 PDF 支持
+pip install python-docx        # 仅 DOCX 支持
+```
+
 ## 配置
 
 复制示例配置文件：
@@ -41,6 +49,17 @@ llm:
   provider: openai          # 或 ollama
   model: gpt-4o-mini
   api_key: ${OPENAI_API_KEY}   # 或直接填写 key
+
+# 图片处理需要视觉模型（独立于分析 LLM）
+vision:
+  provider: openai
+  model: gpt-4o
+  api_key: ${OPENAI_API_KEY}
+
+# 项目记忆（自动积累领域知识）
+memory:
+  enabled: true
+  storage_path: .reqradar/memory
 ```
 
 也可以通过环境变量设置：
@@ -57,7 +76,7 @@ export OPENAI_API_KEY=sk-xxx
 # 索引代码仓库（必须）
 reqradar index -r ./src -o .reqradar/index
 
-# 同时索引需求文档（可选）
+# 同时索引需求文档（支持 .md/.txt/.rst/.pdf/.docx/.csv/.json）
 reqradar index -r ./src -d ./docs/requirements -o .reqradar/index
 ```
 
@@ -69,7 +88,7 @@ reqradar index -r ./src -d ./docs/requirements -o .reqradar/index
 reqradar analyze ./docs/requirements/new-feature.md -i .reqradar/index
 ```
 
-报告输出到 `./reports/` 目录。
+报告输出到 `./reports/` 目录。分析完成后，项目记忆会自动积累术语、团队信息和历史发现。
 
 ### 使用 Ollama（本地模型）
 
@@ -85,6 +104,17 @@ llm:
   model: qwen2.5:14b
   host: http://localhost:11434
 ```
+
+## 支持的文档格式
+
+| 格式 | 扩展名 | 依赖 | 说明 |
+|:---|:---|:---|:---|
+| 文本 | .md .txt .rst | 内置 | 默认支持 |
+| PDF | .pdf | pdfplumber | 可选 |
+| Word | .docx | python-docx | 可选 |
+| 图片 | .png .jpg .jpeg .gif .bmp .webp | vision LLM | 需要 vision 配置 |
+| 飞书聊天 | *feishu*.json *chat*.json | 内置 | 飞书导出格式 |
+| CSV 聊天 | .csv | 内置 | 通用聊天记录 |
 
 ## 命令参考
 
@@ -107,10 +137,23 @@ reqradar analyze     分析需求并生成报告
 ```
 src/reqradar/
 ├── cli/              CLI 入口
-├── core/             调度器、上下文、报告渲染
-├── modules/          代码解析、向量检索、Git 分析、LLM 客户端
+├── core/             调度器、上下文、报告渲染、异常定义
+├── modules/          能力模块
+│   ├── code_parser.py    Python AST 代码解析
+│   ├── vector_store.py   Chroma 向量检索
+│   ├── git_analyzer.py   Git 贡献者分析
+│   ├── llm_client.py     OpenAI/Ollama LLM 客户端（含视觉能力）
+│   ├── memory.py         项目记忆管理器
+│   └── loaders/           文档加载器
+│       ├── base.py           ABC + 注册表
+│       ├── text_loader.py    Markdown/Text/RST
+│       ├── pdf_loader.py     PDF（可选依赖）
+│       ├── docx_loader.py    Word DOCX（可选依赖）
+│       ├── image_loader.py   图片（LLM 视觉）
+│       ├── chat_loader.py    飞书 JSON + 通用 CSV
+│       └── chat_types.py     ChatMessage/ChatConversation
 ├── agent/            5 步工作流实现
-├── infrastructure/    配置、日志、错误、注册表
+├── infrastructure/    配置、日志、注册表
 └── templates/         报告模板
 ```
 

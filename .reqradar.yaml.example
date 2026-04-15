@@ -6,6 +6,26 @@ llm:
   timeout: 60
   max_retries: 2
 
+vision:
+  provider: openai
+  model: gpt-4o  # 需要支持视觉能力的模型
+  api_key: ${OPENAI_API_KEY}
+  base_url: https://api.openai.com/v1
+  timeout: 120
+  max_retries: 2
+
+memory:
+  enabled: true
+  storage_path: .reqradar/memory
+
+loader:
+  chunk_size: 300
+  chunk_overlap: 50
+  pdf_enabled: true
+  docx_enabled: true
+  image_enabled: true
+  chat_enabled: true
+
 index:
   embedding_model: BAAI/bge-large-zh
   chunk_size: 300

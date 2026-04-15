@@ -58,7 +58,7 @@ def cli(ctx, config):
 def index(ctx, repo_path, docs_path, output):
     """构建代码和文档索引"""
     from reqradar.modules.code_parser import PythonCodeParser
-    from reqradar.modules.vector_store import ChromaVectorStore, chunk_text
+    from reqradar.modules.vector_store import ChromaVectorStore
 
     config = ctx.obj["config"]
     logger = setup_logging(level=config.log.level)
@@ -80,39 +80,54 @@ def index(ctx, repo_path, docs_path, output):
 
         if docs_path:
             console.print("[yellow]索引需求文档...[/yellow]")
+            from reqradar.modules.loaders import LoaderRegistry
+            from reqradar.modules.vector_store import Document
+
             vector_store = ChromaVectorStore(
                 persist_directory=str(output_path / "vectorstore"),
                 embedding_model=config.index.embedding_model,
             )
 
             docs_path_obj = Path(docs_path)
+            indexed_count = 0
+            skipped_count = 0
+
             for doc_path in docs_path_obj.rglob("*"):
-                if doc_path.suffix in [".md", ".txt", ".rst"]:
-                    with open(doc_path, encoding="utf-8") as f:
-                        content = f.read()
+                if doc_path.is_file():
+                    loader = LoaderRegistry.get_for_file(doc_path)
+                    if loader is None:
+                        skipped_count += 1
+                        continue
 
-                    chunks = chunk_text(
-                        content,
-                        chunk_size=config.index.chunk_size,
-                        overlap=config.index.chunk_overlap,
-                    )
-
-                    from reqradar.modules.vector_store import Document
+                    try:
+                        loaded_docs = loader.load(
+                            doc_path,
+                            chunk_size=config.loader.chunk_size,
+                            chunk_overlap=config.loader.chunk_overlap,
+                        )
+                    except Exception as e:
+                        console.print(f"[yellow]⚠[/yellow] 跳过 {doc_path.name}: {e}")
+                        skipped_count += 1
+                        continue
 
                     documents = [
                         Document(
                             id=f"{doc_path.stem}_{i}",
-                            content=chunk,
-                            metadata={"source": str(doc_path), "title": doc_path.stem},
+                            content=doc.content,
+                            metadata={**doc.metadata, "format": doc.format},
                         )
-                        for i, chunk in enumerate(chunks)
+                        for i, doc in enumerate(loaded_docs)
                     ]
 
-                    vector_store.add_documents(documents)
-                    console.print(f"[green]✓[/green] 已索引: {doc_path.name}")
+                    if documents:
+                        vector_store.add_documents(documents)
+                        indexed_count += 1
+                        console.print(f"[green]✓[/green] 已索引: {doc_path.name}")
 
             vector_store.persist()
-            console.print("[green]✓[/green] 向量索引已保存")
+            console.print(
+                f"[green]✓[/green] 已索引 {indexed_count} 个文件，跳过 {skipped_count} 个"
+            )
 
         console.print("[bold green]索引构建完成![/bold green]")
 
@@ -177,7 +192,15 @@ def analyze(ctx, requirement_file, index_path, output, llm_backend, verbose):
     vectorstore_path = index_path_obj / "vectorstore"
 
     async def run_analysis():
-        context = AnalysisContext(requirement_path=Path(requirement_file))
+        from reqradar.modules.memory import MemoryManager
+
+        memory_manager = MemoryManager(storage_path=config.memory.storage_path)
+        memory_data = memory_manager.load()
+
+        context = AnalysisContext(
+            requirement_path=Path(requirement_file),
+            memory_data=memory_data if config.memory.enabled else None,
+        )
 
         provider = llm_backend or config.llm.provider
         llm_kwargs = {
@@ -229,7 +252,7 @@ def analyze(ctx, requirement_file, index_path, output, llm_backend, verbose):
             return await step_extract(ctx, llm_client)
 
         async def wrapped_retrieve(ctx):
-            result = await step_retrieve(ctx, vector_store)
+            result = await step_retrieve(ctx, vector_store, llm_client)
             ctx.retrieved_context = result
             return result
 
@@ -241,6 +264,14 @@ def analyze(ctx, requirement_file, index_path, output, llm_backend, verbose):
         async def wrapped_generate(ctx):
             return await step_generate(ctx, llm_client)
 
+        async def memory_update_hook(ctx):
+            if config.memory.enabled:
+                try:
+                    await memory_manager.update_from_analysis(ctx)
+                    logger.info("Memory updated from analysis")
+                except Exception as e:
+                    logger.warning("Failed to update memory: %s", e)
+
         scheduler = Scheduler(
             read_handler=step_read,
             extract_handler=wrapped_extract,
@@ -249,6 +280,8 @@ def analyze(ctx, requirement_file, index_path, output, llm_backend, verbose):
             generate_handler=wrapped_generate,
         )
 
+        scheduler.register_after_hook("generate", memory_update_hook)
+
         result_context = await scheduler.run(context)
 
         renderer = ReportRenderer(config)
@@ -256,7 +289,9 @@ def analyze(ctx, requirement_file, index_path, output, llm_backend, verbose):
         # generate handler already ran inside the scheduler,
         # use its result from step_results
         generate_result = result_context.get_result("generate")
-        generated_content = generate_result.data if generate_result and generate_result.success else None
+        generated_content = (
+            generate_result.data if generate_result and generate_result.success else None
+        )
 
         report_content = renderer.render(result_context, generated_content)
 

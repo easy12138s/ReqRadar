@@ -27,6 +27,37 @@ class LLMConfig(BaseModel):
         return v
 
 
+class VisionConfig(BaseModel):
+    provider: str = Field(default="openai", description="Vision LLM provider")
+    model: str = Field(default="gpt-4o", description="Vision model name")
+    api_key: Optional[str] = Field(default=None, description="API key (or env var reference)")
+    base_url: Optional[str] = Field(default=None, description="OpenAI-compatible API base URL")
+    timeout: int = Field(default=120, description="Timeout for vision requests")
+    max_retries: int = Field(default=2, description="Max retry attempts")
+
+    @field_validator("api_key", mode="before")
+    @classmethod
+    def resolve_env_var(cls, v: Optional[str]) -> Optional[str]:
+        if v and isinstance(v, str) and v.startswith("${") and v.endswith("}"):
+            env_var = v[2:-1]
+            return os.getenv(env_var)
+        return v
+
+
+class MemoryConfig(BaseModel):
+    enabled: bool = Field(default=True, description="Enable project memory")
+    storage_path: str = Field(default=".reqradar/memory", description="Memory storage directory")
+
+
+class LoaderConfig(BaseModel):
+    chunk_size: int = Field(default=300, description="Default chunk size for text splitting")
+    chunk_overlap: int = Field(default=50, description="Default overlap for text splitting")
+    pdf_enabled: bool = Field(default=True, description="Enable PDF loader")
+    docx_enabled: bool = Field(default=True, description="Enable DOCX loader")
+    image_enabled: bool = Field(default=True, description="Enable image loader")
+    chat_enabled: bool = Field(default=True, description="Enable chat loader")
+
+
 class IndexConfig(BaseModel):
     embedding_model: str = Field(default="BAAI/bge-large-zh")
     chunk_size: int = Field(default=300)
@@ -56,6 +87,9 @@ class LogConfig(BaseModel):
 
 class Config(BaseModel):
     llm: LLMConfig = Field(default_factory=LLMConfig)
+    vision: VisionConfig = Field(default_factory=VisionConfig)
+    memory: MemoryConfig = Field(default_factory=MemoryConfig)
+    loader: LoaderConfig = Field(default_factory=LoaderConfig)
     index: IndexConfig = Field(default_factory=IndexConfig)
     analysis: AnalysisConfig = Field(default_factory=AnalysisConfig)
     git: GitConfig = Field(default_factory=GitConfig)

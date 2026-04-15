@@ -1,11 +1,19 @@
-"""LLM 客户端 - OpenAI / Ollama"""
+"""LLM 客户端 - OpenAI / Ollama，支持 function calling 结构化输出"""
 
-import time
+import asyncio
+import base64
+import json
+import logging
 from abc import ABC, abstractmethod
+from typing import Optional
 
 import httpx
 
 from reqradar.core.exceptions import LLMException
+
+logger = logging.getLogger("reqradar.llm")
+
+EMBEDDING_DIM = 1024
 
 
 class LLMClient(ABC):
@@ -14,12 +22,31 @@ class LLMClient(ABC):
     @abstractmethod
     async def complete(self, messages: list[dict], **kwargs) -> str:
         """发送对话请求"""
-        raise NotImplementedError
+        pass
 
     @abstractmethod
     async def embed(self, texts: list[str]) -> list[list[float]]:
         """获取文本嵌入"""
-        raise NotImplementedError
+        pass
+
+    async def complete_vision(self, image_data: bytes, prompt: str, **kwargs) -> str:
+        """发送视觉请求（图片+文本）- 默认抛出 NotImplementedError"""
+        raise NotImplementedError(f"{self.__class__.__name__} does not support vision")
+
+    async def complete_structured(
+        self, messages: list[dict,], schema: dict, **kwargs
+    ) -> dict | list | None:
+        """使用 function calling 获取结构化 JSON 响应
+
+        Args:
+            messages: 对话消息列表
+            schema: JSON Schema 格式的输出定义，会转换为 function/tool 定义
+            **kwargs: 传递给 complete 的额外参数
+
+        Returns:
+            解析后的 dict 或 list，失败返回 None（调用方应降级到 complete + 文本解析）
+        """
+        return None
 
 
 class OpenAIClient(LLMClient):
@@ -30,7 +57,7 @@ class OpenAIClient(LLMClient):
         api_key: str,
         model: str = "gpt-4o-mini",
         base_url: str = "https://api.openai.com/v1",
-        timeout: int = 30,
+        timeout: int = 60,
         max_retries: int = 2,
     ):
         self.api_key = api_key
@@ -53,7 +80,8 @@ class OpenAIClient(LLMClient):
             "max_tokens": kwargs.get("max_tokens", 1000),
         }
 
-        for attempt in range(self.max_retries):
+        last_error = None
+        for attempt in range(self.max_retries + 1):
             try:
                 async with httpx.AsyncClient(timeout=self.timeout) as client:
                     response = await client.post(
@@ -65,17 +93,168 @@ class OpenAIClient(LLMClient):
                     result = response.json()
                     return result["choices"][0]["message"]["content"]
             except httpx.TimeoutException as e:
-                if attempt == self.max_retries - 1:
-                    raise LLMException(
-                        f"OpenAI API timeout after {self.max_retries} attempts", cause=e
+                last_error = e
+                if attempt < self.max_retries:
+                    wait = 2**attempt
+                    logger.warning(
+                        "OpenAI API timeout, retrying in %ds (attempt %d/%d)",
+                        wait,
+                        attempt + 1,
+                        self.max_retries + 1,
                     )
-                time.sleep(2**attempt)
+                    await asyncio.sleep(wait)
+                continue
             except httpx.HTTPStatusError as e:
                 raise LLMException(f"OpenAI API error: {e.response.status_code}", cause=e)
             except Exception as e:
                 raise LLMException(f"OpenAI API request failed: {e}", cause=e)
 
-        return ""
+        raise LLMException(
+            f"OpenAI API timeout after {self.max_retries + 1} attempts", cause=last_error
+        )
+
+    async def complete_structured(
+        self, messages: list[dict], schema: dict, **kwargs
+    ) -> dict | list | None:
+        """使用 function calling 获取结构化 JSON 响应"""
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+
+        function_name = schema.get("name", "structured_output")
+        function_desc = schema.get("description", "Extract structured information")
+
+        parameters = schema.get("parameters", schema)
+        if "name" in parameters and "parameters" in parameters:
+            parameters = parameters["parameters"]
+
+        tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": function_name,
+                    "description": function_desc,
+                    "parameters": parameters,
+                },
+            }
+        ]
+
+        payload = {
+            "model": kwargs.get("model", self.model),
+            "messages": messages,
+            "tools": tools,
+            "tool_choice": {"type": "function", "function": {"name": function_name}},
+            "temperature": kwargs.get("temperature", 0.3),
+            "max_tokens": kwargs.get("max_tokens", 2000),
+        }
+
+        last_error = None
+        for attempt in range(self.max_retries + 1):
+            try:
+                async with httpx.AsyncClient(timeout=self.timeout) as client:
+                    response = await client.post(
+                        f"{self.base_url}/chat/completions",
+                        headers=headers,
+                        json=payload,
+                    )
+                    response.raise_for_status()
+                    result = response.json()
+
+                    message = result["choices"][0]["message"]
+                    tool_calls = message.get("tool_calls", [])
+
+                    if not tool_calls:
+                        logger.warning("No tool_calls in function calling response, returning None")
+                        return None
+
+                    tool_call = tool_calls[0]
+                    arguments_str = tool_call["function"]["arguments"]
+
+                    try:
+                        parsed = json.loads(arguments_str)
+                        return parsed
+                    except json.JSONDecodeError as e:
+                        logger.warning("Failed to parse function calling arguments: %s", e)
+                        return None
+
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 400:
+                    logger.info(
+                        "Function calling not supported (400), will fall back to text parsing"
+                    )
+                    return None
+                raise LLMException(f"OpenAI API error: {e.response.status_code}", cause=e)
+            except httpx.TimeoutException as e:
+                last_error = e
+                if attempt < self.max_retries:
+                    await asyncio.sleep(2**attempt)
+                    continue
+                return None
+            except Exception as e:
+                logger.warning("Function calling failed: %s", e)
+                return None
+
+        return None
+
+    async def complete_vision(self, image_data: bytes, prompt: str, **kwargs) -> str:
+        """发送 OpenAI Vision API 请求"""
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+
+        b64_image = base64.b64encode(image_data).decode("utf-8")
+        image_url = f"data:image/png;base64,{b64_image}"
+
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {"url": image_url}},
+                ],
+            }
+        ]
+
+        payload = {
+            "model": kwargs.get("model", self.model),
+            "messages": messages,
+            "max_tokens": kwargs.get("max_tokens", 1024),
+        }
+
+        last_error = None
+        for attempt in range(self.max_retries + 1):
+            try:
+                async with httpx.AsyncClient(timeout=self.timeout) as client:
+                    response = await client.post(
+                        f"{self.base_url}/chat/completions",
+                        headers=headers,
+                        json=payload,
+                    )
+                    response.raise_for_status()
+                    result = response.json()
+                    return result["choices"][0]["message"]["content"]
+            except httpx.TimeoutException as e:
+                last_error = e
+                if attempt < self.max_retries:
+                    wait = 2**attempt
+                    logger.warning(
+                        "OpenAI Vision API timeout, retrying in %ds (attempt %d/%d)",
+                        wait,
+                        attempt + 1,
+                        self.max_retries + 1,
+                    )
+                    await asyncio.sleep(wait)
+                continue
+            except httpx.HTTPStatusError as e:
+                raise LLMException(f"OpenAI Vision API error: {e.response.status_code}", cause=e)
+            except Exception as e:
+                raise LLMException(f"OpenAI Vision API request failed: {e}", cause=e)
+
+        raise LLMException(
+            f"OpenAI Vision API timeout after {self.max_retries + 1} attempts", cause=last_error
+        )
 
     async def embed(self, texts: list[str]) -> list[list[float]]:
         """获取 OpenAI embeddings"""
@@ -130,6 +309,10 @@ class OllamaClient(LLMClient):
                 response.raise_for_status()
                 result = response.json()
                 return result["message"]["content"]
+            except httpx.TimeoutException as e:
+                raise LLMException(f"Ollama request timed out after {self.timeout}s", cause=e)
+            except httpx.HTTPStatusError as e:
+                raise LLMException(f"Ollama API error: {e.response.status_code}", cause=e)
             except Exception as e:
                 raise LLMException(f"Ollama request failed: {e}", cause=e)
 
@@ -151,8 +334,9 @@ class OllamaClient(LLMClient):
                     response.raise_for_status()
                     result = response.json()
                     embeddings.append(result["embedding"])
-                except Exception:
-                    embeddings.append([0.0] * 1024)
+                except Exception as e:
+                    logger.warning("Ollama embedding failed for text, using zero vector: %s", e)
+                    embeddings.append([0.0] * EMBEDDING_DIM)
 
         return embeddings
 
@@ -165,3 +349,33 @@ def create_llm_client(provider: str, **kwargs) -> LLMClient:
         return OllamaClient(**kwargs)
     else:
         raise ValueError(f"Unknown LLM provider: {provider}")
+
+
+def create_vision_client(config) -> Optional[LLMClient]:
+    """从 VisionConfig 创建视觉 LLM 客户端，未配置则返回 None"""
+    from reqradar.infrastructure.config import VisionConfig
+
+    if not isinstance(config, VisionConfig):
+        return None
+
+    if config.api_key is None and config.provider == "openai":
+        return None
+
+    if config.provider == "openai":
+        return OpenAIClient(
+            api_key=config.api_key,
+            model=config.model,
+            base_url=config.base_url or "https://api.openai.com/v1",
+            timeout=config.timeout,
+            max_retries=config.max_retries,
+        )
+    elif config.provider == "ollama":
+        base_url = config.base_url or "http://localhost:11434"
+        model = config.model if config.model != "gpt-4o" else "llava"
+        return OllamaClient(
+            model=model,
+            host=base_url,
+            timeout=config.timeout,
+        )
+    else:
+        return None

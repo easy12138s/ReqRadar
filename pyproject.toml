@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "reqradar"
-version = "0.1.0"
+version = "0.2.0"
 description = "需求透视 - 垂直领域需求分析 Agent"
 readme = "README.md"
 license = "MIT"
@@ -21,6 +21,12 @@ openai = "^1.12.0"
 httpx = "^0.26.0"
 gitpython = "^3.1.40"
 numpy = "^1.26.0"
+pdfplumber = {version = "^0.10.0", optional = true}
+python-docx = {version = "^1.1.0", optional = true}
+
+[tool.poetry.extras]
+pdf = ["pdfplumber"]
+docx = ["python-docx"]
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.4.4"

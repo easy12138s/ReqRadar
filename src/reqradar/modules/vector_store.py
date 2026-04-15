@@ -1,23 +1,22 @@
 """向量存储 - Chroma 嵌入式"""
 
-import os
+import logging
 import uuid
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
 
-os.environ["ANONYMIZED_TELEMETRY"] = "False"
+logger = logging.getLogger("reqradar.vector_store")
 
 try:
     import chromadb
     import sentence_transformers
-    from chromadb.config import Settings
 
     CHROMA_AVAILABLE = True
 except ImportError:
     CHROMA_AVAILABLE = False
     chromadb = None
     sentence_transformers = None
-
 
 
 @dataclass
@@ -35,24 +34,28 @@ class SearchResult:
     distance: float
 
 
-class VectorStore:
+class VectorStore(ABC):
     """向量存储基类"""
 
+    @abstractmethod
     def add_document(self, doc: Document):
-        raise NotImplementedError
+        pass
 
+    @abstractmethod
     def add_documents(self, docs: list[Document]):
-        raise NotImplementedError
+        pass
 
+    @abstractmethod
     def search(self, query: str, top_k: int = 5) -> list[SearchResult]:
-        raise NotImplementedError
+        pass
 
+    @abstractmethod
     def persist(self):
-        raise NotImplementedError
+        pass
 
 
 class ChromaVectorStore(VectorStore):
-    """Chroma 嵌入式向量存储"""
+    """Chroma 持久化向量存储"""
 
     def __init__(
         self,
@@ -68,11 +71,11 @@ class ChromaVectorStore(VectorStore):
         self.persist_directory = Path(persist_directory)
         self.persist_directory.mkdir(parents=True, exist_ok=True)
 
-        self.client = chromadb.Client(
-            Settings(
-                persist_directory=str(self.persist_directory),
+        self.client = chromadb.PersistentClient(
+            path=str(self.persist_directory),
+            settings=chromadb.Settings(
                 anonymized_telemetry=False,
-            )
+            ),
         )
 
         self.embedding_model = sentence_transformers.SentenceTransformer(embedding_model)
@@ -126,8 +129,8 @@ class ChromaVectorStore(VectorStore):
         return search_results
 
     def persist(self):
-        """持久化（Chroma 自动持久化，这里保留接口一致性）"""
-        pass
+        """持久化数据到磁盘（PersistentClient 自动持久化，此方法保留接口兼容）"""
+        logger.info("Vector store persisted to %s", self.persist_directory)
 
 
 def chunk_text(text: str, chunk_size: int = 300, overlap: int = 50) -> list[str]:

@@ -1,11 +1,14 @@
 """固定流程调度器 - 5步工作流"""
 
+import logging
 from typing import Callable
 
 from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn, TextColumn
 
 from reqradar.core.context import AnalysisContext, StepResult
-from reqradar.infrastructure.logging import log_error, log_step
+from reqradar.core.exceptions import FatalError
+
+logger = logging.getLogger("reqradar.scheduler")
 
 
 class Scheduler:
@@ -62,14 +65,14 @@ class Scheduler:
             for step_name, step_desc in self.STEPS:
                 progress.update(main_task, description=f"[cyan]{step_desc}...")
 
-                log_step(step_name, "started")
+                logger.info("Step %s started", step_name)
 
                 for hook in self._hooks_before.get(step_name, []):
                     await hook(context)
 
                 handler = self.handlers.get(step_name)
                 if not handler:
-                    log_error(f"No handler for step: {step_name}")
+                    logger.warning("No handler for step: %s", step_name)
                     continue
 
                 try:
@@ -83,21 +86,32 @@ class Scheduler:
                     )
                     context.store_result(step_name, step_result)
 
-                    log_step(step_name, "completed")
+                    logger.info("Step %s completed", step_name)
+
+                except FatalError as e:
+                    logger.error("Step %s fatal error: %s", step_name, e)
+                    context.store_result(
+                        step_name,
+                        StepResult(
+                            step=step_name,
+                            success=False,
+                            confidence=0.0,
+                            error=str(e),
+                        ),
+                    )
+                    break
 
                 except Exception as e:
-                    log_error(e, {"step": step_name})
-
-                    step_result = StepResult(
-                        step=step_name,
-                        success=False,
-                        confidence=0.0,
-                        error=str(e),
+                    logger.warning("Step %s failed (degraded): %s", step_name, e)
+                    context.store_result(
+                        step_name,
+                        StepResult(
+                            step=step_name,
+                            success=False,
+                            confidence=0.0,
+                            error=str(e),
+                        ),
                     )
-                    context.store_result(step_name, step_result)
-
-                    if e.__class__.__name__.endswith("FatalError"):
-                        break
 
                 for hook in self._hooks_after.get(step_name, []):
                     await hook(context)

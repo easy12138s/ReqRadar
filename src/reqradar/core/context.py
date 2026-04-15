@@ -48,6 +48,7 @@ class DeepAnalysis:
 class AnalysisContext:
     requirement_path: Path
     requirement_text: str = ""
+    memory_data: Optional[dict] = None
     understanding: Optional[RequirementUnderstanding] = None
     retrieved_context: Optional[RetrievedContext] = None
     deep_analysis: Optional[DeepAnalysis] = None

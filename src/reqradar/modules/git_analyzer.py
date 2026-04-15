@@ -103,8 +103,8 @@ class GitAnalyzer:
 
             stats = contributor_stats[email]
             stats.commit_count += 1
-            stats.lines_added += len(commit.stats.files.get(file_path, {}).get("insertions", 0))
-            stats.lines_deleted += len(commit.stats.files.get(file_path, {}).get("deletions", 0))
+            stats.lines_added += commit.stats.files.get(file_path, {}).get("insertions", 0)
+            stats.lines_deleted += commit.stats.files.get(file_path, {}).get("deletions", 0)
 
             commit_time = datetime.fromtimestamp(commit.committed_date)
             if stats.last_modified is None or commit_time > stats.last_modified:
