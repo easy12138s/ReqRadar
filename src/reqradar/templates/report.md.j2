@@ -1,35 +1,94 @@
-"""默认报告模板"""
+# 需求分析报告：{{ requirement_title }}
 
-DEFAULT_TEMPLATE = """# 需求透视报告：{{ requirement_title }}
+## 报告概况
 
-> 分析时间：{{ timestamp }}
-> 需求文件：{{ requirement_path }}
+| 字段 | 内容 |
+|:---|:---|
+| 需求标题 | {{ requirement_title }} |
+| 分析时间 | {{ timestamp }} |
+| 需求来源 | {{ requirement_path }} |
+| 风险等级 | {{ risk_badge }} |
+| 影响范围 | {{ impact_scope }} 个模块 |
+| 建议优先级 | {{ priority }} |
+| 内容可信度 | {{ content_confidence }} |
 
 ---
 
-## 一、需求摘要
+## 1. 需求理解
 
-{{ summary | default("无法生成摘要") }}
+### 1.1 需求概述
 
-**关键词**：{{ keywords | join(", ") | default("无") }}
+{{ requirement_understanding | default("暂无需求理解数据") }}
 
-**约束条件**：
-{% if constraints %}
+### 1.2 核心术语
+
+{% if terms %}
+| 术语 | 定义 | 所属领域 |
+|:---|:---|:---|
+{% for t in terms %}
+| {{ t.term }} | {{ t.definition | default("未定义") }} | {{ t.domain | default("未分类") }} |
+{% endfor %}
+{% else %}
+暂无术语定义数据
+{% endif %}
+
+### 1.3 约束条件
+
+{% if structured_constraints %}
+| 约束 | 类型 | 来源 |
+|:---|:---|:---|
+{% for c in structured_constraints %}
+| {{ c.description }} | {{ c.constraint_type }} | {{ c.source }} |
+{% endfor %}
+{% elif constraints %}
 {% for c in constraints %}
 - {{ c }}
 {% endfor %}
 {% else %}
-- 无
+暂无约束条件
 {% endif %}
 
 ---
 
-## 二、相似历史需求
+## 2. 影响分析
+
+### 2.1 代码影响范围
+
+{% if impact_modules %}
+| 模块 | 核心类/方法 |
+|:---|:---|
+{% for m in impact_modules %}
+| {{ m.path }} | {{ m.symbols | join(", ") }} |
+{% endfor %}
+{% else %}
+*未匹配到直接代码模块（以下为项目模块级别的变更评估）*
+{% endif %}
+
+### 2.2 变更评估
+
+{% if change_assessment %}
+| 模块 | 变更类型 | 影响等级 | 原因 |
+|:---|:---|:---|:---|
+{% for ca in change_assessment %}
+| {{ ca.module }} | {{ ca.change_type }} | {{ ca.impact_level }} | {{ ca.reason }} |
+{% endfor %}
+{% elif impact_modules %}
+*变更评估未生成，但存在代码匹配结果*
+{% else %}
+*根据项目知识推断的影响范围，具体变更需人工确认*
+{% endif %}
+
+### 2.3 影响范围描述
+
+{{ impact_narrative | default("暂无影响范围描述") }}
+
+### 2.4 相似历史需求
 
 {% if similar_requirements %}
+| 需求 | 相似度 | 关键结论 |
+|:---|:---|:---|
 {% for req in similar_requirements %}
-- **{{ req.metadata.title | default(req.id) }}** (相似度: {{ (1 - req.distance) | round(2) }})
-  {{ req.metadata.outcome | default("") }}
+| {{ req.metadata.title | default(req.id) }} | {{ ((1 - req.distance) * 100) | round(1) }}% | {{ req.metadata.outcome | default("无记录") }} |
 {% endfor %}
 {% else %}
 *未发现相似历史需求*
@@ -37,29 +96,51 @@ DEFAULT_TEMPLATE = """# 需求透视报告：{{ requirement_title }}
 
 ---
 
-## 三、技术影响分析
+## 3. 风险评估
 
-{% if impact_modules %}
-### 3.1 涉及模块
+### 3.1 风险概览
 
-| 模块 | 相关函数 |
-|:---|:---|
-{% for m in impact_modules %}
-| {{ m.path }} | {{ m.symbols | join(", ") }} |
+**总体风险等级**：{{ risk_badge }}
+
+{% if risks %}
+| 风险项 | 等级 | 影响范围 | 缓解建议 |
+|:---|:---|:---|:---|
+{% for r in risks %}
+| {{ r.description }} | {{ r.severity }} | {{ r.scope | default("未指定") }} | {{ r.mitigation | default("待补充") }} |
 {% endfor %}
-
+{% elif risk_details %}
+{% for r in risk_details %}
+- {{ r }}
+{% endfor %}
 {% else %}
-暂无代码影响分析数据
+*风险评估数据未生成*
+{% endif %}
+
+### 3.2 风险分析描述
+
+{{ risk_narrative | default("暂无风险分析描述") }}
+
+### 3.3 验证要点
+
+{% if verification_points %}
+评审时应重点验证以下事项：
+
+{% for v in verification_points %}
+{{ loop.index }}. {{ v }}
+{% endfor %}
+{% else %}
+*暂无验证要点*
 {% endif %}
 
 ---
 
-## 四、建议评审人
+## 4. 建议评审人
 
 {% if contributors %}
+| 姓名 | 角色 | 负责模块 | 变更相关度 |
+|:---|:---|:---|:---|
 {% for c in contributors %}
-- **{{ c.name }}**（{{ c.reason }}）
-  - 文件：{{ c.file }}
+| {{ c.name }} | {{ c.role | default("开发者") }} | {{ c.file }} | {{ c.reason | default("相关") }} |
 {% endfor %}
 {% else %}
 *未找到相关评审人信息*
@@ -67,31 +148,39 @@ DEFAULT_TEMPLATE = """# 需求透视报告：{{ requirement_title }}
 
 ---
 
-## 五、风险评估
+## 5. 实施建议
 
-**总体风险等级**：{{ risk_level | default("unknown") }}
+### 5.1 建议优先级
 
-{% if risk_details %}
-{% for r in risk_details %}
-- **{{ r }}**
-{% endfor %}
+{{ priority }}{% if priority_reason %}（{{ priority_reason }}）{% endif %}
+
+### 5.2 实施方向
+
+{{ implementation_suggestion | default("暂无实施建议") }}
+
+{% if implementation_hints %}
+### 5.3 实施详情
+
+| 方面 | 内容 |
+|:---|:---|
+| 建议方向 | {{ implementation_hints.approach | default("待补充") }} |
+| 预估工作量 | {{ implementation_hints.effort_estimate | default("待评估") }} |
+| 前置依赖 | {{ implementation_hints.dependencies | join(", ") | default("无") }} |
 {% endif %}
 
 ---
 
-## 六、自然语言描述
+## 附录 A. 数据完整性
 
-{{ understanding | default("无") }}
-
----
-
-## 七、数据完整性说明
-
-- 分析置信度：{{ confidence | round(2) }}%
-- 数据完整度：{{ completeness }}
+| 指标 | 值 |
+|:---|:---|
+| 分析置信度 | {{ confidence | round(1) }}% |
+| 数据完整度 | {{ completeness }} |
+| 内容可信度 | {{ content_confidence }} |
 
 {% if warnings %}
-### ⚠️ 警告
+### 警告
+
 {% for w in warnings %}
 - {{ w }}
 {% endfor %}
@@ -99,5 +188,25 @@ DEFAULT_TEMPLATE = """# 需求透视报告：{{ requirement_title }}
 
 ---
 
+## 附录 B. 项目知识上下文
+
+{% if project_profile %}
+| 字段 | 内容 |
+|:---|:---|
+| 项目名称 | {{ project_profile.name | default("未知") }} |
+| 项目描述 | {{ project_profile.description | default("未知") }} |
+| 技术栈 | {{ project_profile.tech_stack | default("未知") }} |
+| 架构风格 | {{ project_profile.architecture_style | default("未知") }} |
+{% elif modules_info %}
+### 已识别模块
+
+{% for m in modules_info %}
+- **{{ m.name }}**：{{ m.responsibility | default("职责待定义") }}
+{% endfor %}
+{% else %}
+*项目知识尚未建立，请先运行 `reqradar index` 构建项目画像*
+{% endif %}
+
+---
+
 *本报告由 ReqRadar 自动生成，仅供参考。*
-"""

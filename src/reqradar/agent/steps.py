@@ -1,95 +1,163 @@
-"""Agent 5步工作流实现"""
+"""Agent 5步工作流实现 - Phase 3 增强版"""
 
 import json
 import logging
 import re
+from collections import Counter
+from datetime import datetime
+from pathlib import Path
 
 from reqradar.core.context import (
     AnalysisContext,
+    ChangeAssessment,
     DeepAnalysis,
+    GeneratedContent,
+    ImplementationHints,
     RequirementUnderstanding,
     RetrievedContext,
+    RiskItem,
+    StructuredConstraint,
+    TermDefinition,
 )
 from reqradar.core.exceptions import LLMException
 
 logger = logging.getLogger("reqradar.agent")
 
-SYSTEM_PROMPT = """你是一个需求分析助手。请严格按照要求输出JSON，不要输出任何其他内容，不要使用markdown代码块。
+SYSTEM_PROMPT = """你是一个专业的需求分析助手。你的职责是深入理解需求文档，提取结构化信息。
+请严格按照要求输出JSON，不要输出任何其他内容。每个术语都必须有定义，每个约束都要分类。"""
 
-你的职责：
-1. 准确提取需求的核心内容和目标
-2. 识别关键业务术语和技术关键词
-3. 识别潜在的非功能性约束
-4. 生成简洁的需求摘要"""
-
-EXTRACT_PROMPT = """请分析以下需求文档，提取关键信息。直接输出JSON，不要输出其他内容。
+EXTRACT_PROMPT = """请深入分析以下需求文档，提取结构化信息。
 
 {terminology_section}
+
+{project_context_section}
 
 需求文档内容：
 ---
 {content}
 ---
 
-请提取并输出JSON：
-{{"summary": "需求摘要（100-200字）", "keywords": ["关键词1", "关键词2", "关键词3", "关键词4", "关键词5"], "constraints": ["约束1", "约束2"], "business_goals": "业务目标描述"}}"""
+请提取并输出JSON。术语必须包含定义和所属领域；约束请按类型分类（performance/security/compatibility/api_contract/ux/compliance），并注明来源（requirement_document/architecture/implicit）。"""
 
-RETRIEVE_PROMPT = """基于以下关键词和检索到的相似需求，评估每个需求的关联度和参考价值。直接输出JSON，不要输出其他内容。
+RETRIEVE_PROMPT = """基于以下关键词和检索到的相似需求，评估每个需求的关联度和参考价值。
 
 关键词：{keywords}
 
 检索到的相似需求：
 {results}
 
-输出JSON数组：
-[{{"id": "...", "title": "...", "relevance": "high/medium/low", "reason": "关联原因（20字以内）"}}]"""
+输出JSON，evaluations 为数组，每个元素包含 id/title/relevance/reason。"""
 
-ANALYZE_PROMPT = """基于以下分析结果，评估技术影响和风险。直接输出JSON，不要输出其他内容。
-
-需求摘要：{summary}
-
-涉及模块：{modules}
-
-建议评审人：{contributors}
-
-输出JSON：
-{{"risk_level": "low/medium/high", "risk_details": ["风险点1", "风险点2"], "verification_points": ["验证点1", "验证点2"]}}"""
-
-GENERATE_PROMPT = """基于以下分析结果，生成需求分析报告的自然语言段落。直接输出JSON，不要输出其他内容。
+ANALYZE_PROMPT = """基于以下需求信息和项目知识，评估技术影响和风险。
 
 需求摘要：{summary}
 
-相似需求：{similar_reqs}
+{modules_section}
+
+{contributors_section}
+
+{project_context_section}
+
+{terminology_section}
+
+请评估技术影响和风险。即使没有代码匹配信息，也请根据需求内容和项目知识进行合理推断。
+变更评估（change_assessment）：根据需求内容推断可能受影响的模块和变更类型。
+风险（risks）：至少提供2个结构化风险项。
+验证要点（verification_points）：至少提供3个评审时应重点验证的事项。
+实施建议（implementation_hints）：提供实施方向、工作量评估和前置依赖。"""
+
+GENERATE_PROMPT = """基于以下分析上下文，生成需求分析报告的关键叙述段落。
+
+需求摘要：{summary}
 
 影响模块：{modules}
 
 评审人建议：{contributors}
 
-风险评估：{risk_analysis}
+风险评估：{risk_level} - {risk_details}
 
-输出JSON：
-{{"understanding": "需求理解（100字以内）", "relation": "关联说明（50字以内）", "constraints": "约束描述（100字以内）"}}"""
+变更评估：{change_assessment}
+
+{project_context_section}
+
+请分别生成以下段落，要求有深度、有分析、有建议，不要泛泛而谈：
+- requirement_understanding: 需求理解（150-200字，包含背景、核心问题、成功标准）
+- impact_narrative: 影响范围描述（100-150字，描述涉及的技术组件和数据流向）
+- risk_narrative: 风险分析描述（150-200字，主要风险和缓解思路）
+- implementation_suggestion: 实施方向建议（100-150字，优先级建议和关键注意事项）"""
+
+
+# ============== Schemas ==============
 
 EXTRACT_SCHEMA = {
     "name": "extract_requirement",
-    "description": "从需求文档中提取关键信息",
+    "description": "从需求文档中提取结构化信息",
     "parameters": {
         "type": "object",
         "properties": {
-            "summary": {"type": "string", "description": "需求摘要（100-200字）"},
+            "summary": {
+                "type": "string",
+                "description": "从业务视角的需求理解：背景、要解决的问题、成功标准（200字以内）",
+            },
+            "terms": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "term": {"type": "string", "description": "术语/关键词"},
+                        "definition": {"type": "string", "description": "术语的定义或含义"},
+                        "domain": {"type": "string", "description": "所属领域（认证/前端/数据库/部署/...）"},
+                    },
+                    "required": ["term", "definition"],
+                },
+                "description": "需求涉及的关键术语及其定义（至少3个）",
+            },
             "keywords": {
                 "type": "array",
                 "items": {"type": "string"},
-                "description": "5-10个关键术语和关键词",
+                "description": "5-10个关键术语和关键词（用于代码搜索）",
             },
-            "constraints": {
+            "structured_constraints": {
                 "type": "array",
-                "items": {"type": "string"},
-                "description": "非功能性约束列表",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "description": {"type": "string", "description": "约束内容"},
+                        "constraint_type": {
+                            "type": "string",
+                            "enum": [
+                                "performance",
+                                "security",
+                                "compatibility",
+                                "api_contract",
+                                "ux",
+                                "compliance",
+                                "other",
+                            ],
+                            "description": "约束类型",
+                        },
+                        "source": {
+                            "type": "string",
+                            "enum": ["requirement_document", "architecture", "implicit"],
+                            "description": "约束来源",
+                        },
+                    },
+                    "required": ["description", "constraint_type"],
+                },
+                "description": "结构化约束条件",
             },
             "business_goals": {"type": "string", "description": "业务目标描述"},
+            "priority_suggestion": {
+                "type": "string",
+                "enum": ["urgent", "high", "medium", "low"],
+                "description": "优先级建议",
+            },
+            "priority_reason": {
+                "type": "string",
+                "description": "优先级建议的理由（50字以内）",
+            },
         },
-        "required": ["summary", "keywords"],
+        "required": ["summary", "terms"],
     },
 }
 
@@ -130,18 +198,62 @@ ANALYZE_SCHEMA = {
         "properties": {
             "risk_level": {
                 "type": "string",
-                "enum": ["low", "medium", "high"],
+                "enum": ["low", "medium", "high", "critical"],
                 "description": "总体风险等级",
             },
-            "risk_details": {
+            "risks": {
                 "type": "array",
-                "items": {"type": "string"},
-                "description": "风险点列表",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "description": {"type": "string", "description": "风险描述"},
+                        "severity": {"type": "string", "description": "严重程度（low/medium/high）"},
+                        "scope": {"type": "string", "description": "影响范围"},
+                        "mitigation": {"type": "string", "description": "缓解建议"},
+                    },
+                    "required": ["description", "severity"],
+                },
+                "description": "结构化风险列表（至少2个）",
+            },
+            "change_assessment": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "module": {"type": "string", "description": "模块名称或路径"},
+                        "change_type": {
+                            "type": "string",
+                            "enum": ["new", "modify", "remove", "refactor"],
+                            "description": "变更类型",
+                        },
+                        "impact_level": {
+                            "type": "string",
+                            "enum": ["low", "medium", "high"],
+                            "description": "影响等级",
+                        },
+                        "reason": {"type": "string", "description": "评估理由"},
+                    },
+                    "required": ["module", "change_type", "impact_level"],
+                },
+                "description": "变更评估列表",
             },
             "verification_points": {
                 "type": "array",
                 "items": {"type": "string"},
-                "description": "验证点列表",
+                "description": "评审时应重点验证的事项（至少3个）",
+            },
+            "implementation_hints": {
+                "type": "object",
+                "properties": {
+                    "approach": {"type": "string", "description": "建议的实施方向"},
+                    "effort_estimate": {"type": "string", "description": "工作量评估（small/medium/large）"},
+                    "dependencies": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "前置依赖",
+                    },
+                },
+                "description": "实施建议",
             },
         },
         "required": ["risk_level"],
@@ -149,18 +261,170 @@ ANALYZE_SCHEMA = {
 }
 
 GENERATE_SCHEMA = {
-    "name": "generate_report_sections",
-    "description": "生成需求分析报告的自然语言段落",
+    "name": "generate_report_content",
+    "description": "生成需求分析报告的关键叙述段落",
     "parameters": {
         "type": "object",
         "properties": {
-            "understanding": {"type": "string", "description": "需求理解（100字以内）"},
-            "relation": {"type": "string", "description": "关联说明（50字以内）"},
-            "constraints": {"type": "string", "description": "约束描述（100字以内）"},
+            "requirement_understanding": {
+                "type": "string",
+                "description": "需求理解（150-200字，包含背景、核心问题、成功标准）",
+            },
+            "impact_narrative": {
+                "type": "string",
+                "description": "影响范围描述（100-150字）",
+            },
+            "risk_narrative": {
+                "type": "string",
+                "description": "主要风险和缓解思路的自然语言描述（150-200字）",
+            },
+            "implementation_suggestion": {
+                "type": "string",
+                "description": "实施方向建议和注意事项（100-150字）",
+            },
         },
-        "required": ["understanding"],
+        "required": ["requirement_understanding"],
     },
 }
+
+PROJECT_PROFILE_SCHEMA = {
+    "name": "build_project_profile",
+    "description": "根据代码结构和技术栈信息，构建项目画像",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "description": {
+                "type": "string",
+                "description": "项目的一句话描述（50字以内）",
+            },
+            "architecture_style": {
+                "type": "string",
+                "description": "架构风格（如：分层架构、微服务、单体应用等）",
+            },
+            "tech_stack": {
+                "type": "object",
+                "properties": {
+                    "languages": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "使用的编程语言",
+                    },
+                    "frameworks": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "使用的框架",
+                    },
+                    "key_dependencies": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "关键依赖库",
+                    },
+                },
+                "description": "技术栈信息",
+            },
+            "modules": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string", "description": "模块名称"},
+                        "responsibility": {"type": "string", "description": "模块职责描述"},
+                        "key_classes": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "核心类名列表",
+                        },
+                        "dependencies": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "依赖的其他模块",
+                        },
+                    },
+                    "required": ["name", "responsibility"],
+                },
+                "description": "项目模块列表（按目录划分，最多10个）",
+            },
+        },
+        "required": ["description", "architecture_style", "modules"],
+    },
+}
+
+PROJECT_PROFILE_PROMPT = """请根据以下项目代码结构信息，总结项目画像。
+
+项目文件统计：
+{file_stats}
+
+主要目录结构：
+{directory_structure}
+
+核心文件（含主要类/函数）：
+{key_files}
+
+依赖文件内容：
+{dependencies_content}
+
+请分析并输出：
+1. 项目描述：一句话概括项目用途
+2. 架构风格：如分层架构、微服务、CLI工具等
+3. 技术栈：语言、框架、关键依赖
+4. 模块划分：按目录划分，每个模块的职责和核心类
+
+要求：
+- 模块划分要合理，通常按目录层级
+- 每个模块的职责描述要具体
+- 核心类列表最多5个
+"""
+
+KEYWORD_MAPPING_SCHEMA = {
+    "name": "map_keywords_to_code",
+    "description": "将业务术语映射为可能对应的代码层术语，用于代码搜索",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "mappings": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "business_term": {
+                            "type": "string",
+                            "description": "业务术语（中文或英文）",
+                        },
+                        "code_terms": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "可能对应的代码层术语（英文、驼峰命名、下划线命名），至少3个",
+                        },
+                    },
+                    "required": ["business_term", "code_terms"],
+                },
+                "description": "每个业务术语对应的代码搜索词列表",
+            }
+        },
+        "required": ["mappings"],
+    },
+}
+
+KEYWORD_MAPPING_PROMPT = """请将以下业务术语映射为可能的代码层搜索词。
+
+业务术语列表：
+{terms}
+
+对于每个业务术语，请提供至少3个可能的代码层术语，包括：
+1. 英文翻译或同义词
+2. 驼峰命名形式（camelCase）
+3. 下划线命名形式（snake_case）
+4. 常见缩写
+
+例如：
+- "双因素认证" → ["two_factor", "2fa", "mfa", "auth", "totp", "otp"]
+- "用户登录" → ["login", "signin", "auth", "user_auth"]
+- "IDE集成" → ["extension", "plugin", "vscode", "ide", "language_server"]
+
+请输出JSON格式的映射列表。"""
+
+
+# ============== Helper Functions ==============
 
 
 def _parse_json_response(response: str):
@@ -195,6 +459,80 @@ async def _call_llm_structured(llm_client, messages: list[dict], schema: dict, *
     return _parse_json_response(response)
 
 
+def _build_terminology_section(memory_data: dict | None) -> str:
+    """从记忆数据构建术语注入段落"""
+    if not memory_data or not memory_data.get("terminology"):
+        return ""
+    terms = memory_data["terminology"]
+    if not terms:
+        return ""
+    lines = ["项目已知术语（请优先识别这些术语）："]
+    for t in terms:
+        line = f"- {t.get('term', '')}"
+        if t.get("definition"):
+            line += f": {t['definition']}"
+        if t.get("domain"):
+            line += f"（{t['domain']}）"
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def _build_project_context_section(memory_data: dict | None) -> str:
+    """从记忆数据构建项目上下文注入段落"""
+    if not memory_data:
+        return ""
+    sections = []
+    profile = memory_data.get("project_profile")
+    if profile and isinstance(profile, dict):
+        lines = ["项目知识上下文："]
+        if profile.get("name"):
+            lines.append(f"- 项目名称：{profile['name']}")
+        if profile.get("description"):
+            lines.append(f"- 项目描述：{profile['description']}")
+        tech_stack = profile.get("tech_stack")
+        if tech_stack and isinstance(tech_stack, dict):
+            langs = tech_stack.get("languages", [])
+            frameworks = tech_stack.get("frameworks", [])
+            if langs or frameworks:
+                parts = langs + frameworks
+                lines.append(f"- 技术栈：{', '.join(parts)}")
+        if profile.get("architecture_style"):
+            lines.append(f"- 架构风格：{profile['architecture_style']}")
+        sections.append("\n".join(lines))
+    modules = memory_data.get("modules")
+    if modules and isinstance(modules, list) and modules:
+        lines = ["项目模块："]
+        for m in modules[:10]:
+            name = m.get("name", "")
+            responsibility = m.get("responsibility", "")
+            if name:
+                lines.append(f"- {name}：{responsibility}")
+        sections.append("\n".join(lines))
+    return "\n\n".join(sections)
+
+
+def _build_constraints_section(memory_data: dict | None) -> str:
+    """从记忆数据构建约束注入段落"""
+    if not memory_data or not memory_data.get("constraints"):
+        return ""
+    constraints = memory_data["constraints"]
+    if not constraints:
+        return ""
+    lines = ["项目已知约束："]
+    for c in constraints:
+        if isinstance(c, dict):
+            ctype = c.get("constraint_type", "other")
+            desc = c.get("description", c.get("constraint", ""))
+            if ctype != "other":
+                lines.append(f"- [{ctype}] {desc}")
+            else:
+                lines.append(f"- {desc}")
+    return "\n".join(lines)
+
+
+# ============== Step Functions ==============
+
+
 async def step_read(context: AnalysisContext) -> str:
     """Step 1: 读取需求文档"""
     path = context.requirement_path
@@ -211,22 +549,13 @@ async def step_read(context: AnalysisContext) -> str:
 
 
 async def step_extract(context: AnalysisContext, llm_client) -> RequirementUnderstanding:
-    """Step 2: 提取关键术语"""
+    """Step 2: 提取关键术语和结构化信息"""
     understanding = RequirementUnderstanding()
     understanding.raw_text = context.requirement_text
 
     try:
-        terminology_section = ""
-        if context.memory_data and context.memory_data.get("terminology"):
-            terms = context.memory_data["terminology"]
-            if terms:
-                lines = ["项目已知术语（请优先识别这些术语）："]
-                for t in terms:
-                    line = f"- {t['term']}"
-                    if t.get("definition"):
-                        line += f": {t['definition']}"
-                    lines.append(line)
-                terminology_section = "\n".join(lines)
+        terminology_section = _build_terminology_section(context.memory_data)
+        project_context_section = _build_project_context_section(context.memory_data)
 
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
@@ -235,16 +564,45 @@ async def step_extract(context: AnalysisContext, llm_client) -> RequirementUnder
                 "content": EXTRACT_PROMPT.format(
                     content=context.requirement_text[:4000],
                     terminology_section=terminology_section,
+                    project_context_section=project_context_section,
                 ),
             },
         ]
 
-        result = await _call_llm_structured(llm_client, messages, EXTRACT_SCHEMA, max_tokens=1024)
+        result = await _call_llm_structured(llm_client, messages, EXTRACT_SCHEMA, max_tokens=2048)
 
         understanding.summary = result.get("summary", "")
         understanding.keywords = result.get("keywords", [])
-        understanding.constraints = result.get("constraints", [])
         understanding.business_goals = result.get("business_goals", "")
+        understanding.priority_suggestion = result.get("priority_suggestion", "")
+        understanding.priority_reason = result.get("priority_reason", "")
+
+        for t in result.get("terms", []):
+            if isinstance(t, dict) and t.get("term"):
+                understanding.terms.append(
+                    TermDefinition(
+                        term=t.get("term", ""),
+                        definition=t.get("definition", ""),
+                        domain=t.get("domain", ""),
+                    )
+                )
+
+        for c in result.get("structured_constraints", []):
+            if isinstance(c, dict) and c.get("description"):
+                understanding.structured_constraints.append(
+                    StructuredConstraint(
+                        description=c.get("description", ""),
+                        constraint_type=c.get("constraint_type", "other"),
+                        source=c.get("source", "requirement_document"),
+                    )
+                )
+
+        understanding.constraints = [
+            c.description for c in understanding.structured_constraints
+        ] + result.get("constraints", [])
+
+        if not understanding.keywords:
+            understanding.keywords = [t.term for t in understanding.terms]
 
     except (json.JSONDecodeError, LLMException) as e:
         logger.warning("LLM extract failed, using fallback keyword extraction: %s", e)
@@ -262,48 +620,95 @@ def _fallback_keyword_extraction(text: str) -> list[str]:
     words = re.findall(r"\b[a-zA-Z\u4e00-\u9fa5]{2,}\b", text)
 
     stopwords = {
-        "的",
-        "了",
-        "和",
-        "是",
-        "在",
-        "我",
-        "有",
-        "个",
-        "与",
-        "及",
-        "等",
-        "the",
-        "a",
-        "an",
-        "is",
-        "are",
-        "and",
-        "or",
-        "this",
-        "that",
+        "的", "了", "和", "是", "在", "我", "有", "个", "与", "及", "等",
+        "the", "a", "an", "is", "are", "and", "or", "this", "that",
     }
 
     keywords = [w for w in set(words) if w not in stopwords and len(w) > 1]
     return keywords[:10]
 
 
+async def step_map_keywords(context: AnalysisContext, llm_client) -> dict:
+    """将业务术语映射为代码搜索词"""
+    understanding = context.understanding
+    if not understanding or (not understanding.terms and not understanding.keywords):
+        logger.info("No terms or keywords to map")
+        return {}
+
+    terms_to_map = []
+    if understanding.terms:
+        terms_to_map = [t.term for t in understanding.terms]
+    elif understanding.keywords:
+        terms_to_map = understanding.keywords[:10]
+
+    if not terms_to_map:
+        return {}
+
+    try:
+        messages = [
+            {
+                "role": "user",
+                "content": KEYWORD_MAPPING_PROMPT.format(
+                    terms="\n".join(f"- {t}" for t in terms_to_map)
+                ),
+            },
+        ]
+
+        result = await _call_llm_structured(
+            llm_client, messages, KEYWORD_MAPPING_SCHEMA, max_tokens=1024
+        )
+
+        mappings = {}
+        if result and "mappings" in result:
+            for m in result["mappings"]:
+                if isinstance(m, dict) and m.get("business_term"):
+                    mappings[m["business_term"]] = m.get("code_terms", [])
+
+        if mappings:
+            context.expanded_keywords = _expand_keywords(terms_to_map, mappings)
+            logger.info(
+                "Keyword mapping completed: %d terms mapped to %d search keywords",
+                len(mappings),
+                len(context.expanded_keywords),
+            )
+
+        return mappings
+
+    except Exception as e:
+        logger.warning("Keyword mapping failed: %s", e)
+        context.expanded_keywords = terms_to_map
+        return {}
+
+
+def _expand_keywords(original_terms: list[str], mappings: dict) -> list[str]:
+    """扩展关键词列表"""
+    expanded = set(original_terms)
+
+    for term in original_terms:
+        if term in mappings:
+            for code_term in mappings[term]:
+                expanded.add(code_term)
+
+    return list(expanded)
+
+
 async def step_retrieve(
-    context: AnalysisContext,
-    vector_store,
-    llm_client=None,
+    context: AnalysisContext, vector_store, llm_client=None
 ) -> RetrievedContext:
     """Step 3: 检索相似需求与代码"""
     retrieved = RetrievedContext()
 
     keywords = context.understanding.keywords if context.understanding else []
+    expanded_keywords = context.expanded_keywords if context.expanded_keywords else keywords
+
     if not keywords:
         logger.info("No keywords extracted, skipping retrieval")
         return retrieved
 
     if vector_store:
         try:
-            query = " ".join(keywords[:5])
+            search_terms = expanded_keywords if expanded_keywords else keywords
+            query = " ".join(search_terms[:10])
             results = vector_store.search(query, top_k=5)
 
             raw_reqs = [
@@ -354,74 +759,119 @@ async def step_retrieve(
 
 
 async def step_analyze(
-    context: AnalysisContext,
-    code_graph,
-    git_analyzer,
-    llm_client=None,
+    context: AnalysisContext, code_graph, git_analyzer, llm_client=None
 ) -> DeepAnalysis:
     """Step 4: 深度分析"""
     analysis = DeepAnalysis()
 
     keywords = context.understanding.keywords if context.understanding else []
+    expanded_keywords = context.expanded_keywords if context.expanded_keywords else keywords
 
-    if code_graph and keywords:
-        matched_files = code_graph.find_symbols(keywords)
+    if code_graph and expanded_keywords:
+        matched_files = code_graph.find_symbols(expanded_keywords)
         analysis.impact_modules = [
-            {"path": f.path, "symbols": [s.name for s in f.symbols[:5]]} for f in matched_files[:10]
+            {"path": f.path, "symbols": [s.name for s in f.symbols[:5]]}
+            for f in matched_files[:10]
         ]
 
-        if git_analyzer and matched_files:
-            try:
-                file_paths = [f.path for f in matched_files]
-                contributor_info = git_analyzer.get_file_contributors(file_paths)
+    if git_analyzer and analysis.impact_modules:
+        try:
+            file_paths = [m["path"] for m in analysis.impact_modules]
+            contributor_info = git_analyzer.get_file_contributors(file_paths)
 
-                analysis.contributors = [
-                    {
-                        "name": c.primary_contributor.name if c.primary_contributor else "未知",
-                        "email": c.primary_contributor.email if c.primary_contributor else "",
-                        "file": c.file_path,
-                        "reason": "主要贡献者",
-                    }
-                    for c in contributor_info[:5]
-                    if c.primary_contributor
-                ]
-            except Exception as e:
-                logger.warning("Git analysis failed: %s", e)
+            analysis.contributors = [
+                {
+                    "name": c.primary_contributor.name if c.primary_contributor else "未知",
+                    "email": c.primary_contributor.email if c.primary_contributor else "",
+                    "file": c.file_path,
+                    "reason": "主要贡献者",
+                }
+                for c in contributor_info[:5]
+                if c.primary_contributor
+            ]
+        except Exception as e:
+            logger.warning("Git analysis failed: %s", e)
 
-        if llm_client and analysis.impact_modules:
-            try:
+    if llm_client:
+        try:
+            modules_text = ""
+            if analysis.impact_modules:
                 modules_text = "\n".join(
                     f"- {m['path']} ({', '.join(m['symbols'][:3])})"
                     for m in analysis.impact_modules[:5]
                 )
+            else:
+                modules_text = "无匹配代码模块（请根据项目知识推断）"
+
+            contributors_text = ""
+            if analysis.contributors:
                 contributors_text = "\n".join(
                     f"- {c['name']} ({c['file']})" for c in analysis.contributors[:3]
                 )
-                messages = [
-                    {
-                        "role": "user",
-                        "content": ANALYZE_PROMPT.format(
-                            summary=context.understanding.summary if context.understanding else "",
-                            modules=modules_text or "无",
-                            contributors=contributors_text or "无",
-                        ),
-                    },
-                ]
-                result = await _call_llm_structured(
-                    llm_client, messages, ANALYZE_SCHEMA, max_tokens=1024
+
+            project_context_section = _build_project_context_section(context.memory_data)
+            terminology_section = _build_terminology_section(context.memory_data)
+
+            messages = [
+                {
+                    "role": "user",
+                    "content": ANALYZE_PROMPT.format(
+                        summary=context.understanding.summary if context.understanding else "",
+                        modules_section=f"涉及模块：\n{modules_text}",
+                        contributors_section=f"建议评审人：\n{contributors_text}" if contributors_text else "建议评审人：暂无",
+                        project_context_section=project_context_section,
+                        terminology_section=terminology_section,
+                    ),
+                },
+            ]
+            result = await _call_llm_structured(
+                llm_client, messages, ANALYZE_SCHEMA, max_tokens=2048
+            )
+
+            analysis.risk_level = result.get("risk_level", "medium")
+
+            for r in result.get("risks", []):
+                if isinstance(r, dict):
+                    analysis.risks.append(
+                        RiskItem(
+                            description=r.get("description", ""),
+                            severity=r.get("severity", "medium"),
+                            scope=r.get("scope", ""),
+                            mitigation=r.get("mitigation", ""),
+                        )
+                    )
+            analysis.risk_details = [r.description for r in analysis.risks]
+
+            for ca in result.get("change_assessment", []):
+                if isinstance(ca, dict):
+                    analysis.change_assessment.append(
+                        ChangeAssessment(
+                            module=ca.get("module", ""),
+                            change_type=ca.get("change_type", "modify"),
+                            impact_level=ca.get("impact_level", "medium"),
+                            reason=ca.get("reason", ""),
+                        )
+                    )
+
+            analysis.verification_points = result.get("verification_points", [])
+
+            impl_hints = result.get("implementation_hints", {})
+            if isinstance(impl_hints, dict):
+                analysis.implementation_hints = ImplementationHints(
+                    approach=impl_hints.get("approach", ""),
+                    effort_estimate=impl_hints.get("effort_estimate", ""),
+                    dependencies=impl_hints.get("dependencies", []),
                 )
-                analysis.risk_level = result.get("risk_level", "unknown")
-                analysis.risk_details = result.get("risk_details", [])
-            except (json.JSONDecodeError, LLMException, Exception) as e:
-                logger.warning("LLM analyze failed, using defaults: %s", e)
+
+        except (json.JSONDecodeError, LLMException, Exception) as e:
+            logger.warning("LLM analyze failed, using defaults: %s", e)
+            if analysis.risk_level == "unknown":
+                analysis.risk_level = "medium"
 
     return analysis
 
 
-async def step_generate(
-    context: AnalysisContext,
-    llm_client,
-) -> dict:
+async def step_generate(context: AnalysisContext, llm_client) -> GeneratedContent:
     """Step 5: 生成报告段落"""
     understanding = context.understanding
     analysis = context.deep_analysis
@@ -444,32 +894,199 @@ async def step_generate(
 
     risk_analysis = "待评估"
     if analysis and analysis.risk_level != "unknown":
-        risk_analysis = f"{analysis.risk_level}"
+        risk_analysis = analysis.risk_level
         if analysis.risk_details:
             risk_analysis += ": " + ", ".join(analysis.risk_details[:3])
 
+    change_assessment_str = ""
+    if analysis and analysis.change_assessment:
+        for ca in analysis.change_assessment[:3]:
+            change_assessment_str += f"- {ca.module}: {ca.change_type} ({ca.impact_level})\n"
+
+    project_context_section = _build_project_context_section(context.memory_data)
+
     prompt = GENERATE_PROMPT.format(
         summary=understanding.summary if understanding else "",
-        similar_reqs=similar_reqs_str or "无",
         modules=modules_str or "无",
         contributors=contributors_str or "无",
-        risk_analysis=risk_analysis,
+        risk_level=analysis.risk_level if analysis else "unknown",
+        risk_details=risk_analysis,
+        change_assessment=change_assessment_str or "无",
+        project_context_section=project_context_section,
     )
 
     try:
         messages = [
             {"role": "user", "content": prompt},
         ]
-        result = await _call_llm_structured(llm_client, messages, GENERATE_SCHEMA, max_tokens=1024)
-        return result
+        result = await _call_llm_structured(
+            llm_client, messages, GENERATE_SCHEMA, max_tokens=2048
+        )
+
+        return GeneratedContent(
+            requirement_understanding=result.get("requirement_understanding", ""),
+            impact_narrative=result.get("impact_narrative", ""),
+            risk_narrative=result.get("risk_narrative", ""),
+            implementation_suggestion=result.get("implementation_suggestion", ""),
+        )
     except (json.JSONDecodeError, LLMException, Exception) as e:
         logger.warning("LLM generate failed, using fallback: %s", e)
-        return {
-            "understanding": understanding.summary if understanding else "无法生成",
-            "relation": "基于关键词匹配",
-            "constraints": (
-                ", ".join(understanding.constraints)
-                if understanding and understanding.constraints
-                else "无"
-            ),
-        }
+        return GeneratedContent(
+            requirement_understanding=understanding.summary if understanding else "无法生成",
+            impact_narrative="",
+            risk_narrative="",
+            implementation_suggestion="",
+        )
+
+
+# ============== Project Profile Building ==============
+
+
+async def step_build_project_profile(
+    code_graph,
+    llm_client,
+    memory_manager,
+    repo_path: str = ".",
+) -> dict:
+    """构建项目画像并存入记忆"""
+    if not code_graph or not code_graph.files:
+        logger.warning("No code files to build project profile")
+        return {}
+
+    try:
+        file_stats = _build_file_stats(code_graph)
+        directory_structure = _build_directory_structure(code_graph)
+        key_files = _build_key_files(code_graph)
+        dependencies_content = _extract_dependencies(repo_path)
+
+        messages = [
+            {
+                "role": "user",
+                "content": PROJECT_PROFILE_PROMPT.format(
+                    file_stats=file_stats,
+                    directory_structure=directory_structure,
+                    key_files=key_files,
+                    dependencies_content=dependencies_content,
+                ),
+            },
+        ]
+
+        result = await _call_llm_structured(
+            llm_client, messages, PROJECT_PROFILE_SCHEMA, max_tokens=2048
+        )
+
+        if result:
+            profile = {
+                "name": Path(repo_path).name,
+                "description": result.get("description", ""),
+                "architecture_style": result.get("architecture_style", ""),
+                "tech_stack": result.get("tech_stack", {}),
+                "last_updated": datetime.now().strftime("%Y-%m-%d"),
+                "source": "llm_inferred",
+            }
+
+            memory_manager.update_project_profile(profile)
+            logger.info("Project profile updated: %s", profile.get("description", ""))
+
+            for module in result.get("modules", []):
+                if isinstance(module, dict) and module.get("name"):
+                    module_name = module.get("name", "")
+                    memory_manager.add_module(
+                        name=module_name,
+                        responsibility=module.get("responsibility", ""),
+                        key_classes=module.get("key_classes", []),
+                        dependencies=module.get("dependencies", []),
+                        path=_infer_module_path(module_name, code_graph),
+                    )
+
+            memory_manager.save()
+            logger.info("Project profile saved to memory")
+
+            return {
+                "project_profile": profile,
+                "modules": result.get("modules", []),
+            }
+
+    except Exception as e:
+        logger.warning("Failed to build project profile: %s", e)
+
+    return {}
+
+
+def _build_file_stats(code_graph) -> str:
+    """构建文件统计信息"""
+    total_files = len(code_graph.files)
+    total_symbols = sum(len(f.symbols) for f in code_graph.files)
+
+    extensions = Counter(Path(f.path).suffix for f in code_graph.files if Path(f.path).suffix)
+    top_extensions = extensions.most_common(5)
+
+    lines = [
+        f"- 总文件数: {total_files}",
+        f"- 总符号数: {total_symbols}",
+        f"- 文件类型分布: {', '.join(f'{ext}({count})' for ext, count in top_extensions)}",
+    ]
+    return "\n".join(lines)
+
+
+def _build_directory_structure(code_graph) -> str:
+    """构建目录结构"""
+    dirs = set()
+    for f in code_graph.files:
+        parts = Path(f.path).parts
+        for i in range(1, min(len(parts), 4)):
+            dirs.add("/".join(parts[:i]))
+
+    sorted_dirs = sorted(dirs)[:20]
+    return "\n".join(f"- {d}" for d in sorted_dirs)
+
+
+def _build_key_files(code_graph) -> str:
+    """构建核心文件列表"""
+    files_with_symbols = [
+        (f.path, len(f.symbols), [s.name for s in f.symbols[:5]])
+        for f in code_graph.files
+        if f.symbols
+    ]
+    files_with_symbols.sort(key=lambda x: x[1], reverse=True)
+
+    lines = []
+    for path, count, symbols in files_with_symbols[:10]:
+        lines.append(f"- {path} ({count} symbols: {', '.join(symbols)})")
+
+    return "\n".join(lines)
+
+
+def _extract_dependencies(repo_path: str) -> str:
+    """提取依赖文件内容"""
+    repo = Path(repo_path)
+    dep_files = [
+        "pyproject.toml",
+        "requirements.txt",
+        "package.json",
+        "Cargo.toml",
+        "go.mod",
+    ]
+
+    contents = []
+    for dep_file in dep_files:
+        path = repo / dep_file
+        if path.exists():
+            try:
+                content = path.read_text(encoding="utf-8")[:1000]
+                contents.append(f"=== {dep_file} ===\n{content}\n")
+            except Exception:
+                pass
+
+    if not contents:
+        contents.append("未找到依赖文件")
+
+    return "\n".join(contents)
+
+
+def _infer_module_path(module_name: str, code_graph) -> str:
+    """推断模块路径"""
+    for f in code_graph.files:
+        if module_name.lower() in f.path.lower():
+            return str(Path(f.path).parent)
+    return ""

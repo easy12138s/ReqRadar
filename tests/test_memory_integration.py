@@ -39,6 +39,7 @@ class TestMemoryInjection:
         prompt = EXTRACT_PROMPT.format(
             content=context.requirement_text,
             terminology_section=terminology_section,
+            project_context_section="",
         )
 
         assert "SSO" in prompt
@@ -61,6 +62,7 @@ class TestMemoryInjection:
         prompt = EXTRACT_PROMPT.format(
             content=context.requirement_text,
             terminology_section=terminology_section,
+            project_context_section="",
         )
 
         assert "项目已知术语" not in prompt

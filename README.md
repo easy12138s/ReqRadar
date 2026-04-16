@@ -7,13 +7,22 @@
 ## 工作流程
 
 ```
-reqradar index    →  代码解析 + 文档向量化  →  索引
-reqradar analyze  →  5步固定流程            →  Markdown 报告
+reqradar index → 代码解析 + 文档向量化 + 项目画像构建 → 索引 + 记忆
+reqradar analyze → 6步固定流程 → Markdown 报告
 ```
 
-5 步流程：读取文档 → 提取术语 → 检索相似需求 + 匹配代码 → 分析贡献者 → 生成报告
+6 步流程：读取文档 → 提取术语 → 关键词映射 → 检索相似需求 + 匹配代码 → 分析贡献者 → 生成报告
 
 流程固定、模板固定，LLM 仅用于填充自然语言片段，不参与流程决策。
+
+## 主要特性
+
+- **项目画像自动构建**：`reqradar index` 自动调用 LLM 分析代码结构，构建项目画像（架构风格、模块划分、技术栈）
+- **术语带定义提取**：从需求文档提取的每个术语都包含定义和所属领域
+- **结构化风险评估**：风险项包含描述、严重程度、影响范围、缓解建议
+- **变更评估表**：每个需求自动生成变更评估（模块、变更类型、影响等级）
+- **语义关键词映射**：将中文业务术语映射为英文代码搜索词（如"双因素认证"→"two_factor", "2fa", "mfa"）
+- **专业报告模板**：多角色报告结构，支持 PM、开发者、技术负责人各自的关注点
 
 ## 安装
 
@@ -78,9 +87,17 @@ reqradar index -r ./src -o .reqradar/index
 
 # 同时索引需求文档（支持 .md/.txt/.rst/.pdf/.docx/.csv/.json）
 reqradar index -r ./src -d ./docs/requirements -o .reqradar/index
+
+# 禁用项目画像构建（跳过 LLM 调用）
+reqradar index -r ./src --no-build-profile
 ```
 
 首次运行会自动下载嵌入模型（BGE-large-zh，约 1.3GB）。
+
+索引完成后，`.reqradar/memory/memory.yaml` 将包含：
+- 项目画像（架构风格、技术栈）
+- 模块列表（职责、核心类）
+- 已知术语（后续分析可复用）
 
 ### 2. 分析需求
 
@@ -119,6 +136,33 @@ llm:
 ## 命令参考
 
 ```
+reqradar index 构建代码和文档索引
+-r, --repo-path 代码仓库路径（必填）
+-d, --docs-path 需求文档目录（可选）
+-o, --output 索引输出目录（默认 .reqradar/index）
+--build-profile/--no-build-profile 是否构建项目画像（默认构建）
+
+reqradar analyze 分析需求并生成报告
+REQUIREMENT_FILE 需求文档路径（必填）
+-i, --index-path 索引目录路径（默认 .reqradar/index）
+-o, --output 报告输出目录（默认 ./reports）
+--llm-backend LLM 后端：openai 或 ollama
+-v, --verbose 详细输出
+```
+
+## 报告结构
+
+生成的报告包含以下章节：
+
+| 章节 | 内容 |
+|:---|:---|
+| 报告概况 | 风险等级、影响范围、优先级、内容可信度 |
+| 需求理解 | 需求概述、核心术语表、约束条件 |
+| 影响分析 | 代码影响范围、变更评估表、相似历史需求 |
+| 风险评估 | 风险概览表、验证要点 |
+| 建议评审人 | 相关贡献者列表 |
+| 实施建议 | 优先级、工作量、前置依赖 |
+| 附录 | 数据完整性、项目知识上下文 |
 reqradar index       构建代码和文档索引
   -r, --repo-path    代码仓库路径（必填）
   -d, --docs-path    需求文档目录（可选）
@@ -134,6 +178,31 @@ reqradar analyze     分析需求并生成报告
 
 ## 项目结构
 
+```
+src/reqradar/
+├── cli/ CLI 入口（index、analyze 命令）
+├── core/ 调度器、上下文、报告渲染、异常定义
+│   ├── scheduler.py 6步工作流调度
+│   ├── context.py 数据模型（术语、约束、风险、变更评估等）
+│   └── report.py 报告渲染器
+├── modules/ 能力模块
+│   ├── code_parser.py Python AST 代码解析
+│   ├── vector_store.py Chroma 向量检索
+│   ├── git_analyzer.py Git 贡献者分析
+│   ├── llm_client.py OpenAI/Ollama LLM 客户端（含视觉能力）
+│   ├── memory.py 项目记忆管理器（项目画像、模块、术语）
+│   └── loaders/ 文档加载器
+│       ├── base.py ABC + 注册表
+│       ├── text_loader.py Markdown/Text/RST
+│       ├── pdf_loader.py PDF（可选依赖）
+│       ├── docx_loader.py Word DOCX（可选依赖）
+│       ├── image_loader.py 图片（LLM 视觉）
+│       ├── chat_loader.py 飞书 JSON + 通用 CSV
+│       └── chat_types.py ChatMessage/ChatConversation
+├── agent/ 6步工作流实现
+│   └── steps.py extract/map_keywords/analyze/generate 等
+├── infrastructure/ 配置、日志、注册表
+└── templates/ 报告模板
 ```
 src/reqradar/
 ├── cli/              CLI 入口

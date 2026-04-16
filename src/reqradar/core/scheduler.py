@@ -12,11 +12,12 @@ logger = logging.getLogger("reqradar.scheduler")
 
 
 class Scheduler:
-    """固定5步工作流调度器"""
+    """固定6步工作流调度器"""
 
     STEPS = [
         ("read", "读取需求文档"),
         ("extract", "提取关键术语"),
+        ("map_keywords", "映射关键词到代码术语"),
         ("retrieve", "检索相似需求与代码"),
         ("analyze", "深度分析"),
         ("generate", "生成报告"),
@@ -26,9 +27,10 @@ class Scheduler:
         self,
         read_handler: Callable,
         extract_handler: Callable,
-        retrieve_handler: Callable,
-        analyze_handler: Callable,
-        generate_handler: Callable,
+        map_keywords_handler: Callable = None,
+        retrieve_handler: Callable = None,
+        analyze_handler: Callable = None,
+        generate_handler: Callable = None,
     ):
         self.handlers = {
             "read": read_handler,
@@ -37,6 +39,8 @@ class Scheduler:
             "analyze": analyze_handler,
             "generate": generate_handler,
         }
+        if map_keywords_handler:
+            self.handlers["map_keywords"] = map_keywords_handler
         self._hooks_before: dict[str, list[Callable]] = {step: [] for step in self.handlers}
         self._hooks_after: dict[str, list[Callable]] = {step: [] for step in self.handlers}
 

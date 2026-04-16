@@ -22,12 +22,30 @@ class StepResult:
 
 
 @dataclass
+class TermDefinition:
+    term: str = ""
+    definition: str = ""
+    domain: str = ""
+
+
+@dataclass
+class StructuredConstraint:
+    description: str = ""
+    constraint_type: str = ""
+    source: str = ""
+
+
+@dataclass
 class RequirementUnderstanding:
     raw_text: str = ""
     summary: str = ""
     keywords: list[str] = field(default_factory=list)
+    terms: list[TermDefinition] = field(default_factory=list)
     constraints: list[str] = field(default_factory=list)
+    structured_constraints: list[StructuredConstraint] = field(default_factory=list)
     business_goals: str = ""
+    priority_suggestion: str = ""
+    priority_reason: str = ""
 
 
 @dataclass
@@ -37,11 +55,46 @@ class RetrievedContext:
 
 
 @dataclass
+class RiskItem:
+    description: str = ""
+    severity: str = ""
+    scope: str = ""
+    mitigation: str = ""
+
+
+@dataclass
+class ChangeAssessment:
+    module: str = ""
+    change_type: str = ""
+    impact_level: str = ""
+    reason: str = ""
+
+
+@dataclass
+class ImplementationHints:
+    approach: str = ""
+    effort_estimate: str = ""
+    dependencies: list[str] = field(default_factory=list)
+
+
+@dataclass
 class DeepAnalysis:
     impact_modules: list = field(default_factory=list)
     contributors: list = field(default_factory=list)
     risk_level: str = "unknown"
     risk_details: list = field(default_factory=list)
+    risks: list[RiskItem] = field(default_factory=list)
+    change_assessment: list[ChangeAssessment] = field(default_factory=list)
+    verification_points: list[str] = field(default_factory=list)
+    implementation_hints: ImplementationHints = field(default_factory=ImplementationHints)
+
+
+@dataclass
+class GeneratedContent:
+    requirement_understanding: str = ""
+    impact_narrative: str = ""
+    risk_narrative: str = ""
+    implementation_suggestion: str = ""
 
 
 @dataclass
@@ -52,6 +105,8 @@ class AnalysisContext:
     understanding: Optional[RequirementUnderstanding] = None
     retrieved_context: Optional[RetrievedContext] = None
     deep_analysis: Optional[DeepAnalysis] = None
+    generated_content: Optional[GeneratedContent] = None
+    expanded_keywords: list[str] = field(default_factory=list)
     step_results: dict[str, StepResult] = field(default_factory=dict)
     started_at: datetime = field(default_factory=datetime.now)
     completed_at: Optional[datetime] = None
@@ -79,6 +134,18 @@ class AnalysisContext:
         if not self.step_results:
             return 0.0
         return sum(r.confidence for r in self.step_results.values()) / len(self.step_results)
+
+    @property
+    def content_confidence(self) -> str:
+        has_risk = self.deep_analysis and self.deep_analysis.risk_level not in ("unknown", "")
+        has_terms = self.understanding and len(self.understanding.terms) > 0
+        has_understanding = self.understanding and bool(self.understanding.summary)
+        if has_risk and has_terms and has_understanding:
+            return "high"
+        elif has_risk or has_terms or has_understanding:
+            return "medium"
+        else:
+            return "low"
 
     def store_result(self, step: str, result: StepResult):
         self.step_results[step] = result

@@ -6,9 +6,18 @@ import pytest
 
 from reqradar.modules.loaders.base import LoaderRegistry
 from reqradar.modules.loaders import get_loader
+from reqradar.modules.loaders.text_loader import TextLoader
+from reqradar.modules.loaders.image_loader import ImageLoader
+from reqradar.modules.loaders.chat_loader import ChatLoader
 
 
 class TestLoaderRegistryIntegration:
+    def setup_method(self):
+        LoaderRegistry._loaders = {}
+        LoaderRegistry.register("text", TextLoader())
+        LoaderRegistry.register("image", ImageLoader())
+        LoaderRegistry.register("chat", ChatLoader())
+
     def test_text_loader_registered(self):
         loader = LoaderRegistry.get("text")
         assert loader is not None
