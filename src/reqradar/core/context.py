@@ -98,6 +98,22 @@ class GeneratedContent:
 
 
 @dataclass
+class ModuleAnalysisResult:
+    path: str = ""
+    symbols: list[str] = field(default_factory=list)
+    relevance: str = "low"
+    relevance_reason: str = ""
+    suggested_changes: str = ""
+
+
+@dataclass
+class CodeAnalysisResult:
+    modules: list[ModuleAnalysisResult] = field(default_factory=list)
+    overall_assessment: dict = field(default_factory=dict)
+    confidence: float = 0.0
+
+
+@dataclass
 class AnalysisContext:
     requirement_path: Path
     requirement_text: str = ""
@@ -107,6 +123,7 @@ class AnalysisContext:
     deep_analysis: Optional[DeepAnalysis] = None
     generated_content: Optional[GeneratedContent] = None
     expanded_keywords: list[str] = field(default_factory=list)
+    code_analysis: Optional[CodeAnalysisResult] = None
     step_results: dict[str, StepResult] = field(default_factory=dict)
     started_at: datetime = field(default_factory=datetime.now)
     completed_at: Optional[datetime] = None
