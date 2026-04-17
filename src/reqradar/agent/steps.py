@@ -884,15 +884,32 @@ async def step_analyze(
     """Step 4: 深度分析"""
     analysis = DeepAnalysis()
 
-    keywords = context.understanding.keywords if context.understanding else []
-    expanded_keywords = context.expanded_keywords if context.expanded_keywords else keywords
+    # === 在此处添加智能模块匹配 ===
+    if llm_client and context.memory_data and context.understanding:
+        try:
+            impact_modules = await _smart_module_matching(
+                context.understanding,
+                context.memory_data,
+                code_graph,
+                llm_client,
+            )
+            analysis.impact_modules = impact_modules
+            logger.info("Smart module matching found %d modules", len(impact_modules))
+        except Exception as e:
+            logger.warning("Smart module matching failed, falling back: %s", e)
 
-    if code_graph and expanded_keywords:
-        matched_files = code_graph.find_symbols(expanded_keywords)
-        analysis.impact_modules = [
-            {"path": f.path, "symbols": [s.name for s in f.symbols[:5]]}
-            for f in matched_files[:10]
-        ]
+    # 如果智能匹配未成功，使用原有逻辑
+    if not analysis.impact_modules:
+        keywords = context.expanded_keywords if context.expanded_keywords else (
+            context.understanding.keywords if context.understanding else []
+        )
+        if code_graph and keywords:
+            matched_files = code_graph.find_symbols(keywords)
+            analysis.impact_modules = [
+                {"path": f.path, "symbols": [s.name for s in f.symbols[:5]]}
+                for f in matched_files[:10]
+            ]
+    # ==================================
 
     if git_analyzer and analysis.impact_modules:
         try:
