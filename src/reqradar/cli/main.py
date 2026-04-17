@@ -324,6 +324,24 @@ def analyze(ctx, requirement_file, index_path, output, llm_backend, verbose):
                 except Exception as e:
                     logger.warning("Failed to update memory: %s", e)
 
+        async def persist_module_history_hook(ctx):
+            """持久化模块关联历史"""
+            if not ctx.deep_analysis or not ctx.deep_analysis.impact_modules:
+                return
+            try:
+                for module in ctx.deep_analysis.impact_modules:
+                    module_path = module.get("path", "")
+                    if module_path:
+                        memory_manager.add_module_requirement_history(
+                            module_name=module_path,
+                            requirement_id=ctx.requirement_path.stem,
+                            relevance=module.get("relevance", "unknown"),
+                            suggested_changes=module.get("suggested_changes", ""),
+                        )
+                logger.info("Module requirement history persisted")
+            except Exception as e:
+                logger.warning("Failed to persist module history: %s", e)
+
         scheduler = Scheduler(
             read_handler=step_read,
             extract_handler=wrapped_extract,
@@ -333,6 +351,7 @@ def analyze(ctx, requirement_file, index_path, output, llm_backend, verbose):
             generate_handler=wrapped_generate,
         )
 
+        scheduler.register_after_hook("analyze", persist_module_history_hook)
         scheduler.register_after_hook("generate", memory_update_hook)
 
         result_context = await scheduler.run(context)
