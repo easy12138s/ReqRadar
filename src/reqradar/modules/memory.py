@@ -171,6 +171,7 @@ class MemoryManager:
         dependencies: list = None,
         path: str = "",
         owner: str = None,
+        code_summary: str = "",
     ) -> None:
         """Add or update a module"""
         self.load()
@@ -188,6 +189,8 @@ class MemoryManager:
                     existing["path"] = path
                 if owner is not None:
                     existing["owner"] = owner
+                if code_summary:
+                    existing["code_summary"] = code_summary
                 self.save()
                 return
 
@@ -199,9 +202,50 @@ class MemoryManager:
                 "dependencies": dependencies or [],
                 "path": path,
                 "owner": owner,
+                "code_summary": code_summary,
+                "related_requirements": [],
             }
         )
         self.save()
+
+    def add_module_requirement_history(
+        self,
+        module_name: str,
+        requirement_id: str,
+        relevance: str,
+        suggested_changes: str = "",
+    ) -> None:
+        """添加模块的需求关联历史，只保留最近10条"""
+        self.load()
+        modules = self._data["modules"]
+
+        for module in modules:
+            if module.get("name") == module_name:
+                if "requirement_history" not in module:
+                    module["requirement_history"] = []
+
+                module["requirement_history"].append(
+                    {
+                        "requirement_id": requirement_id,
+                        "relevance": relevance,
+                        "suggested_changes": suggested_changes,
+                        "timestamp": datetime.now().isoformat(),
+                    }
+                )
+
+                if len(module["requirement_history"]) > 10:
+                    module["requirement_history"] = module["requirement_history"][-10:]
+
+                self.save()
+                return
+
+    def get_module(self, name: str) -> dict | None:
+        """按名称获取模块，返回模块字典或 None"""
+        self.load()
+        for module in self._data["modules"]:
+            if module.get("name") == name:
+                return module
+        return None
 
     def add_constraint(
         self,

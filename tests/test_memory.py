@@ -272,3 +272,72 @@ class TestMemoryManager:
         assert data["analysis_history"][0]["summary"] is not None
         assert data["analysis_history"][0]["affected_modules"] == []
         assert data["analysis_history"][0]["key_decisions"] == []
+
+
+class TestMemoryModuleEnhancement:
+    def test_add_module_with_code_summary(self, tmp_path):
+        manager = MemoryManager(storage_path=str(tmp_path / "memory"))
+        manager.add_module(
+            "auth",
+            responsibility="认证模块",
+            code_summary="处理用户认证和授权，包含JWT token管理",
+        )
+
+        modules = manager.modules
+        assert len(modules) == 1
+        assert modules[0]["name"] == "auth"
+        assert modules[0]["code_summary"] == "处理用户认证和授权，包含JWT token管理"
+        assert modules[0]["related_requirements"] == []
+
+    def test_add_module_requirement_history(self, tmp_path):
+        manager = MemoryManager(storage_path=str(tmp_path / "memory"))
+        manager.add_module("auth", responsibility="认证模块")
+        manager.add_module_requirement_history(
+            module_name="auth",
+            requirement_id="REQ-001",
+            relevance="high",
+            suggested_changes="增加OAuth2支持",
+        )
+
+        module = manager.get_module("auth")
+        assert module is not None
+        assert "requirement_history" in module
+        assert len(module["requirement_history"]) == 1
+        assert module["requirement_history"][0]["requirement_id"] == "REQ-001"
+        assert module["requirement_history"][0]["relevance"] == "high"
+        assert module["requirement_history"][0]["suggested_changes"] == "增加OAuth2支持"
+        assert "timestamp" in module["requirement_history"][0]
+
+    def test_module_history_limit(self, tmp_path):
+        manager = MemoryManager(storage_path=str(tmp_path / "memory"))
+        manager.add_module("auth", responsibility="认证模块")
+
+        for i in range(15):
+            manager.add_module_requirement_history(
+                module_name="auth",
+                requirement_id=f"REQ-{i:03d}",
+                relevance="medium",
+                suggested_changes=f"变更{i}",
+            )
+
+        module = manager.get_module("auth")
+        assert len(module["requirement_history"]) == 10
+        assert module["requirement_history"][0]["requirement_id"] == "REQ-005"
+        assert module["requirement_history"][-1]["requirement_id"] == "REQ-014"
+
+    def test_get_module_by_name(self, tmp_path):
+        manager = MemoryManager(storage_path=str(tmp_path / "memory"))
+        manager.add_module("auth", responsibility="认证模块")
+        manager.add_module("user", responsibility="用户模块")
+
+        auth_module = manager.get_module("auth")
+        assert auth_module is not None
+        assert auth_module["name"] == "auth"
+        assert auth_module["responsibility"] == "认证模块"
+
+        user_module = manager.get_module("user")
+        assert user_module is not None
+        assert user_module["name"] == "user"
+
+        none_module = manager.get_module("nonexistent")
+        assert none_module is None
