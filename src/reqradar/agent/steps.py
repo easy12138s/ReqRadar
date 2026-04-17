@@ -553,6 +553,43 @@ GENERATE_MODULE_SUMMARY_PROMPT = """请为以下代码生成模块摘要。
 请输出 JSON 格式的摘要。
 """
 
+GENERATE_BATCH_MODULE_SUMMARIES_SCHEMA = {
+    "name": "generate_batch_module_summaries",
+    "description": "批量生成多个模块的代码摘要",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "summaries": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "module_name": {"type": "string", "description": "模块名称"},
+                        "summary": {"type": "string", "description": "模块功能摘要（100-200字）"},
+                    },
+                    "required": ["module_name", "summary"],
+                },
+                "description": "所有模块的摘要列表",
+            },
+        },
+        "required": ["summaries"],
+    },
+}
+
+GENERATE_BATCH_MODULE_SUMMARIES_PROMPT = """请为以下所有模块生成代码摘要。
+
+## 模块列表
+{modules_info}
+
+## 任务
+为每个模块生成一段 100-200 字的功能摘要，描述：
+1. 模块的核心职责
+2. 主要功能和关键函数
+3. 在项目中的作用
+
+请输出 JSON 格式的摘要列表。
+"""
+
 ANALYZE_MODULE_RELEVANCE_PROMPT = """你是一位资深开发者，请深度分析模块与需求的具体关联。
 
 ## 需求内容
@@ -928,7 +965,11 @@ async def step_analyze(
             analysis.impact_modules = impact_modules
             logger.info("Smart module matching found %d modules", len(impact_modules))
         except Exception as e:
-            logger.warning("Smart module matching failed, falling back: %s", e)
+            logger.warning(
+                "Smart module matching failed for requirement '%s', falling back: %s",
+                context.understanding.summary[:50] if context.understanding else "unknown",
+                e,
+            )
 
     # 如果智能匹配未成功，使用原有逻辑
     if not analysis.impact_modules:
@@ -938,7 +979,13 @@ async def step_analyze(
         if code_graph and keywords:
             matched_files = code_graph.find_symbols(keywords)
             analysis.impact_modules = [
-                {"path": f.path, "symbols": [s.name for s in f.symbols[:5]]}
+                {
+                    "path": f.path,
+                    "symbols": [s.name for s in f.symbols[:5]],
+                    "relevance": "unknown",
+                    "relevance_reason": "基于关键词匹配",
+                    "suggested_changes": "",
+                }
                 for f in matched_files[:10]
             ]
     # ==================================
@@ -1157,34 +1204,48 @@ async def step_build_project_profile(
             memory_manager.update_project_profile(profile)
             logger.info("Project profile updated: %s", profile.get("description", ""))
 
+            modules_with_code = []
+            module_info_list = []
+
             for module in result.get("modules", []):
                 if isinstance(module, dict) and module.get("name"):
                     module_name = module.get("name", "")
                     responsibility = module.get("responsibility", "")
-                    # === 新增: 生成代码摘要 ===
                     module_files = _find_module_files(module_name, code_graph)
+
                     if module_files:
                         code_content = _read_module_code(module_files, max_chars=5000)
                         if code_content:
-                            code_summary = await _generate_module_summary(
-                                module_name,
-                                code_content,
-                                responsibility,
-                                llm_client,
-                            )
+                            modules_with_code.append({
+                                "module_name": module_name,
+                                "responsibility": responsibility,
+                                "code_content": code_content,
+                            })
                         else:
-                            code_summary = f"模块 {module_name}：{responsibility}"
+                            module_info_list.append((module_name, responsibility))
                     else:
-                        code_summary = f"模块 {module_name}：{responsibility}"
-                    # ============================
-                    memory_manager.add_module(
-                        name=module_name,
-                        responsibility=responsibility,
-                        key_classes=module.get("key_classes", []),
-                        dependencies=module.get("dependencies", []),
-                        path=_infer_module_path(module_name, code_graph),
-                        code_summary=code_summary,
-                    )
+                        module_info_list.append((module_name, responsibility))
+
+            batch_summaries = await _generate_batch_module_summaries(modules_with_code, llm_client)
+
+            for module_name, responsibility in module_info_list:
+                memory_manager.add_module(
+                    name=module_name,
+                    responsibility=responsibility,
+                    path=_infer_module_path(module_name, code_graph),
+                    code_summary=f"模块 {module_name}：{responsibility}",
+                )
+
+            for item in modules_with_code:
+                module_name = item["module_name"]
+                responsibility = item["responsibility"]
+                code_summary = batch_summaries.get(module_name, f"模块 {module_name}：{responsibility}")
+                memory_manager.add_module(
+                    name=module_name,
+                    responsibility=responsibility,
+                    path=_infer_module_path(module_name, code_graph),
+                    code_summary=code_summary,
+                )
 
             memory_manager.save()
             logger.info("Project profile saved to memory")
@@ -1308,26 +1369,82 @@ def _read_module_code(module_files: list, max_chars: int = 5000) -> str:
 
 
 def _extract_key_code(content: str, symbols: list) -> str:
-    """提取代码的关键部分（函数和类定义）"""
+    """提取代码的关键部分（函数和类定义），基于缩进判断边界"""
     lines = content.split("\n")
     key_lines = []
+    
     for sym in symbols[:10]:
         sym_name = sym.get("name", "") if isinstance(sym, dict) else str(sym)
+        
         for i, line in enumerate(lines):
             if f"def {sym_name}" in line or f"class {sym_name}" in line:
+                base_indent = len(line) - len(line.lstrip())
                 end = i + 1
-                while end < len(lines) and not lines[end].strip().startswith(("def ", "class ", "@")):
-                    if lines[end].strip() and not lines[end].strip().startswith("#"):
+                
+                while end < len(lines):
+                    next_line = lines[end]
+                    if not next_line.strip():
                         end += 1
-                    if end - i > 30:
+                        continue
+                    next_indent = len(next_line) - len(next_line.lstrip())
+                    if next_indent <= base_indent and next_line.strip():
                         break
-                else:
                     end += 1
-                if end - i > 5:
-                    break
+                    if end - i > 50:
+                        break
+                
                 key_lines.extend(lines[i:end])
                 break
+    
     return "\n".join(key_lines)
+
+
+async def _generate_batch_module_summaries(
+    modules_with_code: list[dict],
+    llm_client,
+) -> dict[str, str]:
+    """批量生成模块摘要，减少 LLM 调用次数"""
+    if not modules_with_code:
+        return {}
+
+    modules_info = []
+    for item in modules_with_code:
+        info = f"""### {item['module_name']}
+职责: {item['responsibility']}
+代码片段:
+```
+{item['code_content'][:2000]}
+```
+"""
+        modules_info.append(info)
+
+    try:
+        messages = [{
+            "role": "user",
+            "content": GENERATE_BATCH_MODULE_SUMMARIES_PROMPT.format(
+                modules_info="\n---\n".join(modules_info)
+            ),
+        }]
+
+        result = await _call_llm_structured(
+            llm_client,
+            messages,
+            GENERATE_BATCH_MODULE_SUMMARIES_SCHEMA,
+            max_tokens=4096,
+        )
+
+        summaries = {}
+        for item in result.get("summaries", []):
+            module_name = item.get("module_name", "")
+            if module_name:
+                summaries[module_name] = item.get("summary", "")
+
+        logger.info("Generated batch summaries for %d modules", len(summaries))
+        return summaries
+
+    except Exception as e:
+        logger.warning("Failed to generate batch summaries: %s", e)
+        return {}
 
 
 async def _generate_module_summary(
