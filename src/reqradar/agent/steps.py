@@ -516,10 +516,42 @@ ANALYZE_MODULE_RELEVANCE_SCHEMA = {
                     },
                 },
             },
+},
+  "required": ["modules"],
+},
+}
+
+GENERATE_MODULE_SUMMARY_SCHEMA = {
+    "name": "generate_module_summary",
+    "description": "生成模块的代码摘要",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "summary": {
+                "type": "string",
+                "description": "模块功能的摘要描述（100-200字）",
+            },
         },
-        "required": ["modules"],
+        "required": ["summary"],
     },
 }
+
+GENERATE_MODULE_SUMMARY_PROMPT = """请为以下代码生成模块摘要。
+
+## 模块名称
+{module_name}
+
+## 模块职责
+{responsibility}
+
+## 代码内容
+{code_content}
+
+## 任务
+1. 总结模块的核心功能（100-200字）
+
+请输出 JSON 格式的摘要。
+"""
 
 ANALYZE_MODULE_RELEVANCE_PROMPT = """你是一位资深开发者，请深度分析模块与需求的具体关联。
 
@@ -1128,12 +1160,30 @@ async def step_build_project_profile(
             for module in result.get("modules", []):
                 if isinstance(module, dict) and module.get("name"):
                     module_name = module.get("name", "")
+                    responsibility = module.get("responsibility", "")
+                    # === 新增: 生成代码摘要 ===
+                    module_files = _find_module_files(module_name, code_graph)
+                    if module_files:
+                        code_content = _read_module_code(module_files, max_chars=5000)
+                        if code_content:
+                            code_summary = await _generate_module_summary(
+                                module_name,
+                                code_content,
+                                responsibility,
+                                llm_client,
+                            )
+                        else:
+                            code_summary = f"模块 {module_name}：{responsibility}"
+                    else:
+                        code_summary = f"模块 {module_name}：{responsibility}"
+                    # ============================
                     memory_manager.add_module(
                         name=module_name,
-                        responsibility=module.get("responsibility", ""),
+                        responsibility=responsibility,
                         key_classes=module.get("key_classes", []),
                         dependencies=module.get("dependencies", []),
                         path=_infer_module_path(module_name, code_graph),
+                        code_summary=code_summary,
                     )
 
             memory_manager.save()
@@ -1227,6 +1277,85 @@ def _infer_module_path(module_name: str, code_graph) -> str:
         if module_name.lower() in f.path.lower():
             return str(Path(f.path).parent)
     return ""
+
+
+def _find_module_files(module_name: str, code_graph) -> list:
+    """查找模块对应的代码文件（最多5个）"""
+    matching_files = []
+    for f in code_graph.files:
+        if module_name.lower() in f.path.lower():
+            matching_files.append(f)
+    return matching_files[:5]
+
+
+def _read_module_code(module_files: list, max_chars: int = 5000) -> str:
+    """读取模块代码内容"""
+    all_content = []
+    total_chars = 0
+    for code_file in module_files:
+        try:
+            path = Path(code_file.path)
+            if path.exists():
+                content = path.read_text(encoding="utf-8")
+                key_content = _extract_key_code(content, code_file.symbols)
+                all_content.append(f"# {code_file.path}\n{key_content}")
+                total_chars += len(key_content)
+                if total_chars >= max_chars:
+                    break
+        except Exception:
+            continue
+    return "\n\n".join(all_content)[:max_chars]
+
+
+def _extract_key_code(content: str, symbols: list) -> str:
+    """提取代码的关键部分（函数和类定义）"""
+    lines = content.split("\n")
+    key_lines = []
+    for sym in symbols[:10]:
+        sym_name = sym.get("name", "") if isinstance(sym, dict) else str(sym)
+        for i, line in enumerate(lines):
+            if f"def {sym_name}" in line or f"class {sym_name}" in line:
+                end = i + 1
+                while end < len(lines) and not lines[end].strip().startswith(("def ", "class ", "@")):
+                    if lines[end].strip() and not lines[end].strip().startswith("#"):
+                        end += 1
+                    if end - i > 30:
+                        break
+                else:
+                    end += 1
+                if end - i > 5:
+                    break
+                key_lines.extend(lines[i:end])
+                break
+    return "\n".join(key_lines)
+
+
+async def _generate_module_summary(
+    module_name: str,
+    code_content: str,
+    responsibility: str,
+    llm_client,
+) -> str:
+    """为模块生成代码摘要"""
+    try:
+        messages = [{
+            "role": "user",
+            "content": GENERATE_MODULE_SUMMARY_PROMPT.format(
+                module_name=module_name,
+                responsibility=responsibility or "未知",
+                code_content=code_content[:5000],
+            ),
+        }]
+        result = await _call_llm_structured(
+            llm_client,
+            messages,
+            GENERATE_MODULE_SUMMARY_SCHEMA,
+            max_tokens=1024,
+        )
+        return result.get("summary", "")
+    except Exception as e:
+        logger.warning("Failed to generate module summary for %s: %s", module_name, e)
+        return f"模块 {module_name}：{responsibility}"
 
 
 def _get_module_from_memory(memory_data: dict, module_name: str) -> dict | None:
