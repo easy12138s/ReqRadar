@@ -17,12 +17,11 @@ reqradar analyze → 6步固定流程 → Markdown 报告
 
 ## 主要特性
 
-- **项目画像自动构建**：`reqradar index` 自动调用 LLM 分析代码结构，构建项目画像（架构风格、模块划分、技术栈）
+- **项目画像自动构建**：`reqradar index` 自动调用 LLM 分析代码结构，构建项目画像
 - **术语带定义提取**：从需求文档提取的每个术语都包含定义和所属领域
 - **结构化风险评估**：风险项包含描述、严重程度、影响范围、缓解建议
 - **变更评估表**：每个需求自动生成变更评估（模块、变更类型、影响等级）
-- **语义关键词映射**：将中文业务术语映射为英文代码搜索词（如"双因素认证"→"two_factor", "2fa", "mfa"）
-- **专业报告模板**：多角色报告结构，支持 PM、开发者、技术负责人各自的关注点
+- **语义关键词映射**：将中文业务术语映射为英文代码搜索词
 
 ## 安装
 
@@ -35,47 +34,31 @@ poetry install
 poetry shell
 ```
 
-可选依赖（按需安装）：
-
-```bash
-poetry install --all-extras   # 安装全部可选依赖（PDF、DOCX）
-pip install pdfplumber         # 仅 PDF 支持
-pip install python-docx        # 仅 DOCX 支持
-```
+可选依赖：`poetry install --all-extras`（PDF、DOCX 支持）
 
 ## 配置
 
-复制示例配置文件：
+复制示例配置：`cp .reqradar.yaml.example .reqradar.yaml`
 
-```bash
-cp .reqradar.yaml.example .reqradar.yaml
-```
-
-编辑 `.reqradar.yaml`，填入 OpenAI API Key（或切换为 Ollama）：
+编辑 `.reqradar.yaml`：
 
 ```yaml
 llm:
-  provider: openai          # 或 ollama
+  provider: openai  # 或 ollama
   model: gpt-4o-mini
-  api_key: ${OPENAI_API_KEY}   # 或直接填写 key
+  api_key: ${OPENAI_API_KEY}
 
-# 图片处理需要视觉模型（独立于分析 LLM）
-vision:
+vision:  # 图片处理需要视觉模型
   provider: openai
   model: gpt-4o
   api_key: ${OPENAI_API_KEY}
 
-# 项目记忆（自动积累领域知识）
-memory:
+memory:  # 项目记忆（自动积累领域知识）
   enabled: true
   storage_path: .reqradar/memory
 ```
 
-也可以通过环境变量设置：
-
-```bash
-export OPENAI_API_KEY=sk-xxx
-```
+或通过环境变量：`export OPENAI_API_KEY=sk-xxx`
 
 ## 使用
 
@@ -85,19 +68,16 @@ export OPENAI_API_KEY=sk-xxx
 # 索引代码仓库（必须）
 reqradar index -r ./src -o .reqradar/index
 
-# 同时索引需求文档（支持 .md/.txt/.rst/.pdf/.docx/.csv/.json）
+# 同时索引需求文档
 reqradar index -r ./src -d ./docs/requirements -o .reqradar/index
 
-# 禁用项目画像构建（跳过 LLM 调用）
+# 禁用项目画像构建
 reqradar index -r ./src --no-build-profile
 ```
 
 首次运行会自动下载嵌入模型（BGE-large-zh，约 1.3GB）。
 
-索引完成后，`.reqradar/memory/memory.yaml` 将包含：
-- 项目画像（架构风格、技术栈）
-- 模块列表（职责、核心类）
-- 已知术语（后续分析可复用）
+索引完成后，`.reqradar/memory/memory.yaml` 将包含项目画像、模块列表、已知术语。
 
 ### 2. 分析需求
 
@@ -113,15 +93,6 @@ reqradar analyze ./docs/requirements/new-feature.md -i .reqradar/index
 reqradar analyze ./docs/requirements/new-feature.md -i .reqradar/index --llm-backend ollama
 ```
 
-需要在配置中指定 Ollama host：
-
-```yaml
-llm:
-  provider: ollama
-  model: qwen2.5:14b
-  host: http://localhost:11434
-```
-
 ## 支持的文档格式
 
 | 格式 | 扩展名 | 依赖 | 说明 |
@@ -131,28 +102,24 @@ llm:
 | Word | .docx | python-docx | 可选 |
 | 图片 | .png .jpg .jpeg .gif .bmp .webp | vision LLM | 需要 vision 配置 |
 | 飞书聊天 | *feishu*.json *chat*.json | 内置 | 飞书导出格式 |
-| CSV 聊天 | .csv | 内置 | 通用聊天记录 |
 
 ## 命令参考
 
 ```
 reqradar index 构建代码和文档索引
--r, --repo-path 代码仓库路径（必填）
--d, --docs-path 需求文档目录（可选）
--o, --output 索引输出目录（默认 .reqradar/index）
---build-profile/--no-build-profile 是否构建项目画像（默认构建）
+  -r, --repo-path   代码仓库路径（必填）
+  -d, --docs-path   需求文档目录（可选）
+  -o, --output      索引输出目录（默认 .reqradar/index）
+  --build-profile/--no-build-profile  是否构建项目画像
 
 reqradar analyze 分析需求并生成报告
-REQUIREMENT_FILE 需求文档路径（必填）
--i, --index-path 索引目录路径（默认 .reqradar/index）
--o, --output 报告输出目录（默认 ./reports）
---llm-backend LLM 后端：openai 或 ollama
--v, --verbose 详细输出
+  REQUIREMENT_FILE  需求文档路径（必填）
+  -i, --index-path  索引目录路径（默认 .reqradar/index）
+  -o, --output      报告输出目录（默认 ./reports）
+  --llm-backend     LLM 后端：openai 或 ollama
 ```
 
 ## 报告结构
-
-生成的报告包含以下章节：
 
 | 章节 | 内容 |
 |:---|:---|
@@ -162,90 +129,36 @@ REQUIREMENT_FILE 需求文档路径（必填）
 | 风险评估 | 风险概览表、验证要点 |
 | 建议评审人 | 相关贡献者列表 |
 | 实施建议 | 优先级、工作量、前置依赖 |
-| 附录 | 数据完整性、项目知识上下文 |
-reqradar index       构建代码和文档索引
-  -r, --repo-path    代码仓库路径（必填）
-  -d, --docs-path    需求文档目录（可选）
-  -o, --output       索引输出目录（默认 .reqradar/index）
-
-reqradar analyze     分析需求并生成报告
-  REQUIREMENT_FILE   需求文档路径（必填）
-  -i, --index-path   索引目录路径（默认 .reqradar/index）
-  -o, --output       报告输出目录（默认 ./reports）
-  --llm-backend      LLM 后端：openai 或 ollama
-  -v, --verbose      详细输出
-```
 
 ## 项目结构
 
 ```
 src/reqradar/
-├── cli/ CLI 入口（index、analyze 命令）
-├── core/ 调度器、上下文、报告渲染、异常定义
-│   ├── scheduler.py 6步工作流调度
-│   ├── context.py 数据模型（术语、约束、风险、变更评估等）
-│   └── report.py 报告渲染器
-├── modules/ 能力模块
-│   ├── code_parser.py Python AST 代码解析
-│   ├── vector_store.py Chroma 向量检索
-│   ├── git_analyzer.py Git 贡献者分析
-│   ├── llm_client.py OpenAI/Ollama LLM 客户端（含视觉能力）
-│   ├── memory.py 项目记忆管理器（项目画像、模块、术语）
-│   └── loaders/ 文档加载器
-│       ├── base.py ABC + 注册表
-│       ├── text_loader.py Markdown/Text/RST
-│       ├── pdf_loader.py PDF（可选依赖）
-│       ├── docx_loader.py Word DOCX（可选依赖）
-│       ├── image_loader.py 图片（LLM 视觉）
-│       ├── chat_loader.py 飞书 JSON + 通用 CSV
-│       └── chat_types.py ChatMessage/ChatConversation
-├── agent/ 6步工作流实现
-│   └── steps.py extract/map_keywords/analyze/generate 等
-├── infrastructure/ 配置、日志、注册表
-└── templates/ 报告模板
-```
-src/reqradar/
-├── cli/              CLI 入口
-├── core/             调度器、上下文、报告渲染、异常定义
-├── modules/          能力模块
+├── cli/           CLI 入口（index、analyze 命令）
+├── core/          调度器、上下文、报告渲染
+├── modules/       能力模块
 │   ├── code_parser.py    Python AST 代码解析
 │   ├── vector_store.py   Chroma 向量检索
 │   ├── git_analyzer.py   Git 贡献者分析
-│   ├── llm_client.py     OpenAI/Ollama LLM 客户端（含视觉能力）
+│   ├── llm_client.py     OpenAI/Ollama LLM 客户端
 │   ├── memory.py         项目记忆管理器
-│   └── loaders/           文档加载器
-│       ├── base.py           ABC + 注册表
-│       ├── text_loader.py    Markdown/Text/RST
-│       ├── pdf_loader.py     PDF（可选依赖）
-│       ├── docx_loader.py    Word DOCX（可选依赖）
-│       ├── image_loader.py   图片（LLM 视觉）
-│       ├── chat_loader.py    飞书 JSON + 通用 CSV
-│       └── chat_types.py     ChatMessage/ChatConversation
-├── agent/            5 步工作流实现
-├── infrastructure/    配置、日志、注册表
-└── templates/         报告模板
+│   └── loaders/          文档加载器
+├── agent/         6 步工作流实现
+├── infrastructure/ 配置、日志
+└── templates/     报告模板
 ```
 
 ## 开发
 
 ```bash
 poetry install          # 安装依赖
-poetry run pytest      # 运行测试
-poetry run black .     # 代码格式化
-poetry run ruff check .  # 静态检查
-```
-
-建议启用 pre-commit 钩子：
-
-```bash
-pre-commit install
+poetry run pytest       # 运行测试
+poetry run black .      # 代码格式化
+poetry run ruff check . # 静态检查
+pre-commit install      # 启用 pre-commit 钩子
 ```
 
 详细架构设计见 [DESIGN.md](DESIGN.md)，贡献指南见 [CONTRIBUTING.md](CONTRIBUTING.md)。
-
-## 技术栈
-
-Python 3.12 / Click / Pydantic / Chroma / BGE-large-zh / OpenAI API / Jinja2
 
 ## 许可证
 
