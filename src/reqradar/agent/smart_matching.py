@@ -15,6 +15,7 @@ from reqradar.agent.prompts import (
 )
 from reqradar.agent.llm_utils import _call_llm_structured
 from reqradar.core.context import RequirementUnderstanding
+from reqradar.core.exceptions import LLMException
 
 logger = logging.getLogger("reqradar.agent")
 
@@ -104,7 +105,7 @@ async def _query_relevant_modules_from_memory(
         logger.info("Queried %d relevant modules from memory", len(modules_with_reason))
         return modules_with_reason
 
-    except Exception as e:
+    except (LLMException, json.JSONDecodeError, KeyError) as e:
         logger.warning("Failed to query modules from memory: %s", e)
         return []
 
@@ -174,7 +175,7 @@ async def _analyze_module_relevance(
         logger.info("Analyzed %d modules for relevance", len(analyzed_modules))
         return analyzed_modules
 
-    except Exception as e:
+    except (LLMException, json.JSONDecodeError, KeyError) as e:
         logger.warning("Failed to analyze module relevance: %s", e)
         return []
 

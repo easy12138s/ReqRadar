@@ -58,7 +58,7 @@ class MemoryManager:
 
             logger.info("Memory loaded from %s", self.memory_file)
             return self._data
-        except Exception as e:
+        except (OSError, yaml.YAMLError, ValueError, TypeError) as e:
             logger.warning("Failed to load memory: %s, using defaults", e)
             self._data = self._default_memory()
             self._loaded = True
@@ -111,7 +111,7 @@ class MemoryManager:
                     sort_keys=False,
                 )
             logger.info("Memory saved to %s", self.memory_file)
-        except Exception as e:
+        except (OSError, yaml.YAMLError) as e:
             raise MemoryException(f"Failed to save memory: {e}") from e
 
     @property

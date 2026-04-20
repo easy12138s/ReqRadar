@@ -105,7 +105,7 @@ class OpenAIClient(LLMClient):
                 continue
             except httpx.HTTPStatusError as e:
                 raise LLMException(f"OpenAI API error: {e.response.status_code}", cause=e)
-            except Exception as e:
+            except (httpx.RequestError, json.JSONDecodeError, KeyError) as e:
                 raise LLMException(f"OpenAI API request failed: {e}", cause=e)
 
         raise LLMException(
@@ -190,9 +190,9 @@ class OpenAIClient(LLMClient):
                     await asyncio.sleep(2**attempt)
                     continue
                 return None
-            except Exception as e:
+            except (httpx.RequestError, json.JSONDecodeError, KeyError) as e:
                 logger.warning("Function calling failed: %s", e)
-                return None
+            return None
 
         return None
 
@@ -248,7 +248,7 @@ class OpenAIClient(LLMClient):
                 continue
             except httpx.HTTPStatusError as e:
                 raise LLMException(f"OpenAI Vision API error: {e.response.status_code}", cause=e)
-            except Exception as e:
+            except (httpx.RequestError, json.JSONDecodeError, KeyError) as e:
                 raise LLMException(f"OpenAI Vision API request failed: {e}", cause=e)
 
         raise LLMException(
@@ -312,7 +312,7 @@ class OllamaClient(LLMClient):
                 raise LLMException(f"Ollama request timed out after {self.timeout}s", cause=e)
             except httpx.HTTPStatusError as e:
                 raise LLMException(f"Ollama API error: {e.response.status_code}", cause=e)
-            except Exception as e:
+            except (httpx.RequestError, json.JSONDecodeError, KeyError) as e:
                 raise LLMException(f"Ollama request failed: {e}", cause=e)
 
     async def embed(self, texts: list[str]) -> list[list[float]]:
@@ -333,7 +333,7 @@ class OllamaClient(LLMClient):
                     response.raise_for_status()
                     result = response.json()
                     embeddings.append(result["embedding"])
-                except Exception as e:
+                except (httpx.RequestError, json.JSONDecodeError, KeyError) as e:
                     logger.warning("Ollama embedding failed for text, using zero vector: %s", e)
                     embeddings.append([0.0] * EMBEDDING_DIM)
 

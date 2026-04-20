@@ -7,7 +7,11 @@ import click
 from rich.console import Console
 from rich.table import Table
 
+import yaml
+
+
 from reqradar import __version__
+from reqradar.core.exceptions import LoaderException, ReqRadarException
 from reqradar.infrastructure.config import load_config
 from reqradar.infrastructure.logging import setup_logging
 
@@ -112,7 +116,7 @@ def index(ctx, repo_path, docs_path, output, do_build_profile):
                             chunk_size=config.loader.chunk_size,
                             chunk_overlap=config.loader.chunk_overlap,
                         )
-                    except Exception as e:
+                    except (LoaderException, OSError, UnicodeDecodeError) as e:
                         console.print(f"[yellow]⚠[/yellow] 跳过 {doc_path.name}: {e}")
                         skipped_count += 1
                         continue
@@ -321,7 +325,7 @@ def analyze(ctx, requirement_file, index_path, output, llm_backend, verbose):
                 try:
                     await memory_manager.update_from_analysis(ctx)
                     logger.info("Memory updated from analysis")
-                except Exception as e:
+                except (ReqRadarException, OSError, yaml.YAMLError, AttributeError, KeyError) as e:
                     logger.warning("Failed to update memory: %s", e)
 
         async def persist_module_history_hook(ctx):
@@ -339,7 +343,7 @@ def analyze(ctx, requirement_file, index_path, output, llm_backend, verbose):
                             suggested_changes=module.get("suggested_changes", ""),
                         )
                 logger.info("Module requirement history persisted")
-            except Exception as e:
+            except (ReqRadarException, OSError, yaml.YAMLError, AttributeError, KeyError) as e:
                 logger.warning("Failed to persist module history: %s", e)
 
         scheduler = Scheduler(

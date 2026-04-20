@@ -123,7 +123,7 @@ class PythonCodeParser(CodeParser):
             )
         except SyntaxError as e:
             raise ParseException(f"Syntax error in {file_path}: {e}", cause=e)
-        except Exception as e:
+        except (OSError, UnicodeDecodeError, ValueError) as e:
             raise ParseException(f"Failed to parse {file_path}: {e}", cause=e)
 
     def parse_directory(self, directory: Path, extensions: list[str] = None) -> CodeGraph:

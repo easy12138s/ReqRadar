@@ -17,7 +17,7 @@ from reqradar.core.context import (
     StructuredConstraint,
     TermDefinition,
 )
-from reqradar.core.exceptions import LLMException
+from reqradar.core.exceptions import GitException, LLMException, VectorStoreException
 from reqradar.agent.schemas import (
     ANALYZE_SCHEMA,
     EXTRACT_SCHEMA,
@@ -188,7 +188,7 @@ async def step_extract(context: AnalysisContext, llm_client) -> RequirementUnder
     except (json.JSONDecodeError, LLMException) as e:
         logger.warning("LLM extract failed, using fallback keyword extraction: %s", e)
         understanding.keywords = _fallback_keyword_extraction(context.requirement_text)
-    except Exception as e:
+    except (AttributeError, KeyError, TypeError) as e:
         logger.warning("Unexpected error in step_extract, using fallback: %s", e)
         understanding.keywords = _fallback_keyword_extraction(context.requirement_text)
 
@@ -255,7 +255,7 @@ async def step_map_keywords(context: AnalysisContext, llm_client) -> dict:
 
         return mappings
 
-    except Exception as e:
+    except (LLMException, json.JSONDecodeError, KeyError) as e:
         logger.warning("Keyword mapping failed: %s", e)
         context.expanded_keywords = terms_to_map
         return {}
@@ -328,11 +328,11 @@ async def step_retrieve(
                                     r["relevance"] = ev.get("relevance", "unknown")
                                     r["reason"] = ev.get("reason", "")
                                     break
-                except (json.JSONDecodeError, LLMException, Exception) as e:
+                except (json.JSONDecodeError, LLMException, AttributeError, KeyError, TypeError) as e:
                     logger.warning("LLM retrieve evaluation failed, using raw results: %s", e)
 
             retrieved.similar_requirements = raw_reqs
-        except Exception as e:
+        except (VectorStoreException, OSError, KeyError) as e:
             logger.warning("Vector search failed: %s", e)
             retrieved.similar_requirements = []
 
@@ -355,7 +355,7 @@ async def step_analyze(
             )
             analysis.impact_modules = impact_modules
             logger.info("Smart module matching found %d modules", len(impact_modules))
-        except Exception as e:
+        except (LLMException, json.JSONDecodeError, KeyError, AttributeError) as e:
             logger.warning(
                 "Smart module matching failed for requirement '%s', falling back: %s",
                 context.understanding.summary[:50] if context.understanding else "unknown",
@@ -394,7 +394,7 @@ async def step_analyze(
                 for c in contributor_info[:5]
                 if c.primary_contributor
             ]
-        except Exception as e:
+        except (GitException, OSError, AttributeError) as e:
             logger.warning("Git analysis failed: %s", e)
 
     if llm_client:
@@ -468,7 +468,7 @@ async def step_analyze(
                     dependencies=impl_hints.get("dependencies", []),
                 )
 
-        except (json.JSONDecodeError, LLMException, Exception) as e:
+        except (json.JSONDecodeError, LLMException, AttributeError, KeyError, TypeError) as e:
             logger.warning("LLM analyze failed, using defaults: %s", e)
             if analysis.risk_level == "unknown":
                 analysis.risk_level = "medium"
@@ -534,7 +534,7 @@ async def step_generate(context: AnalysisContext, llm_client) -> GeneratedConten
             risk_narrative=result.get("risk_narrative", ""),
             implementation_suggestion=result.get("implementation_suggestion", ""),
         )
-    except (json.JSONDecodeError, LLMException, Exception) as e:
+    except (json.JSONDecodeError, LLMException, AttributeError, KeyError, TypeError) as e:
         logger.warning("LLM generate failed, using fallback: %s", e)
         return GeneratedContent(
             requirement_understanding=understanding.summary if understanding else "无法生成",

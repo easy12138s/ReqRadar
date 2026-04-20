@@ -1,9 +1,12 @@
 """Agent 层 - 项目画像构建"""
 
+import json
 import logging
 from collections import Counter
 from datetime import datetime
 from pathlib import Path
+
+from reqradar.core.exceptions import LLMException
 
 from reqradar.agent.schemas import (
     GENERATE_BATCH_MODULE_SUMMARIES_SCHEMA,
@@ -115,7 +118,7 @@ async def step_build_project_profile(
                 "modules": result.get("modules", []),
             }
 
-    except Exception as e:
+    except (LLMException, OSError, UnicodeDecodeError, KeyError, json.JSONDecodeError) as e:
         logger.warning("Failed to build project profile: %s", e)
 
     return {}
@@ -183,7 +186,7 @@ def _extract_dependencies(repo_path: str) -> str:
             try:
                 content = path.read_text(encoding="utf-8")[:1000]
                 contents.append(f"=== {dep_file} ===\n{content}\n")
-            except Exception:
+            except (OSError, UnicodeDecodeError):
                 pass
 
     if not contents:
@@ -221,9 +224,9 @@ def _read_module_code(module_files: list, max_chars: int = 5000) -> str:
                 key_content = _extract_key_code(content, code_file.symbols)
                 all_content.append(f"# {code_file.path}\n{key_content}")
                 total_chars += len(key_content)
-                if total_chars >= max_chars:
-                    break
-        except Exception:
+            if total_chars >= max_chars:
+                break
+        except (OSError, UnicodeDecodeError):
             continue
     return "\n\n".join(all_content)[:max_chars]
 
@@ -302,6 +305,6 @@ async def _generate_batch_module_summaries(
         logger.info("Generated batch summaries for %d modules", len(summaries))
         return summaries
 
-    except Exception as e:
+    except (LLMException, KeyError, json.JSONDecodeError) as e:
         logger.warning("Failed to generate batch summaries: %s", e)
         return {}
