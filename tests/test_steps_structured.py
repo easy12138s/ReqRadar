@@ -5,7 +5,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from reqradar.agent.steps import EXTRACT_SCHEMA, _call_llm_structured, _parse_json_response
+from reqradar.agent.schemas import EXTRACT_SCHEMA
+from reqradar.agent.llm_utils import _call_llm_structured, _parse_json_response
 
 
 class TestCallLlmStructured:

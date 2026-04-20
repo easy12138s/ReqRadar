@@ -6,9 +6,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from reqradar.agent.steps import (
-    PROJECT_PROFILE_PROMPT,
-    PROJECT_PROFILE_SCHEMA,
+from reqradar.agent.schemas import PROJECT_PROFILE_SCHEMA
+from reqradar.agent.prompts import PROJECT_PROFILE_PROMPT
+from reqradar.agent.project_profile import (
     _build_directory_structure,
     _build_file_stats,
     _build_key_files,
@@ -179,7 +179,7 @@ class TestStepBuildProjectProfile:
         mock_memory.add_module = MagicMock()
         mock_memory.save = MagicMock()
 
-        with patch("reqradar.agent.steps._extract_dependencies", return_value="pyproject.toml"):
+        with patch("reqradar.agent.project_profile._extract_dependencies", return_value="pyproject.toml"):
             result = await step_build_project_profile(
                 code_graph=graph,
                 llm_client=mock_llm,
@@ -223,7 +223,7 @@ class TestStepBuildProjectProfile:
 
         mock_memory = MagicMock()
 
-        with patch("reqradar.agent.steps._extract_dependencies", return_value=""):
+        with patch("reqradar.agent.project_profile._extract_dependencies", return_value=""):
             result = await step_build_project_profile(
                 code_graph=graph,
                 llm_client=mock_llm,

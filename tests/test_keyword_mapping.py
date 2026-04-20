@@ -3,12 +3,9 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from reqradar.agent.steps import (
-    KEYWORD_MAPPING_SCHEMA,
-    KEYWORD_MAPPING_PROMPT,
-    step_map_keywords,
-    _expand_keywords,
-)
+from reqradar.agent.schemas import KEYWORD_MAPPING_SCHEMA
+from reqradar.agent.prompts import KEYWORD_MAPPING_PROMPT
+from reqradar.agent.steps import step_map_keywords, _expand_keywords
 from reqradar.core.context import AnalysisContext, RequirementUnderstanding, TermDefinition
 
 

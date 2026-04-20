@@ -3,7 +3,7 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from reqradar.agent.steps import (
+from reqradar.agent.smart_matching import (
     _get_module_from_memory,
     _query_relevant_modules_from_memory,
     _analyze_module_relevance,

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from reqradar.agent.steps import EXTRACT_PROMPT
+from reqradar.agent.prompts import EXTRACT_PROMPT
 from reqradar.core.context import AnalysisContext, RequirementUnderstanding
 from reqradar.modules.memory import MemoryManager
 
