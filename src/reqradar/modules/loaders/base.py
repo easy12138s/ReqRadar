@@ -72,3 +72,20 @@ def register_loader(name: str):
 def get_loader(file_path: Path) -> Optional[DocumentLoader]:
     """根据文件路径获取合适的加载器"""
     return LoaderRegistry.get_for_file(file_path)
+
+
+def chunk_text(text: str, chunk_size: int = 300, overlap: int = 50) -> list[str]:
+    """将文本按字符数分块，重叠部分添加 [接上文] 标记"""
+    if len(text) <= chunk_size:
+        return [text]
+
+    chunks = []
+    start = 0
+    while start < len(text):
+        end = start + chunk_size
+        chunk = text[start:end]
+        if start > 0:
+            chunk = f"[接上文]\n{chunk}"
+        chunks.append(chunk)
+        start = end - overlap
+    return chunks

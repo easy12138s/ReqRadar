@@ -3,7 +3,7 @@
 import logging
 from pathlib import Path
 
-from reqradar.modules.loaders.base import DocumentLoader, LoadedDocument
+from reqradar.modules.loaders.base import DocumentLoader, LoadedDocument, chunk_text
 
 logger = logging.getLogger("reqradar.loaders.docx")
 
@@ -40,7 +40,7 @@ class DocxLoader(DocumentLoader):
             logger.warning("No text extracted from DOCX: %s", file_path)
             return []
 
-        chunks = _chunk_docx_text(full_text, chunk_size=chunk_size, overlap=chunk_overlap)
+        chunks = chunk_text(full_text, chunk_size=chunk_size, overlap=chunk_overlap)
 
         return [
             LoadedDocument(
@@ -52,18 +52,3 @@ class DocxLoader(DocumentLoader):
             for i, chunk in enumerate(chunks)
         ]
 
-
-def _chunk_docx_text(text: str, chunk_size: int = 300, overlap: int = 50) -> list[str]:
-    if len(text) <= chunk_size:
-        return [text]
-
-    chunks = []
-    start = 0
-    while start < len(text):
-        end = start + chunk_size
-        chunk = text[start:end]
-        if start > 0:
-            chunk = f"[接上文]\n{chunk}"
-        chunks.append(chunk)
-        start = end - overlap
-    return chunks

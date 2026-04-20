@@ -46,24 +46,3 @@ class Registry:
     @classmethod
     def get_default(cls) -> Optional[str]:
         return cls._default
-
-
-class CodeParserRegistry(Registry):
-    """代码解析器注册表"""
-
-    _registry: Dict[str, RegisteredPlugin] = {}
-    _default: Optional[str] = None
-
-
-class VectorStoreRegistry(Registry):
-    """向量存储注册表"""
-
-    _registry: Dict[str, RegisteredPlugin] = {}
-    _default: Optional[str] = None
-
-
-class LLMProviderRegistry(Registry):
-    """LLM 提供者注册表"""
-
-    _registry: Dict[str, RegisteredPlugin] = {}
-    _default: Optional[str] = None

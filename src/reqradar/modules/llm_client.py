@@ -5,7 +5,6 @@ import base64
 import json
 import logging
 from abc import ABC, abstractmethod
-from typing import Optional
 
 import httpx
 
@@ -349,33 +348,3 @@ def create_llm_client(provider: str, **kwargs) -> LLMClient:
         return OllamaClient(**kwargs)
     else:
         raise ValueError(f"Unknown LLM provider: {provider}")
-
-
-def create_vision_client(config) -> Optional[LLMClient]:
-    """从 VisionConfig 创建视觉 LLM 客户端，未配置则返回 None"""
-    from reqradar.infrastructure.config import VisionConfig
-
-    if not isinstance(config, VisionConfig):
-        return None
-
-    if config.api_key is None and config.provider == "openai":
-        return None
-
-    if config.provider == "openai":
-        return OpenAIClient(
-            api_key=config.api_key,
-            model=config.model,
-            base_url=config.base_url or "https://api.openai.com/v1",
-            timeout=config.timeout,
-            max_retries=config.max_retries,
-        )
-    elif config.provider == "ollama":
-        base_url = config.base_url or "http://localhost:11434"
-        model = config.model if config.model != "gpt-4o" else "llava"
-        return OllamaClient(
-            model=model,
-            host=base_url,
-            timeout=config.timeout,
-        )
-    else:
-        return None

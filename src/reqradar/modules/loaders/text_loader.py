@@ -3,7 +3,7 @@
 import logging
 from pathlib import Path
 
-from reqradar.modules.loaders.base import DocumentLoader, LoadedDocument
+from reqradar.modules.loaders.base import DocumentLoader, LoadedDocument, chunk_text
 
 logger = logging.getLogger("reqradar.loaders.text")
 
@@ -28,7 +28,7 @@ class TextLoader(DocumentLoader):
         except UnicodeDecodeError:
             content = file_path.read_text(encoding="gbk")
 
-        chunks = _chunk_text(content, chunk_size=chunk_size, overlap=chunk_overlap)
+        chunks = chunk_text(content, chunk_size=chunk_size, overlap=chunk_overlap)
 
         return [
             LoadedDocument(
@@ -41,17 +41,3 @@ class TextLoader(DocumentLoader):
         ]
 
 
-def _chunk_text(text: str, chunk_size: int = 300, overlap: int = 50) -> list[str]:
-    if len(text) <= chunk_size:
-        return [text]
-
-    chunks = []
-    start = 0
-    while start < len(text):
-        end = start + chunk_size
-        chunk = text[start:end]
-        if start > 0:
-            chunk = f"[接上文]\n{chunk}"
-        chunks.append(chunk)
-        start = end - overlap
-    return chunks

@@ -521,38 +521,6 @@ ANALYZE_MODULE_RELEVANCE_SCHEMA = {
 },
 }
 
-GENERATE_MODULE_SUMMARY_SCHEMA = {
-    "name": "generate_module_summary",
-    "description": "生成模块的代码摘要",
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "summary": {
-                "type": "string",
-                "description": "模块功能的摘要描述（100-200字）",
-            },
-        },
-        "required": ["summary"],
-    },
-}
-
-GENERATE_MODULE_SUMMARY_PROMPT = """请为以下代码生成模块摘要。
-
-## 模块名称
-{module_name}
-
-## 模块职责
-{responsibility}
-
-## 代码内容
-{code_content}
-
-## 任务
-1. 总结模块的核心功能（100-200字）
-
-请输出 JSON 格式的摘要。
-"""
-
 GENERATE_BATCH_MODULE_SUMMARIES_SCHEMA = {
     "name": "generate_batch_module_summaries",
     "description": "批量生成多个模块的代码摘要",
@@ -1445,34 +1413,6 @@ async def _generate_batch_module_summaries(
     except Exception as e:
         logger.warning("Failed to generate batch summaries: %s", e)
         return {}
-
-
-async def _generate_module_summary(
-    module_name: str,
-    code_content: str,
-    responsibility: str,
-    llm_client,
-) -> str:
-    """为模块生成代码摘要"""
-    try:
-        messages = [{
-            "role": "user",
-            "content": GENERATE_MODULE_SUMMARY_PROMPT.format(
-                module_name=module_name,
-                responsibility=responsibility or "未知",
-                code_content=code_content[:5000],
-            ),
-        }]
-        result = await _call_llm_structured(
-            llm_client,
-            messages,
-            GENERATE_MODULE_SUMMARY_SCHEMA,
-            max_tokens=1024,
-        )
-        return result.get("summary", "")
-    except Exception as e:
-        logger.warning("Failed to generate module summary for %s: %s", module_name, e)
-        return f"模块 {module_name}：{responsibility}"
 
 
 def _get_module_from_memory(memory_data: dict, module_name: str) -> dict | None:

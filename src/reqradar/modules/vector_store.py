@@ -131,24 +131,3 @@ class ChromaVectorStore(VectorStore):
     def persist(self):
         """持久化数据到磁盘（PersistentClient 自动持久化，此方法保留接口兼容）"""
         logger.info("Vector store persisted to %s", self.persist_directory)
-
-
-def chunk_text(text: str, chunk_size: int = 300, overlap: int = 50) -> list[str]:
-    """将文本分块"""
-    if len(text) <= chunk_size:
-        return [text]
-
-    chunks = []
-    start = 0
-
-    while start < len(text):
-        end = start + chunk_size
-        chunk = text[start:end]
-
-        if start > 0:
-            chunk = f"[接上文]\n{chunk}"
-
-        chunks.append(chunk)
-        start = end - overlap
-
-    return chunks

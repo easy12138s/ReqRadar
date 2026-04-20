@@ -4,7 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from reqradar.modules.loaders.text_loader import TextLoader, _chunk_text
+from reqradar.modules.loaders.base import chunk_text
+from reqradar.modules.loaders.text_loader import TextLoader
 
 
 class TestTextLoader:
@@ -68,13 +69,13 @@ class TestTextLoader:
 
 class TestChunkText:
     def test_short_text(self):
-        result = _chunk_text("hello", chunk_size=300)
+        result = chunk_text("hello", chunk_size=300)
         assert result == ["hello"]
 
     def test_long_text(self):
-        result = _chunk_text("A" * 1000, chunk_size=300, overlap=50)
+        result = chunk_text("A" * 1000, chunk_size=300, overlap=50)
         assert len(result) > 1
 
     def test_overlap_marker(self):
-        result = _chunk_text("A" * 1000, chunk_size=300, overlap=50)
+        result = chunk_text("A" * 1000, chunk_size=300, overlap=50)
         assert any("[接上文]" in chunk for chunk in result[1:])
