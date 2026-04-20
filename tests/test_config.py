@@ -7,6 +7,8 @@ def test_config_default():
     config = Config()
     assert config.llm.provider == "openai"
     assert config.llm.model == "gpt-4o-mini"
+    assert config.llm.embedding_model == "text-embedding-3-small"
+    assert config.llm.embedding_dim == 1024
 
 
 def test_config_env_var_resolution():

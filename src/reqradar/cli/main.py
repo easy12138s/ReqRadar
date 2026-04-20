@@ -157,6 +157,8 @@ def index(ctx, repo_path, docs_path, output, do_build_profile):
                     base_url=config.llm.base_url or "https://api.openai.com/v1",
                     timeout=config.llm.timeout,
                     max_retries=config.llm.max_retries,
+                    embedding_model=config.llm.embedding_model,
+                    embedding_dim=config.llm.embedding_dim,
                 )
 
                 result = await step_build_project_profile(
@@ -263,10 +265,13 @@ def analyze(ctx, requirement_file, index_path, output, llm_backend, verbose):
                 "base_url": config.llm.base_url or "https://api.openai.com/v1",
                 "timeout": config.llm.timeout,
                 "max_retries": config.llm.max_retries,
+                "embedding_model": config.llm.embedding_model,
+                "embedding_dim": config.llm.embedding_dim,
             },
             "ollama": {
                 "model": config.llm.model if llm_backend == "ollama" else "qwen2.5:14b",
                 "host": config.llm.host or "http://localhost:11434",
+                "embedding_dim": config.llm.embedding_dim,
             },
         }
 

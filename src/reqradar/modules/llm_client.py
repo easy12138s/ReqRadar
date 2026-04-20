@@ -12,8 +12,6 @@ from reqradar.core.exceptions import LLMException
 
 logger = logging.getLogger("reqradar.llm")
 
-EMBEDDING_DIM = 1024
-
 
 class LLMClient(ABC):
     """LLM 客户端基类"""
@@ -58,12 +56,16 @@ class OpenAIClient(LLMClient):
         base_url: str = "https://api.openai.com/v1",
         timeout: int = 60,
         max_retries: int = 2,
+        embedding_model: str = "text-embedding-3-small",
+        embedding_dim: int = 1024,
     ):
         self.api_key = api_key
         self.model = model
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.max_retries = max_retries
+        self.embedding_model = embedding_model
+        self.embedding_dim = embedding_dim
 
     async def complete(self, messages: list[dict], **kwargs) -> str:
         """发送 OpenAI API 请求"""
@@ -263,7 +265,7 @@ class OpenAIClient(LLMClient):
         }
 
         payload = {
-            "model": "text-embedding-3-small",
+            "model": self.embedding_model,
             "input": texts,
         }
 
@@ -286,10 +288,12 @@ class OllamaClient(LLMClient):
         model: str = "qwen2.5:14b",
         host: str = "http://localhost:11434",
         timeout: int = 120,
+        embedding_dim: int = 1024,
     ):
         self.model = model
         self.host = host.rstrip("/")
         self.timeout = timeout
+        self.embedding_dim = embedding_dim
 
     async def complete(self, messages: list[dict], **kwargs) -> str:
         """发送 Ollama 请求"""
@@ -335,7 +339,7 @@ class OllamaClient(LLMClient):
                     embeddings.append(result["embedding"])
                 except (httpx.RequestError, json.JSONDecodeError, KeyError) as e:
                     logger.warning("Ollama embedding failed for text, using zero vector: %s", e)
-                    embeddings.append([0.0] * EMBEDDING_DIM)
+                    embeddings.append([0.0] * self.embedding_dim)
 
         return embeddings
 
