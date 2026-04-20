@@ -75,3 +75,7 @@ reports/*
 
 # Embedding model cache
 .cache/
+
+# Root-level test scripts (contain env-specific config)
+/test_e2e.py
+/test_minimax_api.py
