@@ -71,6 +71,9 @@ class AnalysisConfig(BaseModel):
     max_similar_reqs: int = Field(default=5)
     max_code_files: int = Field(default=10)
     contributors_lookback_months: int = Field(default=6)
+    tool_use_enabled: bool = Field(default=True, description="启用LLM工具调用循环")
+    tool_use_max_rounds: int = Field(default=15, description="每步最大工具调用轮次")
+    tool_use_max_tokens: int = Field(default=8000, description="工具结果的总token预算")
 
 
 class GitConfig(BaseModel):
