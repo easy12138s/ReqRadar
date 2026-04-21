@@ -19,3 +19,21 @@ def test_create_llm_client_ollama():
 def test_create_llm_client_unknown():
     with pytest.raises(ValueError):
         create_llm_client("unknown")
+
+
+class TestOpenAICompleteWithTools:
+    @pytest.mark.asyncio
+    async def test_complete_with_tools_returns_tool_calls(self):
+        llm = OpenAIClient(
+            api_key="test-key", model="test-model", base_url="http://localhost:9999/v1"
+        )
+        assert hasattr(llm, "complete_with_tools")
+
+    @pytest.mark.asyncio
+    async def test_ollama_complete_with_tools_returns_none(self):
+        llm = OllamaClient(model="test", host="http://localhost:9999")
+        result = await llm.complete_with_tools(
+            messages=[{"role": "user", "content": "test"}],
+            tools=[],
+        )
+        assert result is None

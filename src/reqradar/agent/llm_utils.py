@@ -36,3 +36,15 @@ async def _call_llm_structured(llm_client, messages: list[dict], schema: dict, *
     logger.info("Function calling not available or failed, falling back to text parsing")
     response = await llm_client.complete(messages, **kwargs)
     return _parse_json_response(response)
+
+
+async def _complete_with_tools(
+    llm_client, messages: list[dict], tools: list[dict], **kwargs
+) -> dict | None:
+    """调用LLM的tool_use接口，失败时返回None"""
+    try:
+        result = await llm_client.complete_with_tools(messages, tools, **kwargs)
+        return result
+    except Exception as e:
+        logger.warning("complete_with_tools error: %s", e)
+        return None

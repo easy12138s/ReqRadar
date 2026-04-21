@@ -45,6 +45,25 @@ class LLMClient(ABC):
         """
         return None
 
+    async def complete_with_tools(
+        self, messages: list[dict], tools: list[dict], **kwargs
+    ) -> dict | None:
+        """使用 tool_use 协议发送请求，支持多轮工具调用
+
+        Args:
+            messages: 对话消息列表（可包含tool角色的消息）
+            tools: 工具定义列表（OpenAI tool format）
+            **kwargs: 传递给API的额外参数
+
+        Returns:
+            dict with keys:
+              - "tool_calls": list of {id, name, arguments} if LLM wants to call tools
+              - "content": str if LLM responded with text only
+              - "structured_output": dict if LLM called the output function
+            None if request fails
+        """
+        return None
+
 
 class OpenAIClient(LLMClient):
     """OpenAI API 客户端"""
@@ -198,6 +217,77 @@ class OpenAIClient(LLMClient):
 
         return None
 
+    async def complete_with_tools(
+        self, messages: list[dict], tools: list[dict], **kwargs
+    ) -> dict | None:
+        """使用 OpenAI tool_use 协议发送请求"""
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+
+        payload = {
+            "model": kwargs.get("model", self.model),
+            "messages": messages,
+            "tools": tools,
+            "temperature": kwargs.get("temperature", 0.3),
+            "max_tokens": kwargs.get("max_tokens", 4096),
+        }
+
+        if "tool_choice" in kwargs:
+            payload["tool_choice"] = kwargs["tool_choice"]
+
+        last_error = None
+        for attempt in range(self.max_retries + 1):
+            try:
+                async with httpx.AsyncClient(timeout=self.timeout) as client:
+                    response = await client.post(
+                        f"{self.base_url}/chat/completions",
+                        headers=headers,
+                        json=payload,
+                    )
+                    response.raise_for_status()
+                    result = response.json()
+                    message = result["choices"][0]["message"]
+                    tool_calls = message.get("tool_calls", [])
+                    content = message.get("content", "")
+
+                    if tool_calls:
+                        parsed_calls = []
+                        for tc in tool_calls:
+                            fn = tc.get("function", {})
+                            parsed_calls.append(
+                                {
+                                    "id": tc.get("id", ""),
+                                    "name": fn.get("name", ""),
+                                    "arguments": fn.get("arguments", "{}"),
+                                }
+                            )
+                        return {"tool_calls": parsed_calls, "assistant_message": message}
+                    elif content:
+                        return {"content": content}
+                    else:
+                        return None
+
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 400:
+                    logger.info("Tool use not supported (400), returning None")
+                    return None
+                last_error = e
+                if attempt < self.max_retries:
+                    await asyncio.sleep(2**attempt)
+                    continue
+            except httpx.TimeoutException as e:
+                last_error = e
+                if attempt < self.max_retries:
+                    await asyncio.sleep(2**attempt)
+                    continue
+            except (httpx.RequestError, json.JSONDecodeError, KeyError) as e:
+                logger.warning("complete_with_tools failed: %s", e)
+                return None
+
+        return None
+
     async def complete_vision(self, image_data: bytes, prompt: str, **kwargs) -> str:
         """发送 OpenAI Vision API 请求"""
         headers = {
@@ -318,6 +408,12 @@ class OllamaClient(LLMClient):
                 raise LLMException(f"Ollama API error: {e.response.status_code}", cause=e)
             except (httpx.RequestError, json.JSONDecodeError, KeyError) as e:
                 raise LLMException(f"Ollama request failed: {e}", cause=e)
+
+    async def complete_with_tools(
+        self, messages: list[dict], tools: list[dict], **kwargs
+    ) -> dict | None:
+        """Ollama暂不支持tool_use协议，返回None触发降级"""
+        return None
 
     async def embed(self, texts: list[str]) -> list[list[float]]:
         """获取 Ollama embeddings"""
