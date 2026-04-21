@@ -134,6 +134,26 @@ reqradar analyze 分析需求并生成报告
 
 ```
 src/reqradar/
+├── cli/ CLI 入口（index、analyze 命令）
+├── core/ 调度器、上下文、报告渲染
+├── modules/ 能力模块
+│ ├── code_parser.py Python AST 代码解析
+│ ├── vector_store.py Chroma 向量检索
+│ ├── git_analyzer.py Git 贡献者分析
+│ ├── llm_client.py OpenAI/Ollama LLM 客户端
+│ ├── memory.py 项目记忆管理器
+│ └── loaders/ 文档加载器
+├── agent/ 6 步工作流实现
+│ ├── steps.py 工作流入口
+│ ├── schemas.py LLM Function Calling schemas
+│ ├── prompts.py Prompt 模板
+│ ├── llm_utils.py LLM 调用工具
+│ ├── smart_matching.py 智能模块匹配
+│ └── project_profile.py 项目画像构建
+├── infrastructure/ 配置、日志
+└── templates/ 报告模板
+```
+src/reqradar/
 ├── cli/           CLI 入口（index、analyze 命令）
 ├── core/          调度器、上下文、报告渲染
 ├── modules/       能力模块
