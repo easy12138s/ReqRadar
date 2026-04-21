@@ -34,6 +34,7 @@ from reqradar.agent.prompts import (
     SYSTEM_PROMPT,
 )
 from reqradar.agent.llm_utils import _call_llm_structured, _parse_json_response
+from reqradar.agent.tool_use_loop import run_tool_use_loop
 from reqradar.agent.smart_matching import (
     _get_module_from_memory,
     _smart_module_matching,
@@ -129,28 +130,43 @@ async def step_read(context: AnalysisContext) -> str:
     return content
 
 
-async def step_extract(context: AnalysisContext, llm_client) -> RequirementUnderstanding:
+async def step_extract(context: AnalysisContext, llm_client, tool_registry=None, analysis_config=None) -> RequirementUnderstanding:
     """Step 2: 提取关键术语和结构化信息"""
     understanding = RequirementUnderstanding()
     understanding.raw_text = context.requirement_text
+
+    tool_use_enabled = (analysis_config.tool_use_enabled if analysis_config else True)
 
     try:
         terminology_section = _build_terminology_section(context.memory_data)
         project_context_section = _build_project_context_section(context.memory_data)
 
-        messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {
-                "role": "user",
-                "content": EXTRACT_PROMPT.format(
-                    content=context.requirement_text[:4000],
-                    terminology_section=terminology_section,
-                    project_context_section=project_context_section,
-                ),
-            },
-        ]
+        user_prompt = EXTRACT_PROMPT.format(
+            content=context.requirement_text[:4000],
+            terminology_section=terminology_section,
+            project_context_section=project_context_section,
+        )
 
-        result = await _call_llm_structured(llm_client, messages, EXTRACT_SCHEMA, max_tokens=2048)
+        if tool_use_enabled and tool_registry:
+            tool_subset = ["get_project_profile", "get_terminology", "search_code", "read_file"]
+            max_rounds = analysis_config.tool_use_max_rounds if analysis_config else 15
+            max_tokens = analysis_config.tool_use_max_tokens if analysis_config else 8000
+            result = await run_tool_use_loop(
+                llm_client,
+                system_prompt=SYSTEM_PROMPT,
+                user_prompt=user_prompt,
+                tools=tool_subset,
+                tool_registry=tool_registry,
+                output_schema=EXTRACT_SCHEMA,
+                max_rounds=min(max_rounds, 8),
+                max_total_tokens=min(max_tokens, 4000),
+            )
+        else:
+            messages = [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ]
+            result = await _call_llm_structured(llm_client, messages, EXTRACT_SCHEMA, max_tokens=2048)
 
         understanding.summary = result.get("summary", "")
         understanding.keywords = result.get("keywords", [])
@@ -209,7 +225,7 @@ def _fallback_keyword_extraction(text: str) -> list[str]:
     return keywords[:10]
 
 
-async def step_map_keywords(context: AnalysisContext, llm_client) -> dict:
+async def step_map_keywords(context: AnalysisContext, llm_client, tool_registry=None, analysis_config=None) -> dict:
     """将业务术语映射为代码搜索词"""
     understanding = context.understanding
     if not understanding or (not understanding.terms and not understanding.keywords):
@@ -225,19 +241,35 @@ async def step_map_keywords(context: AnalysisContext, llm_client) -> dict:
     if not terms_to_map:
         return {}
 
-    try:
-        messages = [
-            {
-                "role": "user",
-                "content": KEYWORD_MAPPING_PROMPT.format(
-                    terms="\n".join(f"- {t}" for t in terms_to_map)
-                ),
-            },
-        ]
+    tool_use_enabled = (analysis_config.tool_use_enabled if analysis_config else True)
 
-        result = await _call_llm_structured(
-            llm_client, messages, KEYWORD_MAPPING_SCHEMA, max_tokens=1024
+    try:
+        user_prompt = KEYWORD_MAPPING_PROMPT.format(
+            terms="\n".join(f"- {t}" for t in terms_to_map)
         )
+
+        if tool_use_enabled and tool_registry:
+            tool_subset = ["search_code", "read_module_summary"]
+            result = await run_tool_use_loop(
+                llm_client,
+                system_prompt="",
+                user_prompt=user_prompt,
+                tools=tool_subset,
+                tool_registry=tool_registry,
+                output_schema=KEYWORD_MAPPING_SCHEMA,
+                max_rounds=8,
+                max_total_tokens=3000,
+            )
+        else:
+            messages = [
+                {
+                    "role": "user",
+                    "content": user_prompt,
+                },
+            ]
+            result = await _call_llm_structured(
+                llm_client, messages, KEYWORD_MAPPING_SCHEMA, max_tokens=1024
+            )
 
         mappings = {}
         if result and "mappings" in result:
@@ -274,7 +306,7 @@ def _expand_keywords(original_terms: list[str], mappings: dict) -> list[str]:
 
 
 async def step_retrieve(
-    context: AnalysisContext, vector_store, llm_client=None
+    context: AnalysisContext, vector_store, llm_client=None, tool_registry=None, analysis_config=None
 ) -> RetrievedContext:
     """Step 3: 检索相似需求与代码"""
     retrieved = RetrievedContext()
@@ -308,18 +340,35 @@ async def step_retrieve(
                         f"- [{r['id']}] {r['metadata'].get('title', 'Unknown')}: {r['content'][:200]}"
                         for r in raw_reqs[:5]
                     )
-                    messages = [
-                        {
-                            "role": "user",
-                            "content": RETRIEVE_PROMPT.format(
-                                keywords=", ".join(keywords[:5]),
-                                results=results_text,
-                            ),
-                        },
-                    ]
-                    evaluated = await _call_llm_structured(
-                        llm_client, messages, RETRIEVE_SCHEMA, max_tokens=1024
+                    user_prompt = RETRIEVE_PROMPT.format(
+                        keywords=", ".join(keywords[:5]),
+                        results=results_text,
                     )
+
+                    tool_use_enabled = (analysis_config.tool_use_enabled if analysis_config else True)
+
+                    if tool_use_enabled and tool_registry:
+                        tool_subset = ["search_requirements", "get_terminology"]
+                        evaluated = await run_tool_use_loop(
+                            llm_client,
+                            system_prompt="",
+                            user_prompt=user_prompt,
+                            tools=tool_subset,
+                            tool_registry=tool_registry,
+                            output_schema=RETRIEVE_SCHEMA,
+                            max_rounds=5,
+                            max_total_tokens=2000,
+                        )
+                    else:
+                        messages = [
+                            {
+                                "role": "user",
+                                "content": user_prompt,
+                            },
+                        ]
+                        evaluated = await _call_llm_structured(
+                            llm_client, messages, RETRIEVE_SCHEMA, max_tokens=1024
+                        )
                     evaluations = evaluated.get("evaluations", evaluated)
                     if isinstance(evaluations, list):
                         for ev in evaluations:
@@ -339,45 +388,170 @@ async def step_retrieve(
     return retrieved
 
 
+def _populate_analysis_from_result(analysis: DeepAnalysis, result: dict):
+    """从LLM结果填充DeepAnalysis对象"""
+    if not result:
+        return
+    analysis.risk_level = result.get("risk_level", "medium")
+    for r in result.get("risks", []):
+        if isinstance(r, dict):
+            analysis.risks.append(
+                RiskItem(
+                    description=r.get("description", ""),
+                    severity=r.get("severity", "medium"),
+                    scope=r.get("scope", ""),
+                    mitigation=r.get("mitigation", ""),
+                )
+            )
+    analysis.risk_details = [r.description for r in analysis.risks]
+    for ca in result.get("change_assessment", []):
+        if isinstance(ca, dict):
+            analysis.change_assessment.append(
+                ChangeAssessment(
+                    module=ca.get("module", ""),
+                    change_type=ca.get("change_type", "modify"),
+                    impact_level=ca.get("impact_level", "medium"),
+                    reason=ca.get("reason", ""),
+                )
+            )
+    analysis.verification_points = result.get("verification_points", [])
+    impl_hints = result.get("implementation_hints", {})
+    if isinstance(impl_hints, dict):
+        analysis.implementation_hints = ImplementationHints(
+            approach=impl_hints.get("approach", ""),
+            effort_estimate=impl_hints.get("effort_estimate", ""),
+            dependencies=impl_hints.get("dependencies", []),
+        )
+    analysis.impact_narrative = result.get("impact_narrative", "")
+    analysis.risk_narrative = result.get("risk_narrative", "")
+    if "_impact_modules" in result:
+        analysis.impact_modules = result["_impact_modules"]
+    elif result.get("impact_modules"):
+        analysis.impact_modules = result["impact_modules"]
+
+
+async def _run_analyze_fallback(context, code_graph, llm_client) -> dict:
+    """降级：不使用工具调用的原始分析逻辑"""
+    understanding = context.understanding
+    memory_data = context.memory_data
+
+    impact_modules = await _smart_module_matching(
+        understanding,
+        memory_data,
+        code_graph,
+        llm_client,
+    )
+
+    modules_text = ""
+    if impact_modules:
+        modules_text = "\n".join(
+            f"- {m['path']} ({', '.join(m['symbols'][:3])})"
+            for m in impact_modules[:5]
+        )
+    else:
+        modules_text = "无匹配代码模块（请根据项目知识推断）"
+
+    project_context_section = _build_project_context_section(memory_data)
+    terminology_section = _build_terminology_section(memory_data)
+
+    messages = [
+        {
+            "role": "user",
+            "content": ANALYZE_PROMPT.format(
+                summary=understanding.summary if understanding else "",
+                project_context_section=project_context_section,
+                terminology_section=terminology_section,
+            ),
+        },
+    ]
+    result = await _call_llm_structured(llm_client, messages, ANALYZE_SCHEMA, max_tokens=2048)
+    if impact_modules:
+        result["_impact_modules"] = impact_modules
+    return result
+
+
 async def step_analyze(
-    context: AnalysisContext, code_graph, git_analyzer, llm_client=None
+    context: AnalysisContext, code_graph, git_analyzer, llm_client=None, tool_registry=None, analysis_config=None
 ) -> DeepAnalysis:
     """Step 4: 深度分析"""
     analysis = DeepAnalysis()
 
-    if llm_client and context.memory_data and context.understanding:
+    tool_use_enabled = (analysis_config.tool_use_enabled if analysis_config else True)
+
+    if tool_use_enabled and tool_registry and llm_client:
         try:
-            impact_modules = await _smart_module_matching(
-                context.understanding,
-                context.memory_data,
-                code_graph,
-                llm_client,
-            )
-            analysis.impact_modules = impact_modules
-            logger.info("Smart module matching found %d modules", len(impact_modules))
-        except (LLMException, json.JSONDecodeError, KeyError, AttributeError) as e:
-            logger.warning(
-                "Smart module matching failed for requirement '%s', falling back: %s",
-                context.understanding.summary[:50] if context.understanding else "unknown",
-                e,
+            project_context_section = _build_project_context_section(context.memory_data)
+            terminology_section = _build_terminology_section(context.memory_data)
+
+            user_prompt = ANALYZE_PROMPT.format(
+                summary=context.understanding.summary if context.understanding else "",
+                project_context_section=project_context_section,
+                terminology_section=terminology_section,
             )
 
-    if not analysis.impact_modules:
-        keywords = context.expanded_keywords if context.expanded_keywords else (
-            context.understanding.keywords if context.understanding else []
-        )
-        if code_graph and keywords:
-            matched_files = code_graph.find_symbols(keywords)
-            analysis.impact_modules = [
-                {
-                    "path": f.path,
-                    "symbols": [s.name for s in f.symbols[:5]],
-                    "relevance": "unknown",
-                    "relevance_reason": "基于关键词匹配",
-                    "suggested_changes": "",
-                }
-                for f in matched_files[:10]
+            tool_subset = [
+                "search_code", "read_file", "read_module_summary", "list_modules",
+                "search_requirements", "get_dependencies", "get_contributors",
+                "get_project_profile", "get_terminology",
             ]
+            max_rounds = analysis_config.tool_use_max_rounds if analysis_config else 15
+            max_tokens = analysis_config.tool_use_max_tokens if analysis_config else 8000
+
+            result = await run_tool_use_loop(
+                llm_client,
+                system_prompt="",
+                user_prompt=user_prompt,
+                tools=tool_subset,
+                tool_registry=tool_registry,
+                output_schema=ANALYZE_SCHEMA,
+                max_rounds=max_rounds,
+                max_total_tokens=max_tokens,
+            )
+
+            _populate_analysis_from_result(analysis, result)
+        except (json.JSONDecodeError, LLMException, AttributeError, KeyError, TypeError) as e:
+            logger.warning("Tool-use analyze failed, using fallback: %s", e)
+
+        if not analysis.impact_modules:
+            keywords = context.expanded_keywords if context.expanded_keywords else (
+                context.understanding.keywords if context.understanding else []
+            )
+            if code_graph and keywords:
+                matched_files = code_graph.find_symbols(keywords)
+                analysis.impact_modules = [
+                    {
+                        "path": f.path,
+                        "symbols": [s.name for s in f.symbols[:5]],
+                        "relevance": "unknown",
+                        "relevance_reason": "基于关键词匹配",
+                        "suggested_changes": "",
+                    }
+                    for f in matched_files[:10]
+                ]
+
+    elif llm_client and context.memory_data and context.understanding:
+        try:
+            result = await _run_analyze_fallback(context, code_graph, llm_client)
+            _populate_analysis_from_result(analysis, result)
+        except (json.JSONDecodeError, LLMException, AttributeError, KeyError, TypeError) as e:
+            logger.warning("LLM analyze failed, using defaults: %s", e)
+    else:
+        if not analysis.impact_modules:
+            keywords = context.expanded_keywords if context.expanded_keywords else (
+                context.understanding.keywords if context.understanding else []
+            )
+            if code_graph and keywords:
+                matched_files = code_graph.find_symbols(keywords)
+                analysis.impact_modules = [
+                    {
+                        "path": f.path,
+                        "symbols": [s.name for s in f.symbols[:5]],
+                        "relevance": "unknown",
+                        "relevance_reason": "基于关键词匹配",
+                        "suggested_changes": "",
+                    }
+                    for f in matched_files[:10]
+                ]
 
     if git_analyzer and analysis.impact_modules:
         try:
@@ -397,86 +571,13 @@ async def step_analyze(
         except (GitException, OSError, AttributeError) as e:
             logger.warning("Git analysis failed: %s", e)
 
-    if llm_client:
-        try:
-            modules_text = ""
-            if analysis.impact_modules:
-                modules_text = "\n".join(
-                    f"- {m['path']} ({', '.join(m['symbols'][:3])})"
-                    for m in analysis.impact_modules[:5]
-                )
-            else:
-                modules_text = "无匹配代码模块（请根据项目知识推断）"
-
-            contributors_text = ""
-            if analysis.contributors:
-                contributors_text = "\n".join(
-                    f"- {c['name']} ({c['file']})" for c in analysis.contributors[:3]
-                )
-
-            project_context_section = _build_project_context_section(context.memory_data)
-            terminology_section = _build_terminology_section(context.memory_data)
-
-            messages = [
-                {
-                    "role": "user",
-                    "content": ANALYZE_PROMPT.format(
-                        summary=context.understanding.summary if context.understanding else "",
-                        modules_section=f"涉及模块：\n{modules_text}",
-                        contributors_section=f"建议评审人：\n{contributors_text}" if contributors_text else "建议评审人：暂无",
-                        project_context_section=project_context_section,
-                        terminology_section=terminology_section,
-                    ),
-                },
-            ]
-            result = await _call_llm_structured(
-                llm_client, messages, ANALYZE_SCHEMA, max_tokens=2048
-            )
-
-            analysis.risk_level = result.get("risk_level", "medium")
-
-            for r in result.get("risks", []):
-                if isinstance(r, dict):
-                    analysis.risks.append(
-                        RiskItem(
-                            description=r.get("description", ""),
-                            severity=r.get("severity", "medium"),
-                            scope=r.get("scope", ""),
-                            mitigation=r.get("mitigation", ""),
-                        )
-                    )
-            analysis.risk_details = [r.description for r in analysis.risks]
-
-            for ca in result.get("change_assessment", []):
-                if isinstance(ca, dict):
-                    analysis.change_assessment.append(
-                        ChangeAssessment(
-                            module=ca.get("module", ""),
-                            change_type=ca.get("change_type", "modify"),
-                            impact_level=ca.get("impact_level", "medium"),
-                            reason=ca.get("reason", ""),
-                        )
-                    )
-
-            analysis.verification_points = result.get("verification_points", [])
-
-            impl_hints = result.get("implementation_hints", {})
-            if isinstance(impl_hints, dict):
-                analysis.implementation_hints = ImplementationHints(
-                    approach=impl_hints.get("approach", ""),
-                    effort_estimate=impl_hints.get("effort_estimate", ""),
-                    dependencies=impl_hints.get("dependencies", []),
-                )
-
-        except (json.JSONDecodeError, LLMException, AttributeError, KeyError, TypeError) as e:
-            logger.warning("LLM analyze failed, using defaults: %s", e)
-            if analysis.risk_level == "unknown":
-                analysis.risk_level = "medium"
+    if analysis.risk_level == "unknown":
+        analysis.risk_level = "medium"
 
     return analysis
 
 
-async def step_generate(context: AnalysisContext, llm_client) -> GeneratedContent:
+async def step_generate(context: AnalysisContext, llm_client, tool_registry=None, analysis_config=None) -> GeneratedContent:
     """Step 5: 生成报告段落"""
     understanding = context.understanding
     analysis = context.deep_analysis
@@ -510,7 +611,7 @@ async def step_generate(context: AnalysisContext, llm_client) -> GeneratedConten
 
     project_context_section = _build_project_context_section(context.memory_data)
 
-    prompt = GENERATE_PROMPT.format(
+    user_prompt = GENERATE_PROMPT.format(
         summary=understanding.summary if understanding else "",
         modules=modules_str or "无",
         contributors=contributors_str or "无",
@@ -520,13 +621,28 @@ async def step_generate(context: AnalysisContext, llm_client) -> GeneratedConten
         project_context_section=project_context_section,
     )
 
+    tool_use_enabled = (analysis_config.tool_use_enabled if analysis_config else True)
+
     try:
-        messages = [
-            {"role": "user", "content": prompt},
-        ]
-        result = await _call_llm_structured(
-            llm_client, messages, GENERATE_SCHEMA, max_tokens=2048
-        )
+        if tool_use_enabled and tool_registry:
+            tool_subset = ["get_project_profile"]
+            result = await run_tool_use_loop(
+                llm_client,
+                system_prompt="",
+                user_prompt=user_prompt,
+                tools=tool_subset,
+                tool_registry=tool_registry,
+                output_schema=GENERATE_SCHEMA,
+                max_rounds=3,
+                max_total_tokens=2000,
+            )
+        else:
+            messages = [
+                {"role": "user", "content": user_prompt},
+            ]
+            result = await _call_llm_structured(
+                llm_client, messages, GENERATE_SCHEMA, max_tokens=2048
+            )
 
         return GeneratedContent(
             requirement_understanding=result.get("requirement_understanding", ""),

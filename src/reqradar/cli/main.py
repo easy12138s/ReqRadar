@@ -306,24 +306,51 @@ def analyze(ctx, requirement_file, index_path, output, llm_backend, verbose):
                 lookback_months=config.git.lookback_months,
             )
 
+        from reqradar.agent.tools import (
+            ToolRegistry, SearchCodeTool, ReadFileTool,
+            ReadModuleSummaryTool, ListModulesTool,
+            SearchRequirementsTool, GetDependenciesTool,
+            GetContributorsTool, GetProjectProfileTool,
+            GetTerminologyTool,
+        )
+
+        tool_registry = ToolRegistry()
+        repo_path_str = str(repo_path)
+
+        if code_graph:
+            tool_registry.register(SearchCodeTool(code_graph=code_graph, repo_path=repo_path_str))
+            tool_registry.register(GetDependenciesTool(code_graph=code_graph, memory_data=memory_data))
+
+        tool_registry.register(ReadFileTool(repo_path=repo_path_str))
+        tool_registry.register(ReadModuleSummaryTool(memory_data=memory_data))
+        tool_registry.register(ListModulesTool(memory_data=memory_data))
+        tool_registry.register(GetProjectProfileTool(memory_data=memory_data))
+        tool_registry.register(GetTerminologyTool(memory_data=memory_data))
+
+        if vector_store:
+            tool_registry.register(SearchRequirementsTool(vector_store=vector_store))
+
+        if git_analyzer:
+            tool_registry.register(GetContributorsTool(git_analyzer=git_analyzer))
+
         async def wrapped_extract(ctx):
-            return await step_extract(ctx, llm_client)
+            return await step_extract(ctx, llm_client, tool_registry=tool_registry, analysis_config=config.analysis)
 
         async def wrapped_map_keywords(ctx):
-            return await step_map_keywords(ctx, llm_client)
+            return await step_map_keywords(ctx, llm_client, tool_registry=tool_registry, analysis_config=config.analysis)
 
         async def wrapped_retrieve(ctx):
-            result = await step_retrieve(ctx, vector_store, llm_client)
+            result = await step_retrieve(ctx, vector_store, llm_client, tool_registry=tool_registry, analysis_config=config.analysis)
             ctx.retrieved_context = result
             return result
 
         async def wrapped_analyze(ctx):
-            result = await step_analyze(ctx, code_graph, git_analyzer, llm_client)
+            result = await step_analyze(ctx, code_graph, git_analyzer, llm_client, tool_registry=tool_registry, analysis_config=config.analysis)
             ctx.deep_analysis = result
             return result
 
         async def wrapped_generate(ctx):
-            return await step_generate(ctx, llm_client)
+            return await step_generate(ctx, llm_client, tool_registry=tool_registry, analysis_config=config.analysis)
 
         async def memory_update_hook(ctx):
             if config.memory.enabled:

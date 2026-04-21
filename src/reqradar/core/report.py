@@ -76,37 +76,61 @@ class ReportRenderer:
             project_profile = context.memory_data.get("project_profile")
             modules_info = context.memory_data.get("modules", [])
 
+        impact_narrative = gen.impact_narrative if gen and gen.impact_narrative else ""
+        if not impact_narrative and analysis and analysis.impact_narrative:
+            impact_narrative = analysis.impact_narrative
+
+        risk_narrative = gen.risk_narrative if gen and gen.risk_narrative else ""
+        if not risk_narrative and analysis and analysis.risk_narrative:
+            risk_narrative = analysis.risk_narrative
+
+        implementation_suggestion = gen.implementation_suggestion if gen and gen.implementation_suggestion else ""
+
+        formatted_project_profile = None
+        if project_profile and isinstance(project_profile, dict):
+            formatted_project_profile = dict(project_profile)
+            ts = formatted_project_profile.get("tech_stack", {})
+            if isinstance(ts, dict):
+                parts = []
+                if ts.get("languages"):
+                    parts.append("语言: " + ", ".join(ts["languages"]))
+                if ts.get("frameworks"):
+                    parts.append("框架: " + ", ".join(ts["frameworks"]))
+                if ts.get("key_dependencies"):
+                    parts.append("依赖: " + ", ".join(ts["key_dependencies"]))
+                formatted_project_profile["tech_stack"] = "; ".join(parts) if parts else "未知"
+
         template_data = {
-            "requirement_title": context.requirement_path.stem,
-            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "requirement_path": str(context.requirement_path),
-            "requirement_understanding": gen.requirement_understanding if gen else (understanding.summary if understanding else "无法生成"),
-            "terms": [t.__dict__ for t in understanding.terms] if understanding and understanding.terms else [],
-            "keywords": understanding.keywords if understanding else [],
-            "constraints": understanding.constraints if understanding else [],
-            "structured_constraints": [c.__dict__ for c in understanding.structured_constraints] if understanding and understanding.structured_constraints else [],
-            "similar_requirements": retrieved.similar_requirements if retrieved else [],
-            "impact_modules": analysis.impact_modules if analysis else [],
-            "change_assessment": [ca.__dict__ for ca in analysis.change_assessment] if analysis and analysis.change_assessment else [],
-            "impact_narrative": gen.impact_narrative if gen else None,
-            "contributors": analysis.contributors if analysis else [],
-            "risk_level": risk_level,
-            "risk_badge": risk_badge,
-            "risks": [r.__dict__ for r in analysis.risks] if analysis and analysis.risks else [],
-            "risk_details": analysis.risk_details if analysis else [],
-            "risk_narrative": gen.risk_narrative if gen else None,
-            "verification_points": analysis.verification_points if analysis else [],
-            "implementation_hints": analysis.implementation_hints.__dict__ if analysis and analysis.implementation_hints else None,
-            "implementation_suggestion": gen.implementation_suggestion if gen else None,
-            "priority": priority,
-            "priority_reason": priority_reason,
-            "impact_scope": impact_scope,
-            "confidence": context.overall_confidence * 100,
-            "completeness": context.completeness,
-            "content_confidence": context.content_confidence,
-            "warnings": warnings,
-            "project_profile": project_profile,
-            "modules_info": modules_info,
+        "requirement_title": context.requirement_path.stem,
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "requirement_path": str(context.requirement_path),
+        "requirement_understanding": gen.requirement_understanding if gen else (understanding.summary if understanding else "无法生成"),
+        "terms": [t.__dict__ for t in understanding.terms] if understanding and understanding.terms else [],
+        "keywords": understanding.keywords if understanding else [],
+        "constraints": understanding.constraints if understanding else [],
+        "structured_constraints": [c.__dict__ for c in understanding.structured_constraints] if understanding and understanding.structured_constraints else [],
+        "similar_requirements": retrieved.similar_requirements if retrieved else [],
+        "impact_modules": analysis.impact_modules if analysis else [],
+        "change_assessment": [ca.__dict__ for ca in analysis.change_assessment] if analysis and analysis.change_assessment else [],
+        "impact_narrative": impact_narrative,
+        "contributors": analysis.contributors if analysis else [],
+        "risk_level": risk_level,
+        "risk_badge": risk_badge,
+        "risks": [r.__dict__ for r in analysis.risks] if analysis and analysis.risks else [],
+        "risk_details": analysis.risk_details if analysis else [],
+        "risk_narrative": risk_narrative,
+        "verification_points": analysis.verification_points if analysis else [],
+        "implementation_hints": analysis.implementation_hints.__dict__ if analysis and analysis.implementation_hints else None,
+        "implementation_suggestion": implementation_suggestion,
+        "priority": priority,
+        "priority_reason": priority_reason,
+        "impact_scope": impact_scope,
+        "confidence": context.overall_confidence * 100,
+        "completeness": context.completeness,
+        "content_confidence": context.content_confidence,
+        "warnings": warnings,
+        "project_profile": formatted_project_profile,
+        "modules_info": modules_info,
         }
 
         return self.template.render(**template_data)
