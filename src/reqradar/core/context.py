@@ -87,6 +87,8 @@ class DeepAnalysis:
     change_assessment: list[ChangeAssessment] = field(default_factory=list)
     verification_points: list[str] = field(default_factory=list)
     implementation_hints: ImplementationHints = field(default_factory=ImplementationHints)
+    impact_narrative: str = ""
+    risk_narrative: str = ""
 
 
 @dataclass

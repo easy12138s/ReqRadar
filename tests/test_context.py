@@ -50,3 +50,13 @@ def test_confidence_calculation():
     ctx.store_result("step2", StepResult(step="step2", success=True, confidence=0.5))
 
     assert ctx.overall_confidence == 0.75
+
+
+def test_deep_analysis_has_narrative_fields():
+    from reqradar.core.context import DeepAnalysis
+
+    da = DeepAnalysis()
+    assert hasattr(da, "impact_narrative")
+    assert hasattr(da, "risk_narrative")
+    assert da.impact_narrative == ""
+    assert da.risk_narrative == ""

@@ -166,6 +166,14 @@ ANALYZE_SCHEMA = {
                 },
                 "description": "实施建议",
             },
+            "impact_narrative": {
+                "type": "string",
+                "description": "影响范围的自然语言描述（100-150字，描述涉及的技术组件和数据流向）",
+            },
+            "risk_narrative": {
+                "type": "string",
+                "description": "风险分析的自然语言描述（150-200字，主要风险和缓解思路）",
+            },
         },
         "required": ["risk_level"],
     },
