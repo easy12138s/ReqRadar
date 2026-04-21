@@ -1,0 +1,52 @@
+llm:
+  provider: openai
+  model: MiniMax-M2.5
+  api_key: ${OPENAI_API_KEY}
+  base_url: https://api.minimaxi.com/v1
+  timeout: 60
+  max_retries: 2
+
+vision:
+  provider: openai
+  model: MiniMax-M2.5
+  api_key: ${OPENAI_API_KEY}
+  base_url: https://api.minimaxi.com/v1
+  timeout: 120
+  max_retries: 2
+
+memory:
+  enabled: true
+  storage_path: .reqradar/memory
+
+loader:
+  chunk_size: 300
+  chunk_overlap: 50
+  pdf_enabled: true
+  docx_enabled: true
+  image_enabled: true
+  chat_enabled: true
+
+index:
+  embedding_model: BAAI/bge-large-zh
+  chunk_size: 300
+  chunk_overlap: 50
+  storage_path: .reqradar/index
+
+analysis:
+  max_similar_reqs: 5
+  max_code_files: 10
+  contributors_lookback_months: 6
+  tool_use_enabled: true
+  tool_use_max_rounds: 15
+  tool_use_max_tokens: 8000
+
+git:
+  lookback_months: 6
+
+output:
+  report_template: default
+  format: markdown
+
+log:
+  level: INFO
+  format: console
