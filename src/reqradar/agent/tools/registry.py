@@ -13,9 +13,9 @@ class ToolRegistry:
 
     def get_schemas(self, names: list[str] | None = None) -> list[dict]:
         if names is None:
-            return [t.parameters_schema for t in self._tools.values()]
+            return [t.openai_schema() for t in self._tools.values()]
         return [
-            self._tools[n].parameters_schema for n in names if n in self._tools
+            self._tools[n].openai_schema() for n in names if n in self._tools
         ]
 
     def list_names(self) -> list[str]:
