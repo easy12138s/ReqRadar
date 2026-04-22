@@ -87,12 +87,17 @@ class OpenAIClient(LLMClient):
         self.embedding_model = embedding_model
         self.embedding_dim = embedding_dim
 
-    async def complete(self, messages: list[dict], **kwargs) -> str:
-        """发送 OpenAI API 请求"""
-        headers = {
+    def _build_headers(self) -> dict[str, str]:
+        if not self.api_key or not str(self.api_key).strip():
+            raise LLMException("OpenAI API key is missing or empty")
+        return {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
+
+    async def complete(self, messages: list[dict], **kwargs) -> str:
+        """发送 OpenAI API 请求"""
+        headers = self._build_headers()
 
         payload = {
             "model": kwargs.get("model", self.model),
@@ -138,10 +143,7 @@ class OpenAIClient(LLMClient):
         self, messages: list[dict], schema: dict, **kwargs
     ) -> dict | list | None:
         """使用 function calling 获取结构化 JSON 响应"""
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-        }
+        headers = self._build_headers()
 
         function_name = schema.get("name", "structured_output")
         function_desc = schema.get("description", "Extract structured information")
@@ -239,10 +241,7 @@ class OpenAIClient(LLMClient):
         self, messages: list[dict], tools: list[dict], **kwargs
     ) -> dict | None:
         """使用 OpenAI tool_use 协议发送请求"""
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-        }
+        headers = self._build_headers()
 
         payload = {
             "model": kwargs.get("model", self.model),
@@ -319,10 +318,7 @@ class OpenAIClient(LLMClient):
 
     async def complete_vision(self, image_data: bytes, prompt: str, **kwargs) -> str:
         """发送 OpenAI Vision API 请求"""
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-        }
+        headers = self._build_headers()
 
         b64_image = base64.b64encode(image_data).decode("utf-8")
         image_url = f"data:image/png;base64,{b64_image}"
@@ -378,10 +374,7 @@ class OpenAIClient(LLMClient):
 
     async def embed(self, texts: list[str]) -> list[list[float]]:
         """获取 OpenAI embeddings"""
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-        }
+        headers = self._build_headers()
 
         payload = {
             "model": self.embedding_model,

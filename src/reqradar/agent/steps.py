@@ -8,8 +8,12 @@ from pathlib import Path
 from reqradar.core.context import (
     AnalysisContext,
     ChangeAssessment,
+    DecisionSummary,
+    DecisionSummaryItem,
     DeepAnalysis,
+    EvidenceItem,
     GeneratedContent,
+    ImpactDomain,
     ImplementationHints,
     RequirementUnderstanding,
     RetrievedContext,
@@ -42,6 +46,24 @@ from reqradar.agent.smart_matching import (
 from reqradar.agent.project_profile import step_build_project_profile
 
 logger = logging.getLogger("reqradar.agent")
+
+
+def _normalize_string_list(value) -> list[str]:
+    """Normalize list-like model output to a list of strings."""
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value] if value else []
+    if isinstance(value, list):
+        return [item for item in value if isinstance(item, str) and item]
+    return []
+
+
+def _normalize_object_list(value) -> list[dict]:
+    """Normalize list-like model output to a list of dicts."""
+    if isinstance(value, list):
+        return [item for item in value if isinstance(item, dict)]
+    return []
 
 
 def _build_terminology_section(memory_data: dict | None) -> str:
@@ -414,13 +436,49 @@ def _populate_analysis_from_result(analysis: DeepAnalysis, result: dict):
                     reason=ca.get("reason", ""),
                 )
             )
-    analysis.verification_points = result.get("verification_points", [])
+
+    decision_summary = result.get("decision_summary", {})
+    if isinstance(decision_summary, dict):
+        analysis.decision_summary = DecisionSummary(
+            summary=decision_summary.get("summary", ""),
+            decisions=[
+                DecisionSummaryItem(
+                    topic=item.get("topic", ""),
+                    decision=item.get("decision", ""),
+                    rationale=item.get("rationale", ""),
+                    implications=_normalize_string_list(item.get("implications", [])),
+                )
+                for item in _normalize_object_list(decision_summary.get("decisions", []))
+            ],
+            open_questions=_normalize_string_list(decision_summary.get("open_questions", [])),
+            follow_ups=_normalize_string_list(decision_summary.get("follow_ups", [])),
+        )
+
+    analysis.evidence_items = [
+        EvidenceItem(
+            kind=item.get("kind", ""),
+            source=item.get("source", ""),
+            summary=item.get("summary", ""),
+            confidence=item.get("confidence", "medium"),
+        )
+        for item in _normalize_object_list(result.get("evidence_items", []))
+    ]
+    analysis.impact_domains = [
+        ImpactDomain(
+            domain=item.get("domain", ""),
+            confidence=item.get("confidence", "medium"),
+            basis=item.get("basis", ""),
+            inferred=bool(item.get("inferred", False)),
+        )
+        for item in _normalize_object_list(result.get("impact_domains", []))
+    ]
+    analysis.verification_points = _normalize_string_list(result.get("verification_points", []))
     impl_hints = result.get("implementation_hints", {})
     if isinstance(impl_hints, dict):
         analysis.implementation_hints = ImplementationHints(
             approach=impl_hints.get("approach", ""),
             effort_estimate=impl_hints.get("effort_estimate", ""),
-            dependencies=impl_hints.get("dependencies", []),
+            dependencies=_normalize_string_list(impl_hints.get("dependencies", [])),
         )
     analysis.impact_narrative = result.get("impact_narrative", "")
     analysis.risk_narrative = result.get("risk_narrative", "")
@@ -574,6 +632,9 @@ async def step_analyze(
     if analysis.risk_level == "unknown":
         analysis.risk_level = "medium"
 
+    context.deep_analysis = analysis
+    context.decision_summary = analysis.decision_summary
+
     return analysis
 
 
@@ -646,6 +707,9 @@ async def step_generate(context: AnalysisContext, llm_client, tool_registry=None
 
         return GeneratedContent(
             requirement_understanding=result.get("requirement_understanding", ""),
+            executive_summary=result.get("executive_summary", ""),
+            technical_summary=result.get("technical_summary", ""),
+            decision_highlights=_normalize_string_list(result.get("decision_highlights", [])),
             impact_narrative=result.get("impact_narrative", ""),
             risk_narrative=result.get("risk_narrative", ""),
             implementation_suggestion=result.get("implementation_suggestion", ""),
@@ -654,6 +718,9 @@ async def step_generate(context: AnalysisContext, llm_client, tool_registry=None
         logger.warning("LLM generate failed, using fallback: %s", e)
         return GeneratedContent(
             requirement_understanding=understanding.summary if understanding else "无法生成",
+            executive_summary="",
+            technical_summary="",
+            decision_highlights=[],
             impact_narrative="",
             risk_narrative="",
             implementation_suggestion="",

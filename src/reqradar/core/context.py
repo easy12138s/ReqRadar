@@ -85,6 +85,9 @@ class DeepAnalysis:
     risk_details: list = field(default_factory=list)
     risks: list[RiskItem] = field(default_factory=list)
     change_assessment: list[ChangeAssessment] = field(default_factory=list)
+    decision_summary: "DecisionSummary" = field(default_factory=lambda: DecisionSummary())
+    evidence_items: list["EvidenceItem"] = field(default_factory=list)
+    impact_domains: list["ImpactDomain"] = field(default_factory=list)
     verification_points: list[str] = field(default_factory=list)
     implementation_hints: ImplementationHints = field(default_factory=ImplementationHints)
     impact_narrative: str = ""
@@ -94,9 +97,44 @@ class DeepAnalysis:
 @dataclass
 class GeneratedContent:
     requirement_understanding: str = ""
+    executive_summary: str = ""
+    technical_summary: str = ""
+    decision_highlights: list[str] = field(default_factory=list)
     impact_narrative: str = ""
     risk_narrative: str = ""
     implementation_suggestion: str = ""
+
+
+@dataclass
+class DecisionSummaryItem:
+    topic: str = ""
+    decision: str = ""
+    rationale: str = ""
+    implications: list[str] = field(default_factory=list)
+
+
+@dataclass
+class DecisionSummary:
+    summary: str = ""
+    decisions: list[DecisionSummaryItem] = field(default_factory=list)
+    open_questions: list[str] = field(default_factory=list)
+    follow_ups: list[str] = field(default_factory=list)
+
+
+@dataclass
+class EvidenceItem:
+    kind: str = ""
+    source: str = ""
+    summary: str = ""
+    confidence: str = "medium"
+
+
+@dataclass
+class ImpactDomain:
+    domain: str = ""
+    confidence: str = "medium"
+    basis: str = ""
+    inferred: bool = False
 
 
 @dataclass
@@ -124,6 +162,7 @@ class AnalysisContext:
     retrieved_context: Optional[RetrievedContext] = None
     deep_analysis: Optional[DeepAnalysis] = None
     generated_content: Optional[GeneratedContent] = None
+    decision_summary: Optional[DecisionSummary] = None
     expanded_keywords: list[str] = field(default_factory=list)
     code_analysis: Optional[CodeAnalysisResult] = None
     step_results: dict[str, StepResult] = field(default_factory=dict)
@@ -135,7 +174,7 @@ class AnalysisContext:
         return self.completed_at is not None
 
     @property
-    def completeness(self) -> str:
+    def process_completion(self) -> str:
         steps_completed = sum(1 for r in self.step_results.values() if r.success)
         total_steps = len(self.step_results)
         if total_steps == 0:
@@ -143,10 +182,13 @@ class AnalysisContext:
         ratio = steps_completed / total_steps
         if ratio >= 1.0:
             return "full"
-        elif ratio >= 0.5:
+        if ratio >= 0.5:
             return "partial"
-        else:
-            return "degraded"
+        return "degraded"
+
+    @property
+    def completeness(self) -> str:
+        return self.process_completion
 
     @property
     def overall_confidence(self) -> float:
@@ -155,13 +197,111 @@ class AnalysisContext:
         return sum(r.confidence for r in self.step_results.values()) / len(self.step_results)
 
     @property
+    def content_completeness(self) -> str:
+        sections = 0
+
+        if self.understanding and self.understanding.summary.strip():
+            sections += 1
+
+        if self.deep_analysis and any(
+            (
+                bool(self.deep_analysis.impact_narrative.strip()),
+                bool(self.deep_analysis.risk_narrative.strip()),
+                bool(self.deep_analysis.risks),
+                bool(self.deep_analysis.change_assessment),
+                bool(self.deep_analysis.verification_points),
+            )
+        ):
+            sections += 1
+
+        if self.generated_content and any(
+            bool(value.strip())
+            for value in (
+                self.generated_content.requirement_understanding,
+                self.generated_content.executive_summary,
+                self.generated_content.technical_summary,
+                self.generated_content.impact_narrative,
+                self.generated_content.risk_narrative,
+                self.generated_content.implementation_suggestion,
+            )
+        ):
+            sections += 1
+
+        decision_summary = self.decision_summary
+        if not decision_summary and self.deep_analysis:
+            decision_summary = self.deep_analysis.decision_summary
+        if decision_summary and (
+            bool(decision_summary.summary.strip())
+            or bool(decision_summary.decisions)
+            or bool(decision_summary.open_questions)
+            or bool(decision_summary.follow_ups)
+        ):
+            sections += 1
+
+        if sections >= 3:
+            return "full"
+        if sections >= 1:
+            return "partial"
+        return "low"
+
+    @property
+    def evidence_support(self) -> str:
+        if not self.deep_analysis:
+            return "low"
+
+        evidence_items = self.deep_analysis.evidence_items
+        impact_domains = self.deep_analysis.impact_domains
+
+        has_evidence = any(
+            bool(item.summary.strip()) or bool(item.source.strip())
+            for item in evidence_items
+        )
+        has_domains = any(
+            bool(domain.domain.strip()) or bool(domain.basis.strip())
+            for domain in impact_domains
+        )
+
+        if has_evidence and has_domains:
+            return "high"
+        if has_evidence or has_domains:
+            return "medium"
+        return "low"
+
+    @property
     def content_confidence(self) -> str:
         has_risk = self.deep_analysis and self.deep_analysis.risk_level not in ("unknown", "")
         has_terms = self.understanding and len(self.understanding.terms) > 0
         has_understanding = self.understanding and bool(self.understanding.summary)
-        if has_risk and has_terms and has_understanding:
+        has_generated_content = self.generated_content and any(
+            bool(value.strip())
+            for value in (
+                self.generated_content.requirement_understanding,
+                self.generated_content.impact_narrative,
+                self.generated_content.risk_narrative,
+                self.generated_content.implementation_suggestion,
+            )
+        )
+        decision_summary = self.decision_summary
+        if not decision_summary and self.deep_analysis:
+            decision_summary = self.deep_analysis.decision_summary
+
+        has_decision_summary = decision_summary and (
+            bool(decision_summary.summary.strip())
+            or any(
+                bool(item.topic.strip())
+                or bool(item.decision.strip())
+                or bool(item.rationale.strip())
+                or any(bool(implication.strip()) for implication in item.implications)
+                for item in decision_summary.decisions
+            )
+            or any(bool(question.strip()) for question in decision_summary.open_questions)
+            or any(bool(follow_up.strip()) for follow_up in decision_summary.follow_ups)
+        )
+        has_substantive_content = bool(has_generated_content or has_decision_summary)
+
+        if has_risk and has_understanding and has_substantive_content:
             return "high"
-        elif has_risk or has_terms or has_understanding:
+        elif has_risk or has_terms or has_understanding or has_substantive_content:
             return "medium"
         else:
             return "low"

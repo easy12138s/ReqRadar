@@ -37,3 +37,22 @@ class TestOpenAICompleteWithTools:
             tools=[],
         )
         assert result is None
+
+
+class TestOpenAIClientApiKeyValidation:
+    @pytest.mark.asyncio
+    async def test_complete_rejects_empty_api_key_with_clear_error(self):
+        llm = OpenAIClient(api_key="", model="test-model")
+
+        with pytest.raises(Exception, match="API key is missing or empty"):
+            await llm.complete(messages=[{"role": "user", "content": "test"}])
+
+    @pytest.mark.asyncio
+    async def test_complete_structured_rejects_empty_api_key_with_clear_error(self):
+        llm = OpenAIClient(api_key="", model="test-model")
+
+        with pytest.raises(Exception, match="API key is missing or empty"):
+            await llm.complete_structured(
+                messages=[{"role": "user", "content": "test"}],
+                schema={"name": "test", "parameters": {"type": "object", "properties": {}}},
+            )

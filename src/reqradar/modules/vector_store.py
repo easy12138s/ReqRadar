@@ -91,7 +91,7 @@ class ChromaVectorStore(VectorStore):
 
         ids = [doc.id or str(uuid.uuid4()) for doc in docs]
         contents = [doc.content for doc in docs]
-        metadatas = [doc.metadata for doc in docs]
+        metadatas = [doc.metadata if doc.metadata else None for doc in docs]
         embeddings = self.embedding_model.encode(contents).tolist()
 
         self.collection.add(

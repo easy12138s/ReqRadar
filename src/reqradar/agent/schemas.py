@@ -148,6 +148,90 @@ ANALYZE_SCHEMA = {
                 },
                 "description": "变更评估列表",
             },
+            "decision_summary": {
+                "type": "object",
+                "properties": {
+                    "summary": {
+                        "type": "string",
+                        "description": "面向决策的总体结论，说明是否建议推进以及关键前提",
+                    },
+                    "decisions": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "topic": {"type": "string", "description": "决策主题"},
+                                "decision": {"type": "string", "description": "建议决策"},
+                                "rationale": {"type": "string", "description": "决策依据"},
+                                "implications": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                    "description": "该决策带来的后续影响",
+                                },
+                            },
+                            "required": ["topic", "decision", "rationale"],
+                        },
+                        "description": "可直接用于报告决策摘要层的关键决策项",
+                    },
+                    "open_questions": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "当前仍待澄清的问题",
+                    },
+                    "follow_ups": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "下一步应跟进的动作",
+                    },
+                },
+                "description": "面向未来双层报告的决策级摘要",
+            },
+            "evidence_items": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "kind": {
+                            "type": "string",
+                            "enum": ["code_match", "module_summary", "project_context", "requirement_text", "inference"],
+                            "description": "证据类型",
+                        },
+                        "source": {"type": "string", "description": "证据来源，如文件路径、模块名或上下文来源"},
+                        "summary": {"type": "string", "description": "证据说明"},
+                        "confidence": {
+                            "type": "string",
+                            "enum": ["low", "medium", "high"],
+                            "description": "证据可信度",
+                        },
+                    },
+                    "required": ["kind", "source", "summary"],
+                },
+                "description": "支撑风险、变更和决策判断的证据项",
+            },
+            "impact_domains": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "domain": {
+                            "type": "string",
+                            "description": "受影响的技术或业务域，如 api、frontend、data、operations",
+                        },
+                        "confidence": {
+                            "type": "string",
+                            "enum": ["low", "medium", "high"],
+                            "description": "域判断置信度",
+                        },
+                        "basis": {"type": "string", "description": "判断依据，可引用代码或上下文推断"},
+                        "inferred": {
+                            "type": "boolean",
+                            "description": "若没有直接代码匹配、而是根据上下文推断则为 true",
+                        },
+                    },
+                    "required": ["domain", "confidence", "basis"],
+                },
+                "description": "受影响域列表；找不到直接代码匹配时也应输出推断结果并标记 inferred",
+            },
             "verification_points": {
                 "type": "array",
                 "items": {"type": "string"},
@@ -188,6 +272,19 @@ GENERATE_SCHEMA = {
             "requirement_understanding": {
                 "type": "string",
                 "description": "需求理解（150-200字，包含背景、核心问题、成功标准）",
+            },
+            "executive_summary": {
+                "type": "string",
+                "description": "决策摘要层的结论性段落（120-180字，面向管理/评审者）",
+            },
+            "technical_summary": {
+                "type": "string",
+                "description": "技术支撑层的概览段落（120-180字，说明影响域、实施路径和验证重点）",
+            },
+            "decision_highlights": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "2-4条关键决策/推进要点，供报告决策摘要直接展示",
             },
             "impact_narrative": {
                 "type": "string",

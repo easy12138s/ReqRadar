@@ -18,6 +18,18 @@ from reqradar.infrastructure.logging import setup_logging
 console = Console()
 
 
+def _build_quality_overview_rows(result_context):
+    return [
+        ("流程完成度", result_context.process_completion),
+        ("内容完整度", result_context.content_completeness),
+        ("证据支撑度", result_context.evidence_support),
+        (
+            "步骤完成",
+            f"{sum(1 for r in result_context.step_results.values() if r.success)}/{len(result_context.step_results)}",
+        ),
+    ]
+
+
 @click.group()
 @click.version_option(version=__version__)
 @click.option(
@@ -417,12 +429,8 @@ def analyze(ctx, requirement_file, index_path, output, llm_backend, verbose):
         table.add_column("指标", style="cyan")
         table.add_column("值", style="green")
 
-        table.add_row("数据完整度", result_context.completeness)
-        table.add_row("置信度", f"{result_context.overall_confidence * 100:.1f}%")
-        table.add_row(
-            "步骤完成",
-            f"{sum(1 for r in result_context.step_results.values() if r.success)}/{len(result_context.step_results)}",
-        )
+        for label, value in _build_quality_overview_rows(result_context):
+            table.add_row(label, value)
 
         console.print(table)
 
