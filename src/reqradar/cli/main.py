@@ -447,5 +447,10 @@ def analyze(ctx, requirement_file, index_path, output, llm_backend, verbose):
         raise click.Abort()
 
 
+from reqradar.web.cli import serve
+
+cli.add_command(serve)
+
+
 if __name__ == "__main__":
     cli()
