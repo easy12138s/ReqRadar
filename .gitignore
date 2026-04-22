@@ -82,3 +82,8 @@ reports/*
 
 # OpenCode config
 opencode.json
+.opencode/
+
+# Legacy docs
+docs/PHASE3_PLAN.md
+docs/superpowers/
