@@ -92,3 +92,13 @@ class TestParseJsonResponse:
         result = _parse_json_response(data)
         assert isinstance(result, list)
         assert len(result) == 3
+
+    def test_json_with_think_tags_and_text(self):
+        data = '<think>reasoning here</think>\nHere is the answer:\n{"key": "value"}\nDone.'
+        result = _parse_json_response(data)
+        assert result == {"key": "value"}
+
+    def test_json_code_block_with_surrounding_text(self):
+        data = 'some intro\n```json\n{"summary": "ok", "keywords": []}\n```\ntrailing note'
+        result = _parse_json_response(data)
+        assert result == {"summary": "ok", "keywords": []}

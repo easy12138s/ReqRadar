@@ -8,6 +8,7 @@ from abc import ABC, abstractmethod
 
 import httpx
 
+from reqradar.agent.llm_utils import _parse_json_response
 from reqradar.core.exceptions import LLMException
 
 logger = logging.getLogger("reqradar.llm")
@@ -181,27 +182,44 @@ class OpenAIClient(LLMClient):
                     response.raise_for_status()
                     result = response.json()
 
-                    message = result["choices"][0]["message"]
-                    tool_calls = message.get("tool_calls", [])
+                message = result["choices"][0]["message"]
+                tool_calls = message.get("tool_calls", [])
+                content = message.get("content", "")
 
-                    if not tool_calls:
-                        logger.warning("No tool_calls in function calling response, returning None")
-                        return None
+                if not tool_calls:
+                    if content:
+                        try:
+                            return _parse_json_response(content)
+                        except (json.JSONDecodeError, ValueError) as e:
+                            logger.warning(
+                                "No tool_calls and failed to parse content as JSON: %s", e
+                            )
+                    logger.warning("No tool_calls in function calling response, returning None")
+                    return None
 
-                    tool_call = tool_calls[0]
-                    arguments_str = tool_call["function"]["arguments"]
+                tool_call = tool_calls[0]
+                arguments_str = tool_call["function"]["arguments"]
 
-                    try:
-                        parsed = json.loads(arguments_str)
-                        return parsed
-                    except json.JSONDecodeError as e:
-                        logger.warning("Failed to parse function calling arguments: %s", e)
-                        return None
+                try:
+                    parsed = _parse_json_response(arguments_str)
+                    return parsed
+                except (json.JSONDecodeError, ValueError) as e:
+                    logger.warning("Failed to parse function calling arguments: %s", e)
+                    return None
 
             except httpx.HTTPStatusError as e:
                 if e.response.status_code == 400:
-                    logger.info(
-                        "Function calling not supported (400), will fall back to text parsing"
+                    error_body = ""
+                    try:
+                        error_body = e.response.text[:1000]
+                    except Exception:
+                        pass
+                    tool_names = [t.get("function", {}).get("name", "?") for t in tools]
+                    logger.warning(
+                        "complete_structured 400 error for model=%s function=%s tool_choice=%s\nPayload keys: %s\nError body: %s",
+                        payload.get("model"), function_name,
+                        payload.get("tool_choice"), list(payload.keys()),
+                        error_body,
                     )
                     return None
                 raise LLMException(f"OpenAI API error: {e.response.status_code}", cause=e)
@@ -271,7 +289,18 @@ class OpenAIClient(LLMClient):
 
             except httpx.HTTPStatusError as e:
                 if e.response.status_code == 400:
-                    logger.info("Tool use not supported (400), returning None")
+                    error_body = ""
+                    try:
+                        error_body = e.response.text[:1000]
+                    except Exception:
+                        pass
+                    tool_names = [t.get("function", {}).get("name", "?") for t in tools]
+                    logger.warning(
+                        "complete_with_tools 400 error for model=%s tools=%s tool_choice=%s\nPayload keys: %s\nError body: %s",
+                        payload.get("model"), tool_names,
+                        payload.get("tool_choice"), list(payload.keys()),
+                        error_body,
+                    )
                     return None
                 last_error = e
                 if attempt < self.max_retries:
