@@ -6,6 +6,7 @@ from typing import Optional
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import select, func, update
 
 from reqradar.core.exceptions import ReqRadarException
 from reqradar.infrastructure.config import load_config
@@ -15,8 +16,9 @@ from reqradar.web.api.analyses import router as analyses_router
 from reqradar.web.api.reports import router as reports_router
 from reqradar.web.api.memory import router as memory_router
 from reqradar.web.database import Base, create_engine, create_session_factory
-from reqradar.web.dependencies import async_session_factory
+from reqradar.web.dependencies import async_session_factory, CurrentUser, DbSession
 from reqradar.web.exceptions import reqradar_exception_handler
+from reqradar.web.models import AnalysisTask, Project
 
 
 @asynccontextmanager
@@ -36,6 +38,14 @@ async def lifespan(app: FastAPI):
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+    async with session_factory() as session:
+        await session.execute(
+            update(AnalysisTask)
+            .where(AnalysisTask.status == "running")
+            .values(status="failed", error_message="Server restarted during analysis")
+        )
+        await session.commit()
 
     app.state.engine = engine
     app.state.session_factory = session_factory
@@ -81,5 +91,15 @@ def create_app(config_path: Optional[Path] = None):
     @app.get("/health")
     async def health():
         return {"status": "ok"}
+
+    @app.get("/api/metrics")
+    async def metrics(current_user: CurrentUser, db: DbSession):
+        project_count = (await db.execute(select(func.count(Project.id)))).scalar_one()
+        task_counts = {}
+        for status in ("pending", "running", "completed", "failed"):
+            task_counts[status] = (
+                await db.execute(select(func.count(AnalysisTask.id)).where(AnalysisTask.status == status))
+            ).scalar_one()
+        return {"project_count": project_count, "task_counts": task_counts}
 
     return app

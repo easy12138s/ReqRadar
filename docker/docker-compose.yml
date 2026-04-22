@@ -1,0 +1,18 @@
+version: "3.8"
+services:
+  reqradar-api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - reqradar_data:/app/.reqradar
+      - reqradar_db:/app/reqradar.db
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - REQRADAR_SECRET_KEY=${SECRET_KEY:-change-me-in-production}
+
+volumes:
+  reqradar_data:
+  reqradar_db:
