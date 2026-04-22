@@ -1,0 +1,225 @@
+import asyncio
+import json
+import logging
+import os
+import uuid
+from datetime import datetime, timezone
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, WebSocket, WebSocketDisconnect, Query, status
+from jose import JWTError, jwt
+from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from reqradar.web.dependencies import CurrentUser, DbSession, get_current_user, get_db
+from reqradar.web.models import AnalysisTask, Project, UploadedFile, User
+from reqradar.web.api.auth import SECRET_KEY, ALGORITHM
+from reqradar.web.websocket import manager as ws_manager
+from reqradar.infrastructure.config import load_config
+
+logger = logging.getLogger("reqradar.web.api.analyses")
+
+router = APIRouter(prefix="/api/analyses", tags=["analyses"])
+
+
+class AnalysisSubmit(BaseModel):
+    project_id: int
+    requirement_name: str
+    requirement_text: str
+
+
+class AnalysisResponse(BaseModel):
+    id: int
+    project_id: int
+    user_id: int
+    requirement_name: str
+    requirement_text: str
+    status: str
+    error_message: Optional[str] = None
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class AnalysisDetailResponse(AnalysisResponse):
+    step_summary: Optional[dict] = None
+
+
+@router.post("", response_model=AnalysisResponse, status_code=status.HTTP_201_CREATED)
+async def submit_analysis(req: AnalysisSubmit, current_user: CurrentUser, db: DbSession):
+    result = await db.execute(select(Project).where(Project.id == req.project_id))
+    project = result.scalar_one_or_none()
+    if project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+
+    task = AnalysisTask(
+        project_id=req.project_id,
+        user_id=current_user.id,
+        requirement_name=req.requirement_name,
+        requirement_text=req.requirement_text,
+        status="pending",
+    )
+    db.add(task)
+    await db.commit()
+    await db.refresh(task)
+
+    config = load_config()
+    asyncio.create_task(_run_analysis_background(task.id, project, config))
+
+    return task
+
+
+@router.post("/upload", response_model=AnalysisResponse, status_code=status.HTTP_201_CREATED)
+async def submit_analysis_upload(
+    project_id: int = Form(...),
+    requirement_name: str = Form(...),
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    project = result.scalar_one_or_none()
+    if project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+
+    content = await file.read()
+    upload_dir = os.path.join(project.repo_path or ".", ".reqradar", "uploads")
+    os.makedirs(upload_dir, exist_ok=True)
+    file_id = str(uuid.uuid4())[:8]
+    file_path = os.path.join(upload_dir, f"{file_id}_{file.filename}")
+    with open(file_path, "wb") as f:
+        f.write(content)
+
+    task = AnalysisTask(
+        project_id=project_id,
+        user_id=current_user.id,
+        requirement_name=requirement_name,
+        requirement_text=content.decode("utf-8", errors="replace"),
+        status="pending",
+    )
+    db.add(task)
+    await db.flush()
+
+    db.add(UploadedFile(
+        task_id=task.id,
+        filename=file.filename or "upload",
+        file_path=file_path,
+        file_size=len(content),
+    ))
+
+    await db.commit()
+    await db.refresh(task)
+
+    config = load_config()
+    asyncio.create_task(_run_analysis_background(task.id, project, config))
+
+    return task
+
+
+@router.get("", response_model=list[AnalysisResponse])
+async def list_analyses(
+    current_user: CurrentUser,
+    db: DbSession,
+    project_id: Optional[int] = None,
+    status_filter: Optional[str] = Query(None, alias="status"),
+):
+    query = select(AnalysisTask).where(AnalysisTask.user_id == current_user.id)
+    if project_id is not None:
+        query = query.where(AnalysisTask.project_id == project_id)
+    if status_filter is not None:
+        query = query.where(AnalysisTask.status == status_filter)
+    query = query.order_by(AnalysisTask.created_at.desc())
+    result = await db.execute(query)
+    return list(result.scalars().all())
+
+
+@router.get("/{task_id}", response_model=AnalysisDetailResponse)
+async def get_analysis(task_id: int, current_user: CurrentUser, db: DbSession):
+    result = await db.execute(
+        select(AnalysisTask).where(AnalysisTask.id == task_id, AnalysisTask.user_id == current_user.id)
+    )
+    task = result.scalar_one_or_none()
+    if task is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analysis task not found")
+
+    step_summary = None
+    if task.context_json:
+        try:
+            ctx = json.loads(task.context_json)
+            step_results = ctx.get("step_results", {})
+            step_summary = {
+                name: {"success": r.get("success", False), "confidence": r.get("confidence", 0.0)}
+                for name, r in step_results.items()
+            }
+        except (json.JSONDecodeError, AttributeError):
+            pass
+
+    response = AnalysisDetailResponse.model_validate(task)
+    response.step_summary = step_summary
+    return response
+
+
+@router.post("/{task_id}/retry", response_model=AnalysisResponse)
+async def retry_analysis(task_id: int, current_user: CurrentUser, db: DbSession):
+    result = await db.execute(
+        select(AnalysisTask).where(AnalysisTask.id == task_id, AnalysisTask.user_id == current_user.id)
+    )
+    task = result.scalar_one_or_none()
+    if task is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analysis task not found")
+
+    if task.status not in ("failed", "completed", "cancelled"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Can only retry failed, completed, or cancelled tasks",
+        )
+
+    proj_result = await db.execute(select(Project).where(Project.id == task.project_id))
+    project = proj_result.scalar_one_or_none()
+    if project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+
+    task.status = "pending"
+    task.error_message = None
+    task.started_at = None
+    task.completed_at = None
+    task.context_json = "{}"
+    await db.commit()
+    await db.refresh(task)
+
+    config = load_config()
+    asyncio.create_task(_run_analysis_background(task.id, project, config))
+
+    return task
+
+
+@router.websocket("/{task_id}/ws")
+async def analysis_websocket(websocket: WebSocket, task_id: int, token: str = Query(...)):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id = int(payload.get("sub"))
+    except (JWTError, ValueError, TypeError):
+        await websocket.close(code=4001, reason="Invalid token")
+        return
+
+    await websocket.accept()
+    ws_manager.subscribe(task_id, websocket)
+
+    try:
+        while True:
+            try:
+                await websocket.receive_text()
+            except WebSocketDisconnect:
+                break
+    except WebSocketDisconnect:
+        pass
+    finally:
+        ws_manager.unsubscribe(task_id, websocket)
+
+
+async def _run_analysis_background(task_id: int, project: Project, config):
+    from reqradar.web.services.analysis_runner import runner
+    runner.submit(task_id, project, config)

@@ -1,9 +1,9 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+import bcrypt
 from fastapi import APIRouter, Depends, HTTPException, status
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,7 +18,13 @@ ALGORITHM = "HS256"
 SECRET_KEY = "change-me-in-production"
 ACCESS_TOKEN_EXPIRE_MINUTES = 1440
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+def hash_password(password: str) -> str:
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+
+def verify_password(password: str, password_hash: str) -> bool:
+    return bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8"))
 
 
 class RegisterRequest(BaseModel):
@@ -59,7 +65,7 @@ async def register(req: RegisterRequest, db: DbSession):
     if result.scalar_one_or_none() is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
 
-    password_hash = pwd_context.hash(req.password)
+    password_hash = hash_password(req.password)
     user = User(
         email=req.email,
         password_hash=password_hash,
@@ -75,7 +81,7 @@ async def register(req: RegisterRequest, db: DbSession):
 async def login(req: LoginRequest, db: DbSession):
     result = await db.execute(select(User).where(User.email == req.email))
     user = result.scalar_one_or_none()
-    if user is None or not pwd_context.verify(req.password, user.password_hash):
+    if user is None or not verify_password(req.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials",

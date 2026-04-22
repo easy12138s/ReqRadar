@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
@@ -9,6 +10,10 @@ from fastapi.staticfiles import StaticFiles
 from reqradar.core.exceptions import ReqRadarException
 from reqradar.infrastructure.config import load_config
 from reqradar.web.api.auth import router as auth_router, SECRET_KEY as AUTH_SECRET_KEY, ALGORITHM
+from reqradar.web.api.projects import router as projects_router
+from reqradar.web.api.analyses import router as analyses_router
+from reqradar.web.api.reports import router as reports_router
+from reqradar.web.api.memory import router as memory_router
 from reqradar.web.database import Base, create_engine, create_session_factory
 from reqradar.web.dependencies import async_session_factory
 from reqradar.web.exceptions import reqradar_exception_handler
@@ -35,6 +40,9 @@ async def lifespan(app: FastAPI):
     app.state.engine = engine
     app.state.session_factory = session_factory
     app.state.config = config
+
+    from reqradar.web.services.analysis_runner import runner
+    runner._semaphore = asyncio.Semaphore(web_config.max_concurrent_analyses)
 
     yield
 
@@ -65,6 +73,10 @@ def create_app(config_path: Optional[Path] = None):
     app.add_exception_handler(ReqRadarException, reqradar_exception_handler)
 
     app.include_router(auth_router)
+    app.include_router(projects_router)
+    app.include_router(analyses_router)
+    app.include_router(reports_router)
+    app.include_router(memory_router)
 
     @app.get("/health")
     async def health():
