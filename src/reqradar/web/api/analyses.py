@@ -27,6 +27,7 @@ class AnalysisSubmit(BaseModel):
     project_id: int
     requirement_name: str
     requirement_text: str
+    depth: str = "standard"
 
 
 class AnalysisResponse(BaseModel):
@@ -60,6 +61,7 @@ async def submit_analysis(req: AnalysisSubmit, current_user: CurrentUser, db: Db
         user_id=current_user.id,
         requirement_name=req.requirement_name,
         requirement_text=req.requirement_text,
+        depth=req.depth,
         status="pending",
     )
     db.add(task)
@@ -203,6 +205,24 @@ async def retry_analysis(task_id: int, current_user: CurrentUser, db: DbSession)
     asyncio.create_task(_run_analysis_background(task.id, project, config))
 
     return task
+
+
+@router.post("/{task_id}/cancel")
+async def cancel_analysis(task_id: int, current_user: CurrentUser, db: DbSession):
+    result = await db.execute(select(AnalysisTask).where(AnalysisTask.id == task_id))
+    task = result.scalar_one_or_none()
+    if task is None:
+        raise HTTPException(status_code=404, detail="Analysis task not found")
+    if task.status not in ("pending", "running"):
+        raise HTTPException(status_code=400, detail=f"Cannot cancel task in status: {task.status}")
+    config = load_config()
+    from reqradar.web.services.analysis_runner import get_runner
+    r = get_runner(config)
+    r.cancel(task_id)
+    task.status = "cancelled"
+    task.completed_at = datetime.now(timezone.utc)
+    await db.commit()
+    return {"success": True, "status": "cancelled"}
 
 
 @router.websocket("/{task_id}/ws")
