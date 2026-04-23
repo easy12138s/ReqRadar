@@ -17,6 +17,9 @@ logger = logging.getLogger("reqradar.llm")
 class LLMClient(ABC):
     """LLM 客户端基类"""
 
+    def __init__(self):
+        self._tool_calling_supported: bool | None = None
+
     @abstractmethod
     async def complete(self, messages: list[dict], **kwargs) -> str:
         """发送对话请求"""
@@ -30,6 +33,43 @@ class LLMClient(ABC):
     async def complete_vision(self, image_data: bytes, prompt: str, **kwargs) -> str:
         """发送视觉请求（图片+文本）- 默认抛出 NotImplementedError"""
         raise NotImplementedError(f"{self.__class__.__name__} does not support vision")
+
+    async def supports_tool_calling(self) -> bool:
+        """检测当前模型是否支持 tool calling（function calling）
+
+        通过发送一个简单的 probe 请求来检测，结果会被缓存。
+        """
+        if self._tool_calling_supported is not None:
+            return self._tool_calling_supported
+
+        try:
+            probe_schema = {
+                "name": "probe_test",
+                "description": "Probe test for tool calling support",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"result": {"type": "string"}},
+                    "required": ["result"],
+                },
+            }
+            result = await self.complete_structured(
+                [{"role": "user", "content": "Reply with result 'ok'."}],
+                probe_schema,
+                max_tokens=50,
+            )
+            self._tool_calling_supported = result is not None
+        except Exception:
+            self._tool_calling_supported = False
+
+        if not self._tool_calling_supported:
+            logger.warning(
+                "Tool calling not supported by %s (model=%s). "
+                "Falling back to structured text output.",
+                self.__class__.__name__,
+                getattr(self, "model", "unknown"),
+            )
+
+        return self._tool_calling_supported
 
     async def complete_structured(
         self, messages: list[dict,], schema: dict, **kwargs
@@ -79,6 +119,7 @@ class OpenAIClient(LLMClient):
         embedding_model: str = "text-embedding-3-small",
         embedding_dim: int = 1024,
     ):
+        super().__init__()
         self.api_key = api_key
         self.model = model
         self.base_url = base_url.rstrip("/")
@@ -402,6 +443,8 @@ class OllamaClient(LLMClient):
         timeout: int = 120,
         embedding_dim: int = 1024,
     ):
+        super().__init__()
+        self._tool_calling_supported = False
         self.model = model
         self.host = host.rstrip("/")
         self.timeout = timeout

@@ -44,6 +44,14 @@ async def _complete_with_tools(
     """调用LLM的tool_use接口，失败时返回None"""
     try:
         result = await llm_client.complete_with_tools(messages, tools, **kwargs)
+        if result is not None:
+            if "tool_calls" in result:
+                logger.debug(
+                    "complete_with_tools returned %d tool calls",
+                    len(result["tool_calls"]),
+                )
+            elif "content" in result:
+                logger.debug("complete_with_tools returned content (%d chars)", len(result["content"]))
         return result
     except Exception as e:
         logger.warning("complete_with_tools error: %s", e)

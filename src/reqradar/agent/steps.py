@@ -163,8 +163,14 @@ async def step_extract(context: AnalysisContext, llm_client, tool_registry=None,
         terminology_section = _build_terminology_section(context.memory_data)
         project_context_section = _build_project_context_section(context.memory_data)
 
+        content = context.requirement_text
+        if len(content) > 8000:
+            head = content[:6000]
+            tail = content[-2000:]
+            content = head + "\n\n... [中间内容省略] ...\n\n" + tail
+
         user_prompt = EXTRACT_PROMPT.format(
-            content=context.requirement_text[:4000],
+            content=content,
             terminology_section=terminology_section,
             project_context_section=project_context_section,
         )
@@ -193,8 +199,14 @@ async def step_extract(context: AnalysisContext, llm_client, tool_registry=None,
         understanding.summary = result.get("summary", "")
         understanding.keywords = result.get("keywords", [])
         understanding.business_goals = result.get("business_goals", "")
-        understanding.priority_suggestion = result.get("priority_suggestion", "")
-        understanding.priority_reason = result.get("priority_reason", "")
+
+        raw_priority = result.get("priority_suggestion", "")
+        if isinstance(raw_priority, dict):
+            understanding.priority_suggestion = raw_priority.get("suggestion", raw_priority.get("level", str(raw_priority)))
+            understanding.priority_reason = result.get("priority_reason", "") or raw_priority.get("reason", "")
+        else:
+            understanding.priority_suggestion = str(raw_priority) if raw_priority else ""
+            understanding.priority_reason = result.get("priority_reason", "")
 
         for t in result.get("terms", []):
             if isinstance(t, dict) and t.get("term"):
@@ -315,14 +327,36 @@ async def step_map_keywords(context: AnalysisContext, llm_client, tool_registry=
         return {}
 
 
+_COMMON_SYNONYMS = {
+    "配置": ["config", "configuration", "settings", "conf", "env"],
+    "数据库": ["database", "db", "models", "schema", "migration", "orm"],
+    "认证": ["auth", "authentication", "jwt", "token", "login", "credential"],
+    "授权": ["authorization", "permission", "role", "access", "acl"],
+    "API": ["api", "endpoint", "route", "router", "view"],
+    "前端": ["frontend", "ui", "component", "page", "view"],
+    "后端": ["backend", "server", "service", "handler"],
+    "部署": ["deploy", "docker", "ci", "cd", "pipeline"],
+    "日志": ["log", "logging", "logger", "audit"],
+    "缓存": ["cache", "redis", "memo", "store"],
+    "用户": ["user", "account", "profile", "member"],
+    "项目": ["project", "repo", "repository"],
+    "分析": ["analysis", "analyze", "report", "assessment"],
+    "报告": ["report", "render", "template", "output"],
+    "索引": ["index", "search", "vector", "embedding"],
+}
+
+
 def _expand_keywords(original_terms: list[str], mappings: dict) -> list[str]:
-    """扩展关键词列表"""
+    """扩展关键词列表，包括LLM映射和常见同义词"""
     expanded = set(original_terms)
 
     for term in original_terms:
         if term in mappings:
             for code_term in mappings[term]:
                 expanded.add(code_term)
+        if term in _COMMON_SYNONYMS:
+            for syn in _COMMON_SYNONYMS[term]:
+                expanded.add(syn)
 
     return list(expanded)
 
@@ -488,6 +522,46 @@ def _populate_analysis_from_result(analysis: DeepAnalysis, result: dict):
         analysis.impact_modules = result["impact_modules"]
 
 
+def _fallback_code_matching(context, code_graph) -> list[dict]:
+    """基于关键词匹配 + 导入依赖追踪的代码命中"""
+    keywords = context.expanded_keywords if context.expanded_keywords else (
+        context.understanding.keywords if context.understanding else []
+    )
+    if not code_graph or not keywords:
+        return []
+
+    matched_files = code_graph.find_symbols(keywords)
+    impact_modules = [
+        {
+            "path": f.path,
+            "symbols": [s.name for s in f.symbols[:5]],
+            "relevance": "unknown",
+            "relevance_reason": "基于关键词匹配",
+            "suggested_changes": "",
+        }
+        for f in matched_files[:10]
+    ]
+
+    direct_paths = {f.path for f in matched_files}
+    all_dependents = []
+    for f in matched_files[:5]:
+        dependents = code_graph.find_dependents(f.path, max_depth=1)
+        for dep in dependents:
+            if dep.path not in direct_paths:
+                all_dependents.append(dep)
+                direct_paths.add(dep.path)
+    for dep in all_dependents[:5]:
+        impact_modules.append({
+            "path": dep.path,
+            "symbols": [s.name for s in dep.symbols[:5]],
+            "relevance": "low",
+            "relevance_reason": "基于导入依赖追踪",
+            "suggested_changes": "",
+        })
+
+    return impact_modules
+
+
 async def _run_analyze_fallback(context, code_graph, llm_client) -> dict:
     """降级：不使用工具调用的原始分析逻辑"""
     understanding = context.understanding
@@ -509,6 +583,21 @@ async def _run_analyze_fallback(context, code_graph, llm_client) -> dict:
     else:
         modules_text = "无匹配代码模块（请根据项目知识推断）"
 
+    keywords = context.expanded_keywords if context.expanded_keywords else (
+        understanding.keywords if understanding else []
+    )
+    code_hits_text = ""
+    if code_graph and keywords:
+        matched = code_graph.find_symbols(keywords)
+        if matched:
+            code_hits = []
+            for f in matched[:8]:
+                syms = ", ".join(s.name for s in f.symbols[:5])
+                code_hits.append(f"- {f.path}: {syms}")
+            code_hits_text = "关键词代码命中：\n" + "\n".join(code_hits)
+        else:
+            code_hits_text = "关键词代码命中：无直接匹配"
+
     project_context_section = _build_project_context_section(memory_data)
     terminology_section = _build_terminology_section(memory_data)
 
@@ -519,7 +608,8 @@ async def _run_analyze_fallback(context, code_graph, llm_client) -> dict:
                 summary=understanding.summary if understanding else "",
                 project_context_section=project_context_section,
                 terminology_section=terminology_section,
-            ),
+            )
+            + f"\n\n## 代码命中信息（工具调用不可用时的补充）\n{modules_text}\n{code_hits_text}",
         },
     ]
     result = await _call_llm_structured(llm_client, messages, ANALYZE_SCHEMA, max_tokens=2048)
@@ -571,21 +661,7 @@ async def step_analyze(
             logger.warning("Tool-use analyze failed, using fallback: %s", e)
 
         if not analysis.impact_modules:
-            keywords = context.expanded_keywords if context.expanded_keywords else (
-                context.understanding.keywords if context.understanding else []
-            )
-            if code_graph and keywords:
-                matched_files = code_graph.find_symbols(keywords)
-                analysis.impact_modules = [
-                    {
-                        "path": f.path,
-                        "symbols": [s.name for s in f.symbols[:5]],
-                        "relevance": "unknown",
-                        "relevance_reason": "基于关键词匹配",
-                        "suggested_changes": "",
-                    }
-                    for f in matched_files[:10]
-                ]
+            analysis.impact_modules = _fallback_code_matching(context, code_graph)
 
     elif llm_client and context.memory_data and context.understanding:
         try:
@@ -595,21 +671,7 @@ async def step_analyze(
             logger.warning("LLM analyze failed, using defaults: %s", e)
     else:
         if not analysis.impact_modules:
-            keywords = context.expanded_keywords if context.expanded_keywords else (
-                context.understanding.keywords if context.understanding else []
-            )
-            if code_graph and keywords:
-                matched_files = code_graph.find_symbols(keywords)
-                analysis.impact_modules = [
-                    {
-                        "path": f.path,
-                        "symbols": [s.name for s in f.symbols[:5]],
-                        "relevance": "unknown",
-                        "relevance_reason": "基于关键词匹配",
-                        "suggested_changes": "",
-                    }
-                    for f in matched_files[:10]
-                ]
+            analysis.impact_modules = _fallback_code_matching(context, code_graph)
 
     if git_analyzer and analysis.impact_modules:
         try:
@@ -705,7 +767,7 @@ async def step_generate(context: AnalysisContext, llm_client, tool_registry=None
                 llm_client, messages, GENERATE_SCHEMA, max_tokens=2048
             )
 
-        return GeneratedContent(
+        generated = GeneratedContent(
             requirement_understanding=result.get("requirement_understanding", ""),
             executive_summary=result.get("executive_summary", ""),
             technical_summary=result.get("technical_summary", ""),
@@ -714,6 +776,15 @@ async def step_generate(context: AnalysisContext, llm_client, tool_registry=None
             risk_narrative=result.get("risk_narrative", ""),
             implementation_suggestion=result.get("implementation_suggestion", ""),
         )
+
+        empty_fields = []
+        for field_name in ("executive_summary", "technical_summary", "impact_narrative", "risk_narrative"):
+            if not getattr(generated, field_name).strip():
+                empty_fields.append(field_name)
+        if empty_fields:
+            logger.warning("Generate step produced empty fields: %s", ", ".join(empty_fields))
+
+        return generated
     except (json.JSONDecodeError, LLMException, AttributeError, KeyError, TypeError) as e:
         logger.warning("LLM generate failed, using fallback: %s", e)
         return GeneratedContent(

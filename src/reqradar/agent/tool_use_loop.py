@@ -30,6 +30,25 @@ async def run_tool_use_loop(
         if tools
         else {}
     )
+
+    if not tool_schemas:
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
+        result = await _call_llm_structured(llm_client, messages, output_schema, **kwargs)
+        return result or {}
+
+    supported = await llm_client.supports_tool_calling()
+    if not supported:
+        logger.info("Model does not support tool calling, using complete_structured fallback")
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
+        result = await _call_llm_structured(llm_client, messages, output_schema, **kwargs)
+        return result or {}
+
     messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_prompt},

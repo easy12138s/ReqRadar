@@ -1,5 +1,6 @@
 """向量存储 - Chroma 嵌入式"""
 
+import json
 import logging
 import uuid
 from abc import ABC, abstractmethod
@@ -17,6 +18,43 @@ except ImportError:
     CHROMA_AVAILABLE = False
     chromadb = None
     sentence_transformers = None
+
+
+def _get_index_version_path(persist_directory: Path) -> Path:
+    return persist_directory / "version.json"
+
+
+def _write_index_version(persist_directory: Path):
+    version_path = _get_index_version_path(persist_directory)
+    try:
+        version_info = {
+            "chromadb_version": chromadb.__version__ if chromadb else "unknown",
+        }
+        with open(version_path, "w", encoding="utf-8") as f:
+            json.dump(version_info, f)
+    except Exception:
+        logger.warning("Failed to write index version file")
+
+
+def _check_index_compatibility(persist_directory: Path) -> bool:
+    version_path = _get_index_version_path(persist_directory)
+    if not version_path.exists():
+        return True
+    try:
+        with open(version_path, encoding="utf-8") as f:
+            info = json.load(f)
+        indexed_version = info.get("chromadb_version", "unknown")
+        current_version = chromadb.__version__ if chromadb else "unknown"
+        if indexed_version != current_version:
+            logger.warning(
+                "ChromaDB version mismatch: index created with %s, current is %s. "
+                "Consider rebuilding the index: rm -rf %s && reqradar index",
+                indexed_version, current_version, persist_directory,
+            )
+            return False
+    except Exception:
+        pass
+    return True
 
 
 @dataclass
@@ -71,12 +109,21 @@ class ChromaVectorStore(VectorStore):
         self.persist_directory = Path(persist_directory)
         self.persist_directory.mkdir(parents=True, exist_ok=True)
 
-        self.client = chromadb.PersistentClient(
-            path=str(self.persist_directory),
-            settings=chromadb.Settings(
-                anonymized_telemetry=False,
-            ),
-        )
+        _check_index_compatibility(self.persist_directory)
+
+        try:
+            self.client = chromadb.PersistentClient(
+                path=str(self.persist_directory),
+                settings=chromadb.Settings(
+                    anonymized_telemetry=False,
+                ),
+            )
+        except Exception as e:
+            raise ImportError(
+                f"ChromaDB index is incompatible with current version. "
+                f"Please rebuild: rm -rf {self.persist_directory} && reqradar index. "
+                f"Original error: {e}"
+            ) from e
 
         self.embedding_model = sentence_transformers.SentenceTransformer(embedding_model)
 
@@ -130,4 +177,5 @@ class ChromaVectorStore(VectorStore):
 
     def persist(self):
         """持久化数据到磁盘（PersistentClient 自动持久化，此方法保留接口兼容）"""
+        _write_index_version(self.persist_directory)
         logger.info("Vector store persisted to %s", self.persist_directory)

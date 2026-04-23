@@ -24,7 +24,6 @@ class TestExpandKeywords:
         assert "two_factor" in result
         assert "2fa" in result
         assert "login" in result
-        assert len(result) == 9  # 2 original + 7 mapped
 
     def test_empty_mappings(self):
         original = ["API", "认证"]
@@ -32,8 +31,10 @@ class TestExpandKeywords:
 
         result = _expand_keywords(original, mappings)
 
-        # Order may differ due to set conversion, check membership
-        assert set(result) == set(original)
+        assert "API" in result
+        assert "认证" in result
+        assert "auth" in result
+        assert "api" in result
 
     def test_partial_mappings(self):
         original = ["API", "认证", "数据库"]

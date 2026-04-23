@@ -52,15 +52,64 @@ class CodeGraph:
 
     def find_symbols(self, keywords: list[str]) -> list[CodeFile]:
         results = []
+        seen_paths = set()
         for f in self.files:
             for kw in keywords:
-                if kw.lower() in f.path.lower():
-                    results.append(f)
+                kw_lower = kw.lower()
+                if kw_lower in f.path.lower():
+                    if f.path not in seen_paths:
+                        results.append(f)
+                        seen_paths.add(f.path)
                     break
                 for sym in f.symbols:
-                    if kw.lower() in sym.name.lower():
-                        results.append(f)
+                    if kw_lower in sym.name.lower():
+                        if f.path not in seen_paths:
+                            results.append(f)
+                            seen_paths.add(f.path)
                         break
+                for imp in f.imports:
+                    if kw_lower in imp.lower():
+                        if f.path not in seen_paths:
+                            results.append(f)
+                            seen_paths.add(f.path)
+                        break
+        return results
+
+    def find_dependents(self, target_path: str, max_depth: int = 1) -> list[CodeFile]:
+        """查找导入了目标路径的文件（反向依赖追踪）
+
+        Args:
+            target_path: 目标模块路径（如 "infrastructure/config"）
+            max_depth: 追踪深度（1=直接依赖，2=间接依赖）
+        """
+        results = []
+        seen_paths = set()
+        target_stem = target_path.replace("/", ".").replace("\\", ".").rstrip(".py")
+
+        queue = [target_stem]
+        visited = set()
+
+        for _ in range(max_depth):
+            next_queue = []
+            for stem in queue:
+                if stem in visited:
+                    continue
+                visited.add(stem)
+                stem_lower = stem.lower()
+
+                for f in self.files:
+                    if f.path in seen_paths:
+                        continue
+                    for imp in f.imports:
+                        imp_lower = imp.lower()
+                        if stem_lower in imp_lower or stem_lower.split(".")[-1] in imp_lower:
+                            results.append(f)
+                            seen_paths.add(f.path)
+                            file_stem = f.path.replace("/", ".").replace("\\", ".").replace(".py", "")
+                            next_queue.append(file_stem)
+                            break
+            queue = next_queue
+
         return results
 
 

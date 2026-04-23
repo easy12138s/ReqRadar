@@ -139,9 +139,13 @@ def _resolve_dict_env_vars(d: dict) -> dict:
 
 
 def load_config(config_path: Optional[Path] = None) -> Config:
-    """加载配置文件"""
+    """加载配置文件，支持回退路径"""
     if config_path is None:
         config_path = Path.cwd() / ".reqradar.yaml"
+        if not config_path.exists():
+            fallback = Path.cwd() / ".reqradar" / "config.yaml"
+            if fallback.exists():
+                config_path = fallback
 
     if not config_path.exists():
         return Config()

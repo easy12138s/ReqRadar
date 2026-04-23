@@ -70,7 +70,11 @@ class ReportRenderer:
         else:
             impact_scope = "未匹配到直接代码"
 
-        priority = understanding.priority_suggestion if understanding and understanding.priority_suggestion else "未定"
+        raw_priority = understanding.priority_suggestion if understanding and understanding.priority_suggestion else "未定"
+        if isinstance(raw_priority, dict):
+            priority = raw_priority.get("suggestion", raw_priority.get("level", str(raw_priority)))
+        else:
+            priority = raw_priority
         priority_reason = understanding.priority_reason if understanding else ""
 
         project_profile = None
