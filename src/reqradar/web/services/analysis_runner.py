@@ -21,6 +21,18 @@ from reqradar.web.websocket import manager as ws_manager
 logger = logging.getLogger("reqradar.web.services.analysis_runner")
 
 
+async def _load_template_definition(db, template_id, template_loader):
+    from reqradar.web.models import ReportTemplate
+
+    result = await db.execute(
+        select(ReportTemplate).where(ReportTemplate.id == template_id)
+    )
+    tmpl = result.scalar_one_or_none()
+    if tmpl:
+        return template_loader.load_from_db_data(tmpl.definition, tmpl.render_template)
+    return None
+
+
 class AnalysisRunner:
     def __init__(self, max_concurrent: int = 2):
         self._semaphore = asyncio.Semaphore(max_concurrent)
@@ -100,6 +112,26 @@ class AnalysisRunner:
                 if project.repo_path else config.memory.storage_path
             )
             memory_data = memory_manager.load() if config.memory.enabled else None
+
+            from reqradar.modules.memory_manager import AnalysisMemoryManager
+
+            analysis_memory = AnalysisMemoryManager(
+                project_id=project.id,
+                user_id=task.user_id,
+                project_storage_path=str(Path(project.repo_path) / config.memory.project_storage_path)
+                if project.repo_path else config.memory.project_storage_path,
+                user_storage_path=str(Path(project.repo_path) / config.memory.user_storage_path)
+                if project.repo_path else config.memory.user_storage_path,
+                memory_enabled=config.memory.enabled,
+            )
+
+            from reqradar.infrastructure.template_loader import TemplateLoader
+
+            template_loader = TemplateLoader()
+            if config.reporting.default_template_id:
+                template_def = await _load_template_definition(db, config.reporting.default_template_id, template_loader)
+            else:
+                template_def = None
 
             cm = ConfigManager(db, config)
 
@@ -214,7 +246,7 @@ class AnalysisRunner:
                 on_step_complete=on_step_complete,
             )
 
-            renderer = ReportRenderer(config)
+            renderer = ReportRenderer(config, template_definition=template_def)
             generate_result = result_context.get_result("generate")
             generated_content = (
                 generate_result.data if generate_result and generate_result.success else None
