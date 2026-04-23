@@ -40,3 +40,17 @@ def test_analysis_config_tool_use_custom():
     assert config.tool_use_max_rounds == 5
     assert config.tool_use_max_tokens == 3000
     assert config.tool_use_enabled is False
+
+
+def test_agent_config_defaults():
+    from reqradar.infrastructure.config import AgentConfig, ReportingConfig
+
+    agent = AgentConfig()
+    assert agent.mode == "legacy"
+    assert agent.max_steps == 15
+    assert agent.max_steps_quick == 10
+    assert agent.max_steps_deep == 25
+    assert agent.version_limit == 10
+
+    reporting = ReportingConfig()
+    assert reporting.default_template_id == 1

@@ -48,7 +48,9 @@ class VisionConfig(BaseModel):
 
 class MemoryConfig(BaseModel):
     enabled: bool = Field(default=True, description="Enable project memory")
-    storage_path: str = Field(default=".reqradar/memory", description="Memory storage directory")
+    storage_path: str = Field(default=".reqradar/memory", description="Memory storage directory (legacy)")
+    project_storage_path: str = Field(default=".reqradar/memories", description="Project memory storage path")
+    user_storage_path: str = Field(default=".reqradar/user_memories", description="User memory storage path")
 
 
 class LoaderConfig(BaseModel):
@@ -74,6 +76,22 @@ class AnalysisConfig(BaseModel):
     tool_use_enabled: bool = Field(default=True, description="启用LLM工具调用循环")
     tool_use_max_rounds: int = Field(default=15, description="每步最大工具调用轮次")
     tool_use_max_tokens: int = Field(default=8000, description="工具结果的总token预算")
+
+
+class AgentConfig(BaseModel):
+    mode: str = Field(default="legacy", description="Analysis mode: legacy (fixed pipeline) or react (ReAct agent)")
+    max_steps: int = Field(default=15, description="Max agent steps for standard depth")
+    max_steps_quick: int = Field(default=10, description="Max agent steps for quick depth")
+    max_steps_deep: int = Field(default=25, description="Max agent steps for deep depth")
+    version_limit: int = Field(default=10, description="Max report versions per task")
+    sensitive_file_patterns: list[str] = Field(
+        default_factory=lambda: [".env", ".env.*", "*.key", "*.pem", "*.crt", "secrets/", "credentials/", ".aws/", ".ssh/"],
+        description="Sensitive file patterns to block agent access"
+    )
+
+
+class ReportingConfig(BaseModel):
+    default_template_id: int = Field(default=1, description="Default report template ID")
 
 
 class GitConfig(BaseModel):
@@ -110,8 +128,10 @@ class Config(BaseModel):
     loader: LoaderConfig = Field(default_factory=LoaderConfig)
     index: IndexConfig = Field(default_factory=IndexConfig)
     analysis: AnalysisConfig = Field(default_factory=AnalysisConfig)
+    agent: AgentConfig = Field(default_factory=AgentConfig)
     git: GitConfig = Field(default_factory=GitConfig)
     output: OutputConfig = Field(default_factory=OutputConfig)
+    reporting: ReportingConfig = Field(default_factory=ReportingConfig)
     log: LogConfig = Field(default_factory=LogConfig)
     web: WebConfig = Field(default_factory=WebConfig)
 
