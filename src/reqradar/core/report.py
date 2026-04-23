@@ -28,8 +28,9 @@ def _risk_level_to_badge(risk_level: str) -> str:
 
 class ReportRenderer:
 
-    def __init__(self, config: Optional[Config] = None):
+    def __init__(self, config: Optional[Config] = None, template_definition=None):
         self.config = config
+        self.template_definition = template_definition
         template_path = DEFAULT_TEMPLATE_PATH
         if config and config.output.report_template and config.output.report_template != "default":
             custom_path = Path(config.output.report_template)
