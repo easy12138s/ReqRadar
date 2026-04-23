@@ -40,7 +40,7 @@ export function Projects() {
       const data = await getProjects();
       setProjects(data);
     } catch {
-      message.error('Failed to load projects');
+      message.error('加载项目列表失败');
     } finally {
       setLoading(false);
     }
@@ -54,12 +54,12 @@ export function Projects() {
     setSubmitting(true);
     try {
       await createProject(values);
-      message.success('Project created');
+      message.success('项目创建成功');
       setModalVisible(false);
       form.resetFields();
       fetchProjects();
     } catch {
-      message.error('Failed to create project');
+      message.error('创建项目失败');
     } finally {
       setSubmitting(false);
     }
@@ -84,20 +84,20 @@ export function Projects() {
         }}
       >
         <Title level={3} style={{ margin: 0 }}>
-          Projects
+          项目
         </Title>
         <Button
           type="primary"
           icon={<PlusOutlined />}
           onClick={() => setModalVisible(true)}
         >
-          New Project
+          新建项目
         </Button>
       </div>
 
       {projects.length === 0 ? (
         <Empty
-          description="No projects yet"
+          description="暂无项目"
           image={Empty.PRESENTED_IMAGE_SIMPLE}
         >
           <Button
@@ -105,7 +105,7 @@ export function Projects() {
             icon={<PlusOutlined />}
             onClick={() => setModalVisible(true)}
           >
-            Create Project
+            创建项目
           </Button>
         </Empty>
       ) : (
@@ -138,7 +138,7 @@ export function Projects() {
       )}
 
       <Modal
-        title="Create Project"
+        title="新建项目"
         open={modalVisible}
         onCancel={() => {
           setModalVisible(false);
@@ -148,25 +148,25 @@ export function Projects() {
       >
         <Form form={form} onFinish={handleCreate} layout="vertical">
           <Form.Item
-            label="Name"
+            label="项目名称"
             name="name"
-            rules={[{ required: true, message: 'Please enter project name' }]}
+            rules={[{ required: true, message: '请输入项目名称' }]}
           >
-            <Input placeholder="Project name" />
+            <Input placeholder="请输入项目名称" />
           </Form.Item>
           <Form.Item
-            label="Description"
+            label="项目描述"
             name="description"
-            rules={[{ required: true, message: 'Please enter description' }]}
+            rules={[{ required: true, message: '请输入项目描述' }]}
           >
-            <Input.TextArea rows={3} placeholder="Project description" />
+            <Input.TextArea rows={3} placeholder="请输入项目描述" />
           </Form.Item>
           <Form.Item
-            label="Language"
+            label="编程语言"
             name="language"
-            rules={[{ required: true, message: 'Please select language' }]}
+            rules={[{ required: true, message: '请选择编程语言' }]}
           >
-            <Select placeholder="Select language">
+            <Select placeholder="请选择编程语言">
               <Option value="python">Python</Option>
               <Option value="javascript">JavaScript</Option>
               <Option value="typescript">TypeScript</Option>
@@ -175,15 +175,15 @@ export function Projects() {
               <Option value="rust">Rust</Option>
               <Option value="csharp">C#</Option>
               <Option value="cpp">C++</Option>
-              <Option value="other">Other</Option>
+              <Option value="other">其他</Option>
             </Select>
           </Form.Item>
-          <Form.Item label="Framework" name="framework">
-            <Input placeholder="Framework (optional)" />
+          <Form.Item label="框架" name="framework">
+            <Input placeholder="框架（可选）" />
           </Form.Item>
           <Form.Item>
             <Button type="primary" htmlType="submit" loading={submitting} block>
-              Create
+              创建
             </Button>
           </Form.Item>
         </Form>

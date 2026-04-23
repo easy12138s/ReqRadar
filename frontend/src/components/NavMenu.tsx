@@ -15,22 +15,22 @@ const items = [
   {
     key: '/',
     icon: <DashboardOutlined />,
-    label: 'Dashboard',
+    label: '工作台',
   },
   {
     key: '/projects',
     icon: <ProjectOutlined />,
-    label: 'Projects',
+    label: '项目',
   },
   {
     key: '/analyses',
     icon: <FileSearchOutlined />,
-    label: 'Analyses',
+    label: '分析',
   },
   {
     key: '/analyses/submit',
     icon: <HistoryOutlined />,
-    label: 'New Analysis',
+    label: '新建分析',
   },
 ];
 

@@ -94,7 +94,7 @@ export function AppLayout() {
                 {
                   key: 'logout',
                   icon: <LogoutOutlined />,
-                  label: 'Logout',
+                  label: '退出登录',
                   onClick: logout,
                 },
               ],
@@ -102,7 +102,7 @@ export function AppLayout() {
             placement="bottomRight"
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-              <span style={{ color: '#595959' }}>{user?.username || user?.email}</span>
+              <span style={{ color: '#595959' }}>{user?.display_name || user?.email}</span>
               <Avatar icon={<UserOutlined />} size="small" />
             </div>
           </Dropdown>

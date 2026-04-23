@@ -35,7 +35,7 @@ export function AnalysisSubmit() {
         const data = await getProjects();
         setProjects(data);
       } catch {
-        message.error('Failed to load projects');
+        message.error('加载项目列表失败');
       } finally {
         setLoading(false);
       }
@@ -47,10 +47,10 @@ export function AnalysisSubmit() {
     setSubmitting(true);
     try {
       const task = await createAnalysis(values);
-      message.success('Analysis submitted');
+      message.success('分析任务已提交');
       navigate(`/analyses/${task.id}`);
     } catch {
-      message.error('Failed to submit analysis');
+      message.error('提交分析失败');
     } finally {
       setSubmitting(false);
     }
@@ -59,11 +59,11 @@ export function AnalysisSubmit() {
   const handleFileUpload = async (file: File) => {
     const projectId = textForm.getFieldValue('project_id');
     if (!projectId) {
-      message.error('Please select a project first');
+      message.error('请先选择项目');
       throw new Error('No project selected');
     }
     const task = await uploadAnalysis(projectId, file);
-    message.success('File uploaded and analysis started');
+    message.success('文件上传成功，分析已开始');
     navigate(`/analyses/${task.id}`);
   };
 
@@ -77,9 +77,9 @@ export function AnalysisSubmit() {
 
   if (projects.length === 0) {
     return (
-      <Empty description="Create a project first">
+      <Empty description="请先创建项目">
         <Button type="primary" onClick={() => navigate('/projects')}>
-          Go to Projects
+          前往项目页
         </Button>
       </Empty>
     );
@@ -88,7 +88,7 @@ export function AnalysisSubmit() {
   const tabItems = [
     {
       key: 'text',
-      label: 'Text Input',
+      label: '文本输入',
       children: (
         <Form
           form={textForm}
@@ -96,11 +96,11 @@ export function AnalysisSubmit() {
           layout="vertical"
         >
           <Form.Item
-            label="Project"
+            label="项目"
             name="project_id"
-            rules={[{ required: true, message: 'Please select a project' }]}
+            rules={[{ required: true, message: '请选择项目' }]}
           >
-            <Select placeholder="Select project">
+            <Select placeholder="请选择项目">
               {projects.map((p) => (
                 <Option key={p.id} value={p.id}>
                   {p.name}
@@ -109,13 +109,13 @@ export function AnalysisSubmit() {
             </Select>
           </Form.Item>
           <Form.Item
-            label="Requirements Text"
+            label="需求文本"
             name="text"
-            rules={[{ required: true, message: 'Please enter requirements text' }]}
+            rules={[{ required: true, message: '请输入需求文本' }]}
           >
             <TextArea
               rows={12}
-              placeholder="Paste your requirements document here..."
+              placeholder="请将需求文档内容粘贴到此处..."
               showCount
               maxLength={50000}
             />
@@ -127,7 +127,7 @@ export function AnalysisSubmit() {
               loading={submitting}
               icon={<SendOutlined />}
             >
-              Submit Analysis
+              提交分析
             </Button>
           </Form.Item>
         </Form>
@@ -135,16 +135,16 @@ export function AnalysisSubmit() {
     },
     {
       key: 'file',
-      label: 'File Upload',
+      label: '文件上传',
       children: (
         <div>
           <Form form={textForm} layout="vertical">
             <Form.Item
-              label="Project"
+              label="项目"
               name="project_id"
-              rules={[{ required: true, message: 'Please select a project' }]}
+              rules={[{ required: true, message: '请选择项目' }]}
             >
-              <Select placeholder="Select project">
+              <Select placeholder="请选择项目">
                 {projects.map((p) => (
                   <Option key={p.id} value={p.id}>
                     {p.name}
@@ -165,7 +165,7 @@ export function AnalysisSubmit() {
   return (
     <div>
       <Title level={3} style={{ marginBottom: 24 }}>
-        New Analysis
+        新建分析
       </Title>
       <Card>
         <Tabs items={tabItems} />

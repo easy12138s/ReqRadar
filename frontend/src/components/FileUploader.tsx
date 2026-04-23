@@ -26,7 +26,7 @@ export function FileUploader({
   const beforeUpload = useCallback(
     (file: File) => {
       if (file.size > maxSize) {
-        message.error(`File must be smaller than ${maxSize / 1024 / 1024}MB`);
+        message.error(`文件大小不能超过 ${maxSize / 1024 / 1024}MB`);
         return Upload.LIST_IGNORE;
       }
       return false;
@@ -37,7 +37,7 @@ export function FileUploader({
   const handleUpload = useCallback(async () => {
     const file = fileList[0]?.originFileObj;
     if (!file) {
-      message.error('Please select a file');
+      message.error('请选择文件');
       return;
     }
 
@@ -45,9 +45,9 @@ export function FileUploader({
     try {
       await onUpload(file);
       setFileList([]);
-      message.success('Upload successful');
+      message.success('上传成功');
     } catch {
-      message.error('Upload failed');
+      message.error('上传失败');
     } finally {
       setUploading(false);
     }
@@ -67,9 +67,9 @@ export function FileUploader({
         <p className="ant-upload-drag-icon">
           <InboxOutlined />
         </p>
-        <p className="ant-upload-text">Click or drag file to this area to upload</p>
+        <p className="ant-upload-text">点击或拖拽文件到此区域上传</p>
         <p className="ant-upload-hint">
-          Supports {accept} files up to {maxSize / 1024 / 1024}MB
+          支持 {accept} 格式，最大 {maxSize / 1024 / 1024}MB
         </p>
       </Upload.Dragger>
       <Button
@@ -81,7 +81,7 @@ export function FileUploader({
         style={{ marginTop: 16 }}
         block
       >
-        {uploading ? 'Uploading' : 'Start Upload'}
+        {uploading ? '上传中...' : '开始上传'}
       </Button>
     </div>
   );

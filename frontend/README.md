@@ -1,73 +1,33 @@
-# React + TypeScript + Vite
+# ReqRadar Web 前端
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+基于 React 19 + TypeScript + Ant Design 5 + Vite 构建的 Web 界面。
 
-Currently, two official plugins are available:
+## 开发
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+cd frontend
+npm install
+npm run dev          # 开发服务器 (http://localhost:5173)
+npm run build        # 生产构建 → 输出到 ../src/reqradar/web/static/
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+开发时 API 和 WebSocket 请求通过 Vite 代理转发到 `http://localhost:8000`。
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## 项目结构
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
 ```
+frontend/src/
+├── api/          # Axios 请求封装（JWT 拦截器）
+├── components/   # 通用组件（NavMenu, StepProgress, RiskBadge, FileUploader）
+├── context/      # React Context（认证状态）
+├── layouts/      # 布局（侧边栏 + 头部）
+├── pages/        # 页面组件（懒加载）
+├── types/        # TypeScript 类型定义
+└── App.tsx       # 路由配置
+```
+
+## 注意事项
+
+- 页面组件使用 `React.lazy` 按需加载
+- 构建 base path 为 `/app/`，路由 basename 为 `/app`
+- 401 自动跳转到 `/app/login`

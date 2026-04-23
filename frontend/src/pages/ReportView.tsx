@@ -43,7 +43,7 @@ export function ReportView() {
         setReport(reportData);
         setMarkdown(mdData);
       } catch {
-        message.error('Failed to load report');
+        message.error('加载报告失败');
       } finally {
         setLoading(false);
       }
@@ -71,13 +71,13 @@ export function ReportView() {
   }
 
   if (!report) {
-    return <Empty description="Report not found" />;
+    return <Empty description="报告未找到" />;
   }
 
   const tocItems = [
-    { key: 'summary', href: '#summary', title: 'Summary' },
-    { key: 'findings', href: '#findings', title: 'Findings' },
-    { key: 'recommendations', href: '#recommendations', title: 'Recommendations' },
+    { key: 'summary', href: '#summary', title: '摘要' },
+    { key: 'findings', href: '#findings', title: '发现' },
+    { key: 'recommendations', href: '#recommendations', title: '建议' },
   ];
 
   return (
@@ -91,14 +91,14 @@ export function ReportView() {
         }}
       >
         <Title level={3} style={{ margin: 0 }}>
-          Report
+          分析报告
         </Title>
         <div>
           <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/analyses')} style={{ marginRight: 8 }}>
-            Back
+            返回
           </Button>
           <Button icon={<DownloadOutlined />} onClick={handleDownload}>
-            Download MD
+            下载 MD
           </Button>
         </div>
       </div>
@@ -106,7 +106,7 @@ export function ReportView() {
       <Card style={{ marginBottom: 24 }}>
         <Title level={4}>{report.title}</Title>
         <Paragraph type="secondary">
-          Generated on {new Date(report.created_at).toLocaleString()}
+          生成时间: {new Date(report.created_at).toLocaleString()}
         </Paragraph>
       </Card>
 
@@ -121,21 +121,21 @@ export function ReportView() {
                 key: 'rendered',
                 label: (
                   <span>
-                    <Html5Outlined /> Rendered
+                    <Html5Outlined /> 渲染视图
                   </span>
                 ),
                 children: (
                   <div>
                     <section id="summary">
-                      <Card title="Summary" style={{ marginBottom: 24 }}>
+                      <Card title="摘要" style={{ marginBottom: 24 }}>
                         <Paragraph>{report.summary}</Paragraph>
                       </Card>
                     </section>
 
                     <section id="findings">
-                      <Card title="Findings" style={{ marginBottom: 24 }}>
+                      <Card title="发现" style={{ marginBottom: 24 }}>
                         {report.findings.length === 0 ? (
-                          <Empty description="No findings" />
+                          <Empty description="暂无发现" />
                         ) : (
                           report.findings.map((finding) => (
                             <Card
@@ -147,7 +147,7 @@ export function ReportView() {
                             >
                               <Paragraph>{finding.description}</Paragraph>
                               <Paragraph type="secondary">
-                                <strong>Evidence:</strong> {finding.evidence}
+                                <strong>证据：</strong> {finding.evidence}
                               </Paragraph>
                             </Card>
                           ))
@@ -156,20 +156,20 @@ export function ReportView() {
                     </section>
 
                     <section id="recommendations">
-                      <Card title="Recommendations">
+                      <Card title="建议">
                         {report.recommendations.length === 0 ? (
-                          <Empty description="No recommendations" />
+                          <Empty description="暂无建议" />
                         ) : (
                           report.recommendations.map((rec) => (
                             <Card
                               key={rec.id}
                               type="inner"
-                              title={`Priority ${rec.priority}`}
+                              title={`优先级 ${rec.priority}`}
                               style={{ marginBottom: 16 }}
                             >
                               <Paragraph>{rec.description}</Paragraph>
                               <Paragraph type="secondary">
-                                <strong>Rationale:</strong> {rec.rationale}
+                                <strong>理由：</strong> {rec.rationale}
                               </Paragraph>
                             </Card>
                           ))
@@ -189,7 +189,7 @@ export function ReportView() {
                 children: (
                   <Card>
                     <div className="markdown-body">
-                      <ReactMarkdown>{markdown || '# Report not available in markdown'}</ReactMarkdown>
+                      <ReactMarkdown>{markdown || '# 报告暂无 Markdown 内容'}</ReactMarkdown>
                     </div>
                   </Card>
                 ),

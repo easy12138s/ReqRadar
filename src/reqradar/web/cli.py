@@ -1,3 +1,5 @@
+import asyncio
+
 import click
 import uvicorn
 
@@ -26,3 +28,51 @@ def serve(ctx, host, port, reload):
         factory=True,
         reload=reload,
     )
+
+
+@cli.command()
+@click.option("--email", prompt=True, help="Admin email address")
+@click.option("--password", prompt=True, hide_input=True, confirmation_prompt=True, help="Admin password")
+@click.option("--display-name", prompt=True, help="Admin display name")
+@click.pass_context
+def createsuperuser(ctx, email, password, display_name):
+    """Create a superuser (admin) account"""
+    import bcrypt
+    from sqlalchemy import select
+
+    from reqradar.web.database import Base, create_engine, create_session_factory
+    from reqradar.web.models import User
+
+    config = ctx.obj["config"]
+    web_config = config.web
+
+    engine = create_engine(web_config.database_url)
+
+    async def _create():
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+
+        session_factory = create_session_factory(engine)
+        async with session_factory() as session:
+            result = await session.execute(select(User).where(User.email == email))
+            existing = result.scalar_one_or_none()
+            if existing is not None:
+                click.echo(f"Error: User with email '{email}' already exists.")
+                await engine.dispose()
+                raise SystemExit(1)
+
+            password_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+            user = User(
+                email=email,
+                password_hash=password_hash,
+                display_name=display_name,
+                role="admin",
+            )
+            session.add(user)
+            await session.commit()
+            await session.refresh(user)
+            click.echo(f"Superuser '{display_name}' ({email}) created successfully with id={user.id}.")
+
+        await engine.dispose()
+
+    asyncio.run(_create())

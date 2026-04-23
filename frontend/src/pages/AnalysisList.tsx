@@ -36,13 +36,13 @@ const STATUS_COLORS: Record<AnalysisStatus, string> = {
 };
 
 const STATUS_LABELS: Record<AnalysisStatus, string> = {
-  pending: 'Pending',
-  queued: 'Queued',
-  extracting_requirements: 'Extracting',
-  analyzing_risks: 'Analyzing',
-  generating_report: 'Reporting',
-  completed: 'Completed',
-  failed: 'Failed',
+  pending: '等待中',
+  queued: '排队中',
+  extracting_requirements: '提取需求',
+  analyzing_risks: '风险分析',
+  generating_report: '生成报告',
+  completed: '已完成',
+  failed: '失败',
 };
 
 export function AnalysisList() {
@@ -58,7 +58,7 @@ export function AnalysisList() {
       const data = await getAnalyses();
       setAnalyses(data);
     } catch {
-      message.error('Failed to load analyses');
+      message.error('加载分析列表失败');
     } finally {
       setLoading(false);
     }
@@ -71,10 +71,10 @@ export function AnalysisList() {
   const handleRetry = async (id: string) => {
     try {
       await retryAnalysis(id);
-      message.success('Analysis retrying');
+      message.success('正在重试分析');
       fetchAnalyses();
     } catch {
-      message.error('Failed to retry analysis');
+      message.error('重试失败');
     }
   };
 
@@ -95,20 +95,20 @@ export function AnalysisList() {
       width: 80,
     },
     {
-      title: 'Preview',
+      title: '预览',
       dataIndex: 'input_preview',
       key: 'input_preview',
       ellipsis: true,
     },
     {
-      title: 'Type',
+      title: '类型',
       dataIndex: 'input_type',
       key: 'input_type',
       render: (v: string) => <Tag>{v}</Tag>,
       width: 80,
     },
     {
-      title: 'Status',
+      title: '状态',
       dataIndex: 'status',
       key: 'status',
       render: (status: AnalysisStatus) => (
@@ -117,7 +117,7 @@ export function AnalysisList() {
       width: 120,
     },
     {
-      title: 'Risk',
+      title: '风险',
       dataIndex: 'risk_level',
       key: 'risk_level',
       render: (level: RiskLevel, record: AnalysisTask) => (
@@ -126,14 +126,14 @@ export function AnalysisList() {
       width: 120,
     },
     {
-      title: 'Created',
+      title: '创建时间',
       dataIndex: 'created_at',
       key: 'created_at',
       render: (v: string) => new Date(v).toLocaleString(),
       width: 180,
     },
     {
-      title: 'Actions',
+      title: '操作',
       key: 'actions',
       render: (_: unknown, record: AnalysisTask) => (
         <Space>
@@ -144,7 +144,7 @@ export function AnalysisList() {
           />
           {record.status === 'failed' && (
             <Popconfirm
-              title="Retry this analysis?"
+              title="确认重试此分析？"
               onConfirm={() => handleRetry(record.id)}
             >
               <Button type="text" icon={<ReloadOutlined />} />
@@ -167,16 +167,16 @@ export function AnalysisList() {
         }}
       >
         <Title level={3} style={{ margin: 0 }}>
-          Analyses
+          分析列表
         </Title>
         <Button type="primary" onClick={() => navigate('/analyses/submit')}>
-          New Analysis
+          新建分析
         </Button>
       </div>
 
       <Space style={{ marginBottom: 16 }} wrap>
         <Input
-          placeholder="Search..."
+          placeholder="搜索..."
           prefix={<SearchOutlined />}
           value={searchText}
           onChange={(e) => setSearchText(e.target.value)}
@@ -188,14 +188,14 @@ export function AnalysisList() {
           onChange={setStatusFilter}
           style={{ width: 140 }}
         >
-          <Option value="all">All Statuses</Option>
-          <Option value="pending">Pending</Option>
-          <Option value="queued">Queued</Option>
-          <Option value="extracting_requirements">Extracting</Option>
-          <Option value="analyzing_risks">Analyzing</Option>
-          <Option value="generating_report">Reporting</Option>
-          <Option value="completed">Completed</Option>
-          <Option value="failed">Failed</Option>
+          <Option value="all">全部状态</Option>
+          <Option value="pending">等待中</Option>
+          <Option value="queued">排队中</Option>
+          <Option value="extracting_requirements">提取需求</Option>
+          <Option value="analyzing_risks">风险分析</Option>
+          <Option value="generating_report">生成报告</Option>
+          <Option value="completed">已完成</Option>
+          <Option value="failed">失败</Option>
         </Select>
       </Space>
 
@@ -204,7 +204,7 @@ export function AnalysisList() {
           <Spin size="large" />
         </div>
       ) : filtered.length === 0 ? (
-        <Empty description="No analyses found" />
+        <Empty description="暂无分析记录" />
       ) : (
         <Table
           dataSource={filtered}

@@ -55,7 +55,7 @@ export function ProjectDetail() {
       setMemory(memoryData);
       form.setFieldsValue(projectData);
     } catch {
-      message.error('Failed to load project');
+      message.error('加载项目失败');
     } finally {
       setLoading(false);
     }
@@ -72,9 +72,9 @@ export function ProjectDetail() {
       const updated = await updateProject(id, values);
       setProject(updated);
       setEditing(false);
-      message.success('Project updated');
+      message.success('项目更新成功');
     } catch {
-      message.error('Failed to update project');
+      message.error('更新项目失败');
     } finally {
       setSaving(false);
     }
@@ -89,7 +89,7 @@ export function ProjectDetail() {
   }
 
   if (!project) {
-    return <Empty description="Project not found" />;
+    return <Empty description="项目未找到" />;
   }
 
   const overviewContent = editing ? (
@@ -100,21 +100,21 @@ export function ProjectDetail() {
       initialValues={project}
     >
       <Form.Item
-        label="Name"
+        label="项目名称"
         name="name"
         rules={[{ required: true }]}
       >
         <Input />
       </Form.Item>
       <Form.Item
-        label="Description"
+        label="项目描述"
         name="description"
         rules={[{ required: true }]}
       >
         <Input.TextArea rows={4} />
       </Form.Item>
       <Form.Item
-        label="Language"
+        label="编程语言"
         name="language"
         rules={[{ required: true }]}
       >
@@ -127,15 +127,15 @@ export function ProjectDetail() {
           <Option value="rust">Rust</Option>
           <Option value="csharp">C#</Option>
           <Option value="cpp">C++</Option>
-          <Option value="other">Other</Option>
+          <Option value="other">其他</Option>
         </Select>
       </Form.Item>
-      <Form.Item label="Framework" name="framework">
+      <Form.Item label="框架" name="framework">
         <Input />
       </Form.Item>
       <Form.Item>
         <Button type="primary" htmlType="submit" loading={saving} icon={<SaveOutlined />}>
-          Save
+          保存
         </Button>
         <Button
           icon={<CloseOutlined />}
@@ -145,7 +145,7 @@ export function ProjectDetail() {
           }}
           style={{ marginLeft: 8 }}
         >
-          Cancel
+          取消
         </Button>
       </Form.Item>
     </Form>
@@ -153,24 +153,24 @@ export function ProjectDetail() {
     <div>
       <div style={{ marginBottom: 16 }}>
         <Button icon={<EditOutlined />} onClick={() => setEditing(true)}>
-          Edit
+          编辑
         </Button>
       </div>
       <Descriptions bordered column={1}>
-        <Descriptions.Item label="Name">{project.name}</Descriptions.Item>
-        <Descriptions.Item label="Description">
+        <Descriptions.Item label="项目名称">{project.name}</Descriptions.Item>
+        <Descriptions.Item label="项目描述">
           <Paragraph>{project.description}</Paragraph>
         </Descriptions.Item>
-        <Descriptions.Item label="Language">
+        <Descriptions.Item label="编程语言">
           <Tag color="blue">{project.language}</Tag>
         </Descriptions.Item>
-        <Descriptions.Item label="Framework">
+        <Descriptions.Item label="框架">
           {project.framework || '-'}
         </Descriptions.Item>
-        <Descriptions.Item label="Created">
+        <Descriptions.Item label="创建时间">
           {new Date(project.created_at).toLocaleString()}
         </Descriptions.Item>
-        <Descriptions.Item label="Updated">
+        <Descriptions.Item label="更新时间">
           {new Date(project.updated_at).toLocaleString()}
         </Descriptions.Item>
       </Descriptions>
@@ -180,95 +180,95 @@ export function ProjectDetail() {
   const tabItems = [
     {
       key: 'overview',
-      label: 'Overview',
+      label: '概览',
       children: overviewContent,
     },
     {
       key: 'memory',
-      label: 'Memory',
+      label: '知识库',
       children: (
         <Tabs
           items={[
             {
               key: 'terminology',
-              label: 'Terminology',
+              label: '术语',
               children: (
                 <Table<TermEntry>
                   dataSource={memory?.terminology || []}
                   rowKey="id"
                   pagination={false}
                   columns={[
-                    { title: 'Term', dataIndex: 'term', key: 'term' },
-                    { title: 'Definition', dataIndex: 'definition', key: 'definition' },
-                    { title: 'Context', dataIndex: 'context', key: 'context' },
+                    { title: '术语', dataIndex: 'term', key: 'term' },
+                    { title: '定义', dataIndex: 'definition', key: 'definition' },
+                    { title: '上下文', dataIndex: 'context', key: 'context' },
                   ]}
-                  locale={{ emptyText: 'No terminology entries' }}
+                  locale={{ emptyText: '暂无术语记录' }}
                 />
               ),
             },
             {
               key: 'modules',
-              label: 'Modules',
+              label: '模块',
               children: (
                 <Table<ModuleEntry>
                   dataSource={memory?.modules || []}
                   rowKey="id"
                   pagination={false}
                   columns={[
-                    { title: 'Name', dataIndex: 'name', key: 'name' },
-                    { title: 'Description', dataIndex: 'description', key: 'description' },
+                    { title: '名称', dataIndex: 'name', key: 'name' },
+                    { title: '描述', dataIndex: 'description', key: 'description' },
                     {
-                      title: 'Responsibilities',
+                      title: '职责',
                       dataIndex: 'responsibilities',
                       key: 'responsibilities',
                       render: (v: string[]) => v?.map((r) => <Tag key={r}>{r}</Tag>) || '-',
                     },
                   ]}
-                  locale={{ emptyText: 'No modules' }}
+                  locale={{ emptyText: '暂无模块记录' }}
                 />
               ),
             },
             {
               key: 'team',
-              label: 'Team',
+              label: '团队',
               children: (
                 <Table<TeamMember>
                   dataSource={memory?.team || []}
                   rowKey="id"
                   pagination={false}
                   columns={[
-                    { title: 'Name', dataIndex: 'name', key: 'name' },
-                    { title: 'Role', dataIndex: 'role', key: 'role' },
+                    { title: '姓名', dataIndex: 'name', key: 'name' },
+                    { title: '角色', dataIndex: 'role', key: 'role' },
                     {
-                      title: 'Expertise',
+                      title: '专长',
                       dataIndex: 'expertise',
                       key: 'expertise',
                       render: (v: string[]) => v?.map((e) => <Tag key={e}>{e}</Tag>) || '-',
                     },
                   ]}
-                  locale={{ emptyText: 'No team members' }}
+                  locale={{ emptyText: '暂无团队成员' }}
                 />
               ),
             },
             {
               key: 'history',
-              label: 'History',
+              label: '历史',
               children: (
                 <Table<HistoryEntry>
                   dataSource={memory?.history || []}
                   rowKey="id"
                   pagination={false}
                   columns={[
-                    { title: 'Event', dataIndex: 'event', key: 'event' },
-                    { title: 'Details', dataIndex: 'details', key: 'details' },
+                    { title: '事件', dataIndex: 'event', key: 'event' },
+                    { title: '详情', dataIndex: 'details', key: 'details' },
                     {
-                      title: 'Timestamp',
+                      title: '时间',
                       dataIndex: 'timestamp',
                       key: 'timestamp',
                       render: (v: string) => new Date(v).toLocaleString(),
                     },
                   ]}
-                  locale={{ emptyText: 'No history entries' }}
+                  locale={{ emptyText: '暂无历史记录' }}
                 />
               ),
             },

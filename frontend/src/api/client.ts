@@ -25,24 +25,24 @@ apiClient.interceptors.response.use(
   (response) => response,
   (error: AxiosError<{ detail?: string; message?: string }>) => {
     const status = error.response?.status;
-    const detail =
-      error.response?.data?.detail ||
-      error.response?.data?.message ||
-      error.message ||
-      'An error occurred';
 
     if (status === 401) {
       localStorage.removeItem('access_token');
-      window.location.href = '/login';
+      window.location.href = '/app/login';
     } else if (status === 403) {
-      message.error('You do not have permission to perform this action');
+      message.error('没有权限执行此操作');
     } else if (status === 422) {
-      message.error(`Validation error: ${detail}`);
+      message.error('请求参数错误');
     } else if (status && status >= 500) {
-      message.error('Server error. Please try again later.');
+      message.error('服务器错误，请稍后重试');
     } else if (!error.response) {
-      message.error('Network error. Please check your connection.');
+      message.error('网络错误，请检查网络连接');
     } else {
+      const detail =
+        error.response?.data?.detail ||
+        error.response?.data?.message ||
+        error.message ||
+        '发生错误';
       message.error(detail);
     }
 

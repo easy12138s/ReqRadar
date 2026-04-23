@@ -37,10 +37,10 @@ export function AnalysisProgress() {
       const data = await getAnalysis(id);
       setTask(data);
       if (data.status === 'failed') {
-        setError(data.error_message || 'Analysis failed');
+        setError(data.error_message || '分析失败');
       }
     } catch {
-      setError('Failed to load analysis');
+      setError('加载分析信息失败');
     } finally {
       setLoading(false);
     }
@@ -52,7 +52,7 @@ export function AnalysisProgress() {
 
   const handleComplete = () => {
     fetchTask();
-    message.success('Analysis completed');
+    message.success('分析已完成');
   };
 
   const handleError = (msg: string) => {
@@ -65,10 +65,10 @@ export function AnalysisProgress() {
     try {
       await retryAnalysis(id);
       setError(null);
-      message.success('Analysis retrying');
+      message.success('正在重试');
       fetchTask();
     } catch {
-      message.error('Failed to retry');
+      message.error('重试失败');
     }
   };
 
@@ -84,11 +84,11 @@ export function AnalysisProgress() {
     return (
       <Result
         status="error"
-        title="Error"
+        title="错误"
         subTitle={error}
         extra={
           <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/analyses')}>
-            Back to Analyses
+            返回分析列表
           </Button>
         }
       />
@@ -96,7 +96,7 @@ export function AnalysisProgress() {
   }
 
   if (!task) {
-    return <Empty description="Analysis not found" />;
+    return <Empty description="分析任务未找到" />;
   }
 
   const isComplete = task.status === 'completed';
@@ -113,12 +113,12 @@ export function AnalysisProgress() {
         }}
       >
         <Title level={3} style={{ margin: 0 }}>
-          Analysis #{task.id.slice(0, 8)}
+          分析 #{task.id.slice(0, 8)}
         </Title>
         <Space>
           {isFailed && (
             <Button icon={<ReloadOutlined />} onClick={handleRetry}>
-              Retry
+              重试
             </Button>
           )}
           {isComplete && (
@@ -127,29 +127,29 @@ export function AnalysisProgress() {
               icon={<FileTextOutlined />}
               onClick={() => navigate(`/reports/${task.id}`)}
             >
-              View Report
+              查看报告
             </Button>
           )}
           <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/analyses')}>
-            Back
+            返回
           </Button>
         </Space>
       </div>
 
       <Card style={{ marginBottom: 24 }}>
         <Descriptions column={2}>
-          <Descriptions.Item label="Status">
+          <Descriptions.Item label="状态">
             <Tag color={isComplete ? 'success' : isFailed ? 'error' : 'processing'}>
               {task.status}
             </Tag>
           </Descriptions.Item>
-          <Descriptions.Item label="Type">
+          <Descriptions.Item label="类型">
             <Tag>{task.input_type}</Tag>
           </Descriptions.Item>
-          <Descriptions.Item label="Risk">
+          <Descriptions.Item label="风险">
             <RiskBadge level={task.risk_level} score={task.risk_score} showScore />
           </Descriptions.Item>
-          <Descriptions.Item label="Created">
+          <Descriptions.Item label="创建时间">
             {new Date(task.created_at).toLocaleString()}
           </Descriptions.Item>
         </Descriptions>
@@ -167,15 +167,15 @@ export function AnalysisProgress() {
       {isComplete && (
         <Result
           status="success"
-          title="Analysis Complete"
-          subTitle="Your report is ready for review"
+          title="分析完成"
+          subTitle="报告已生成，可以查看"
           extra={
             <Button
               type="primary"
               icon={<FileTextOutlined />}
               onClick={() => navigate(`/reports/${task.id}`)}
             >
-              View Report
+              查看报告
             </Button>
           }
         />
@@ -184,11 +184,11 @@ export function AnalysisProgress() {
       {isFailed && (
         <Result
           status="error"
-          title="Analysis Failed"
-          subTitle={task.error_message || 'An error occurred during analysis'}
+          title="分析失败"
+          subTitle={task.error_message || '分析过程中发生错误'}
           extra={
             <Button icon={<ReloadOutlined />} onClick={handleRetry}>
-              Retry Analysis
+              重试分析
             </Button>
           }
         />

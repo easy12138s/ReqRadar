@@ -26,10 +26,10 @@ export function Login() {
     try {
       const response = await login(values);
       authLogin(response.access_token);
-      message.success('Login successful');
+      message.success('登录成功');
       navigate('/');
     } catch {
-      message.error('Login failed');
+      message.error('登录失败，请检查邮箱和密码');
     } finally {
       setLoading(false);
     }
@@ -37,26 +37,26 @@ export function Login() {
 
   const handleRegister = async (values: {
     email: string;
-    username: string;
+    display_name: string;
     password: string;
     confirmPassword: string;
   }) => {
     if (values.password !== values.confirmPassword) {
-      message.error('Passwords do not match');
+      message.error('两次输入的密码不一致');
       return;
     }
     setLoading(true);
     try {
       const response = await register({
         email: values.email,
-        username: values.username,
+        display_name: values.display_name,
         password: values.password,
       });
       authLogin(response.access_token);
-      message.success('Registration successful');
+      message.success('注册成功');
       navigate('/');
     } catch {
-      message.error('Registration failed');
+      message.error('注册失败，请稍后重试');
     } finally {
       setLoading(false);
     }
@@ -67,7 +67,7 @@ export function Login() {
       key: 'login',
       label: (
         <span>
-          <LoginOutlined /> Login
+          <LoginOutlined /> 登录
         </span>
       ),
       children: (
@@ -78,25 +78,25 @@ export function Login() {
           layout="vertical"
         >
           <Form.Item
-            label="Email"
+            label="邮箱"
             name="email"
             rules={[
-              { required: true, message: 'Please input your email' },
-              { type: 'email', message: 'Please enter a valid email' },
+              { required: true, message: '请输入邮箱' },
+              { type: 'email', message: '请输入有效的邮箱地址' },
             ]}
           >
-            <Input placeholder="Enter your email" />
+            <Input placeholder="请输入邮箱" />
           </Form.Item>
           <Form.Item
-            label="Password"
+            label="密码"
             name="password"
-            rules={[{ required: true, message: 'Please input your password' }]}
+            rules={[{ required: true, message: '请输入密码' }]}
           >
-            <Input.Password placeholder="Enter your password" />
+            <Input.Password placeholder="请输入密码" />
           </Form.Item>
           <Form.Item>
             <Button type="primary" htmlType="submit" loading={loading} block>
-              Login
+              登录
             </Button>
           </Form.Item>
         </Form>
@@ -106,7 +106,7 @@ export function Login() {
       key: 'register',
       label: (
         <span>
-          <UserAddOutlined /> Register
+          <UserAddOutlined /> 注册
         </span>
       ),
       children: (
@@ -117,41 +117,41 @@ export function Login() {
           layout="vertical"
         >
           <Form.Item
-            label="Email"
+            label="邮箱"
             name="email"
             rules={[
-              { required: true, message: 'Please input your email' },
-              { type: 'email', message: 'Please enter a valid email' },
+              { required: true, message: '请输入邮箱' },
+              { type: 'email', message: '请输入有效的邮箱地址' },
             ]}
           >
-            <Input placeholder="Enter your email" />
+            <Input placeholder="请输入邮箱" />
           </Form.Item>
           <Form.Item
-            label="Username"
-            name="username"
-            rules={[{ required: true, message: 'Please input your username' }]}
+            label="显示名称"
+            name="display_name"
+            rules={[{ required: true, message: '请输入显示名称' }]}
           >
-            <Input placeholder="Choose a username" />
+            <Input placeholder="请输入显示名称" />
           </Form.Item>
           <Form.Item
-            label="Password"
+            label="密码"
             name="password"
-            rules={[{ required: true, message: 'Please input your password' }]}
+            rules={[{ required: true, message: '请输入密码' }]}
           >
-            <Input.Password placeholder="Create a password" />
+            <Input.Password placeholder="请输入密码" />
           </Form.Item>
           <Form.Item
-            label="Confirm Password"
+            label="确认密码"
             name="confirmPassword"
             rules={[
-              { required: true, message: 'Please confirm your password' },
+              { required: true, message: '请确认密码' },
             ]}
           >
-            <Input.Password placeholder="Confirm your password" />
+            <Input.Password placeholder="请再次输入密码" />
           </Form.Item>
           <Form.Item>
             <Button type="primary" htmlType="submit" loading={loading} block>
-              Register
+              注册
             </Button>
           </Form.Item>
         </Form>
@@ -175,7 +175,7 @@ export function Login() {
             ReqRadar
           </Title>
           <Typography.Text type="secondary">
-            Requirements Analysis Platform
+            需求透视分析平台
           </Typography.Text>
         </div>
         <Tabs

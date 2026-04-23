@@ -76,6 +76,15 @@ reports/*
 # Embedding model cache
 .cache/
 
+# Database
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Frontend build output
+src/reqradar/web/static/
+
 # Root-level test scripts (contain env-specific config)
 /test_e2e.py
 /test_minimax_api.py
@@ -84,6 +93,9 @@ reports/*
 opencode.json
 .opencode/
 
-# Legacy docs
+# Legacy docs / development plans
 docs/PHASE3_PLAN.md
+docs/requirements/web-module.md
+docs/requirements/user-auth-enhancement.md
+docs/requirements/ide-integration.md
 docs/superpowers/

@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-04-23
+
+### Added
+
+- Web 模块：基于 FastAPI + SQLite + JWT 的后端 API 和 React + Ant Design 前端
+- CLI 命令 `reqradar serve`：启动 Web 服务（默认 0.0.0.0:8000）
+- CLI 命令 `reqradar createsuperuser`：创建管理员账号
+- REST API：注册/登录、项目 CRUD、分析任务提交/进度/重试、报告导出、知识库只读查询
+- WebSocket 实时进度推送
+- 项目级 CodeGraph + VectorStore 缓存（ProjectStore）
+- 异步分析调度器（AnalysisRunner + Semaphore 并发控制）
+- 服务启动时自动恢复 running 状态任务为 failed
+- `/health` 和 `/api/metrics` 端点
+- Docker 部署配置（Dockerfile + docker-compose.yml）
+- 前端 React SPA：登录/注册、项目管理、分析提交与进度、报告查看
+- 前端代码分割（React.lazy + Suspense）
+- 前端中文界面
+
+### Changed
+
+- `AnalysisContext` 等 17 个 dataclass 迁移为 Pydantic `BaseModel`
+- `Scheduler.run()` 新增 `on_step_start` / `on_step_complete` 回调参数
+- `report.py` 中 5 处 `__dict__` 替换为 `model_dump()`
+- 密码哈希从 passlib 切换为直接使用 bcrypt（兼容 bcrypt 4.1+）
+- `Config` 新增 `WebConfig` 子配置
+
 ## [0.3.0] - 2026-04-22
 
 ### Added

@@ -88,6 +88,10 @@ def create_app(config_path: Optional[Path] = None):
     app.include_router(reports_router)
     app.include_router(memory_router)
 
+    static_path = Path(__file__).parent / "static"
+    if static_path.exists():
+        app.mount("/app", StaticFiles(directory=str(static_path), html=True), name="static")
+
     @app.get("/health")
     async def health():
         return {"status": "ok"}

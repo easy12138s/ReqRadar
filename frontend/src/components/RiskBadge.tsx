@@ -8,15 +8,15 @@ interface RiskBadgeProps {
 }
 
 const RISK_CONFIG: Record<RiskLevel, { color: string; label: string }> = {
-  low: { color: 'success', label: 'Low' },
-  medium: { color: 'warning', label: 'Medium' },
-  high: { color: 'orange', label: 'High' },
-  critical: { color: 'error', label: 'Critical' },
+  low: { color: 'success', label: '低' },
+  medium: { color: 'warning', label: '中' },
+  high: { color: 'orange', label: '高' },
+  critical: { color: 'error', label: '严重' },
 };
 
 export function RiskBadge({ level, score, showScore = false }: RiskBadgeProps) {
   if (!level) {
-    return <Tag>Unknown</Tag>;
+    return <Tag>未知</Tag>;
   }
 
   const config = RISK_CONFIG[level];
