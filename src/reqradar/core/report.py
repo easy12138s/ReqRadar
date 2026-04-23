@@ -158,6 +158,27 @@ class ReportRenderer:
 
         return self.template.render(**template_data)
 
+    def render_from_dict(self, report_data: dict, context: AnalysisContext | None = None) -> str:
+        template_data = dict(report_data)
+        if context:
+            risk_level = context.deep_analysis.risk_level if context.deep_analysis else "unknown"
+            template_data["risk_badge"] = _risk_level_to_badge(risk_level)
+            template_data.setdefault("content_completeness", context.content_completeness)
+            template_data.setdefault("evidence_support", context.evidence_support)
+            template_data.setdefault("content_confidence", context.content_confidence)
+            template_data.setdefault("process_completion", context.process_completion)
+        else:
+            risk_level = template_data.get("risk_level", "unknown")
+            template_data.setdefault("content_completeness", "partial")
+            template_data.setdefault("evidence_support", "low")
+            template_data.setdefault("content_confidence", "medium")
+            template_data.setdefault("process_completion", "full")
+        template_data.setdefault("risk_badge", _risk_level_to_badge(risk_level))
+        template_data.setdefault("priority", "unknown")
+        template_data.setdefault("priority_reason", "")
+        template_data.setdefault("warnings", [])
+        return self.template.render(**template_data)
+
     def save(self, content: str, output_path: Path):
         output_path.parent.mkdir(parents=True, exist_ok=True)
         with open(output_path, "w", encoding="utf-8") as f:

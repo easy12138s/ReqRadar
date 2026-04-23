@@ -305,3 +305,10 @@ class AnalysisRunner:
 
 
 runner = AnalysisRunner()
+
+
+def get_runner(config: Config):
+    if hasattr(config, "agent") and config.agent.mode == "react":
+        from reqradar.web.services.analysis_runner_v2 import runner_v2
+        return runner_v2
+    return runner
