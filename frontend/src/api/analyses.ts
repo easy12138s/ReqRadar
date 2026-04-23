@@ -1,0 +1,41 @@
+import { apiClient } from './client';
+import type {
+  AnalysisCreate,
+  AnalysisTask,
+} from '@/types/api';
+
+export async function getAnalyses(): Promise<AnalysisTask[]> {
+  const response = await apiClient.get<AnalysisTask[]>('/analyses');
+  return response.data;
+}
+
+export async function getAnalysis(id: string): Promise<AnalysisTask> {
+  const response = await apiClient.get<AnalysisTask>(`/analyses/${id}`);
+  return response.data;
+}
+
+export async function createAnalysis(data: AnalysisCreate): Promise<AnalysisTask> {
+  const response = await apiClient.post<AnalysisTask>('/analyses', data);
+  return response.data;
+}
+
+export async function uploadAnalysis(
+  projectId: string,
+  file: File
+): Promise<AnalysisTask> {
+  const formData = new FormData();
+  formData.append('project_id', projectId);
+  formData.append('file', file);
+
+  const response = await apiClient.post<AnalysisTask>('/analyses/upload', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
+  return response.data;
+}
+
+export async function retryAnalysis(id: string): Promise<AnalysisTask> {
+  const response = await apiClient.post<AnalysisTask>(`/analyses/${id}/retry`);
+  return response.data;
+}

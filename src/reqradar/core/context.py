@@ -1,19 +1,19 @@
 """分析上下文 - 管理步骤间的数据传递"""
 
-from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
+from pydantic import BaseModel, ConfigDict, Field
 
-@dataclass
-class StepResult:
+
+class StepResult(BaseModel):
     step: str
     success: bool
     confidence: float = 1.0
     data: Any = None
     error: Optional[str] = None
-    timestamp: datetime = field(default_factory=datetime.now)
+    timestamp: datetime = Field(default_factory=datetime.now)
 
     def mark_failed(self, error: str, confidence: float = 0.0):
         self.success = False
@@ -21,140 +21,126 @@ class StepResult:
         self.confidence = confidence
 
 
-@dataclass
-class TermDefinition:
+class TermDefinition(BaseModel):
     term: str = ""
     definition: str = ""
     domain: str = ""
 
 
-@dataclass
-class StructuredConstraint:
+class StructuredConstraint(BaseModel):
     description: str = ""
     constraint_type: str = ""
     source: str = ""
 
 
-@dataclass
-class RequirementUnderstanding:
+class RequirementUnderstanding(BaseModel):
     raw_text: str = ""
     summary: str = ""
-    keywords: list[str] = field(default_factory=list)
-    terms: list[TermDefinition] = field(default_factory=list)
-    constraints: list[str] = field(default_factory=list)
-    structured_constraints: list[StructuredConstraint] = field(default_factory=list)
+    keywords: list[str] = Field(default_factory=list)
+    terms: list[TermDefinition] = Field(default_factory=list)
+    constraints: list[str] = Field(default_factory=list)
+    structured_constraints: list[StructuredConstraint] = Field(default_factory=list)
     business_goals: str = ""
     priority_suggestion: str = ""
     priority_reason: str = ""
 
 
-@dataclass
-class RetrievedContext:
-    similar_requirements: list = field(default_factory=list)
-    code_files: list = field(default_factory=list)
+class RetrievedContext(BaseModel):
+    similar_requirements: list = Field(default_factory=list)
+    code_files: list = Field(default_factory=list)
 
 
-@dataclass
-class RiskItem:
+class RiskItem(BaseModel):
     description: str = ""
     severity: str = ""
     scope: str = ""
     mitigation: str = ""
 
 
-@dataclass
-class ChangeAssessment:
+class ChangeAssessment(BaseModel):
     module: str = ""
     change_type: str = ""
     impact_level: str = ""
     reason: str = ""
 
 
-@dataclass
-class ImplementationHints:
+class ImplementationHints(BaseModel):
     approach: str = ""
     effort_estimate: str = ""
-    dependencies: list[str] = field(default_factory=list)
+    dependencies: list[str] = Field(default_factory=list)
 
 
-@dataclass
-class DeepAnalysis:
-    impact_modules: list = field(default_factory=list)
-    contributors: list = field(default_factory=list)
-    risk_level: str = "unknown"
-    risk_details: list = field(default_factory=list)
-    risks: list[RiskItem] = field(default_factory=list)
-    change_assessment: list[ChangeAssessment] = field(default_factory=list)
-    decision_summary: "DecisionSummary" = field(default_factory=lambda: DecisionSummary())
-    evidence_items: list["EvidenceItem"] = field(default_factory=list)
-    impact_domains: list["ImpactDomain"] = field(default_factory=list)
-    verification_points: list[str] = field(default_factory=list)
-    implementation_hints: ImplementationHints = field(default_factory=ImplementationHints)
-    impact_narrative: str = ""
-    risk_narrative: str = ""
-
-
-@dataclass
-class GeneratedContent:
-    requirement_understanding: str = ""
-    executive_summary: str = ""
-    technical_summary: str = ""
-    decision_highlights: list[str] = field(default_factory=list)
-    impact_narrative: str = ""
-    risk_narrative: str = ""
-    implementation_suggestion: str = ""
-
-
-@dataclass
-class DecisionSummaryItem:
+class DecisionSummaryItem(BaseModel):
     topic: str = ""
     decision: str = ""
     rationale: str = ""
-    implications: list[str] = field(default_factory=list)
+    implications: list[str] = Field(default_factory=list)
 
 
-@dataclass
-class DecisionSummary:
+class DecisionSummary(BaseModel):
     summary: str = ""
-    decisions: list[DecisionSummaryItem] = field(default_factory=list)
-    open_questions: list[str] = field(default_factory=list)
-    follow_ups: list[str] = field(default_factory=list)
+    decisions: list[DecisionSummaryItem] = Field(default_factory=list)
+    open_questions: list[str] = Field(default_factory=list)
+    follow_ups: list[str] = Field(default_factory=list)
 
 
-@dataclass
-class EvidenceItem:
+class EvidenceItem(BaseModel):
     kind: str = ""
     source: str = ""
     summary: str = ""
     confidence: str = "medium"
 
 
-@dataclass
-class ImpactDomain:
+class ImpactDomain(BaseModel):
     domain: str = ""
     confidence: str = "medium"
     basis: str = ""
     inferred: bool = False
 
 
-@dataclass
-class ModuleAnalysisResult:
+class DeepAnalysis(BaseModel):
+    impact_modules: list = Field(default_factory=list)
+    contributors: list = Field(default_factory=list)
+    risk_level: str = "unknown"
+    risk_details: list = Field(default_factory=list)
+    risks: list[RiskItem] = Field(default_factory=list)
+    change_assessment: list[ChangeAssessment] = Field(default_factory=list)
+    decision_summary: DecisionSummary = Field(default_factory=DecisionSummary)
+    evidence_items: list[EvidenceItem] = Field(default_factory=list)
+    impact_domains: list[ImpactDomain] = Field(default_factory=list)
+    verification_points: list[str] = Field(default_factory=list)
+    implementation_hints: ImplementationHints = Field(default_factory=ImplementationHints)
+    impact_narrative: str = ""
+    risk_narrative: str = ""
+
+
+class GeneratedContent(BaseModel):
+    requirement_understanding: str = ""
+    executive_summary: str = ""
+    technical_summary: str = ""
+    decision_highlights: list[str] = Field(default_factory=list)
+    impact_narrative: str = ""
+    risk_narrative: str = ""
+    implementation_suggestion: str = ""
+
+
+class ModuleAnalysisResult(BaseModel):
     path: str = ""
-    symbols: list[str] = field(default_factory=list)
+    symbols: list[str] = Field(default_factory=list)
     relevance: str = "low"
     relevance_reason: str = ""
     suggested_changes: str = ""
 
 
-@dataclass
-class CodeAnalysisResult:
-    modules: list[ModuleAnalysisResult] = field(default_factory=list)
-    overall_assessment: dict = field(default_factory=dict)
+class CodeAnalysisResult(BaseModel):
+    modules: list[ModuleAnalysisResult] = Field(default_factory=list)
+    overall_assessment: dict = Field(default_factory=dict)
     confidence: float = 0.0
 
 
-@dataclass
-class AnalysisContext:
+class AnalysisContext(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     requirement_path: Path
     requirement_text: str = ""
     memory_data: Optional[dict] = None
@@ -163,10 +149,10 @@ class AnalysisContext:
     deep_analysis: Optional[DeepAnalysis] = None
     generated_content: Optional[GeneratedContent] = None
     decision_summary: Optional[DecisionSummary] = None
-    expanded_keywords: list[str] = field(default_factory=list)
+    expanded_keywords: list[str] = Field(default_factory=list)
     code_analysis: Optional[CodeAnalysisResult] = None
-    step_results: dict[str, StepResult] = field(default_factory=dict)
-    started_at: datetime = field(default_factory=datetime.now)
+    step_results: dict[str, StepResult] = Field(default_factory=dict)
+    started_at: datetime = Field(default_factory=datetime.now)
     completed_at: Optional[datetime] = None
 
     @property

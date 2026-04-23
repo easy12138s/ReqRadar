@@ -1,7 +1,7 @@
-"""固定流程调度器 - 5步工作流"""
+"""固定流程调度器 - 6步工作流"""
 
 import logging
-from typing import Callable
+from typing import Awaitable, Callable
 
 from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn, TextColumn
 
@@ -54,8 +54,19 @@ class Scheduler:
         if step in self._hooks_after:
             self._hooks_after[step].append(hook)
 
-    async def run(self, context: AnalysisContext) -> AnalysisContext:
-        """执行完整工作流"""
+    async def run(
+        self,
+        context: AnalysisContext,
+        on_step_start: Callable[[str, str], Awaitable] = None,
+        on_step_complete: Callable[[str, StepResult], Awaitable] = None,
+    ) -> AnalysisContext:
+        """执行完整工作流
+
+        Args:
+            context: 分析上下文
+            on_step_start: 步骤开始回调 (step_name, step_desc)
+            on_step_complete: 步骤完成回调 (step_name, step_result)
+        """
 
         with Progress(
             SpinnerColumn(),
@@ -70,6 +81,9 @@ class Scheduler:
                 progress.update(main_task, description=f"[cyan]{step_desc}...")
 
                 logger.info("Step %s started", step_name)
+
+                if on_step_start:
+                    await on_step_start(step_name, step_desc)
 
                 for hook in self._hooks_before.get(step_name, []):
                     await hook(context)
@@ -94,15 +108,16 @@ class Scheduler:
 
                 except FatalError as e:
                     logger.error("Step %s fatal error: %s", step_name, e)
-                    context.store_result(
-                        step_name,
-                        StepResult(
-                            step=step_name,
-                            success=False,
-                            confidence=0.0,
-                            error=str(e),
-                        ),
+                    step_result = StepResult(
+                        step=step_name,
+                        success=False,
+                        confidence=0.0,
+                        error=str(e),
                     )
+                    context.store_result(step_name, step_result)
+
+                    if on_step_complete:
+                        await on_step_complete(step_name, step_result)
                     break
 
                 except Exception as e:
@@ -116,6 +131,9 @@ class Scheduler:
                             error=str(e),
                         ),
                     )
+
+                if on_step_complete:
+                    await on_step_complete(step_name, context.get_result(step_name))
 
                 for hook in self._hooks_after.get(step_name, []):
                     await hook(context)

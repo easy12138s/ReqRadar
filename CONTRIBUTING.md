@@ -20,11 +20,16 @@ export OPENAI_API_KEY=sk-xxx
 git checkout -b feat/your-feature-name
 
 # 运行测试
-PYTHONPATH=src pytest
+PYTHONPATH=src pytest tests/ -q
 
-# 代码格式化 + 静态检查
-poetry run black .
-poetry run ruff check .
+# Web 前端开发
+cd frontend
+npm install
+npm run dev           # 开发服务器 http://localhost:5173，代理 API 到 localhost:8000
+npm run build         # 构建生产包 → src/reqradar/web/static/
+
+# 启动 Web 服务（需先启动后端）
+PYTHONPATH=src reqradar serve
 ```
 
 ## 提交规范
