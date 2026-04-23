@@ -1,7 +1,7 @@
-<p align="center">
-  <h1 align="center">ReqRadar</h1>
-  <p align="center"><strong>需求透镜</strong></p>
-  <p align="center">业务即产品</p>
+<p align="left">
+  <h1 align="left">ReqRadar</h1>
+  <p align="left"><strong>需求透镜</strong></p>
+  <p align="left">业务即产品</p>
 </p>
 
 以业务定义产品，以 AI 重构开发。
