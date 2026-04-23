@@ -313,11 +313,21 @@ async def step_map_keywords(context: AnalysisContext, llm_client, tool_registry=
 
         if mappings:
             context.expanded_keywords = _expand_keywords(terms_to_map, mappings)
-            logger.info(
-                "Keyword mapping completed: %d terms mapped to %d search keywords",
-                len(mappings),
-                len(context.expanded_keywords),
-            )
+
+        from reqradar.modules.synonym_resolver import SynonymResolver
+
+        synonym_resolver = SynonymResolver()
+        expanded_keywords, mapping_log = synonym_resolver.expand_keywords_with_synonyms(
+            keywords=context.expanded_keywords if context.expanded_keywords else terms_to_map,
+            project_mappings=[],
+            global_mappings=[],
+        )
+        context.expanded_keywords = expanded_keywords
+        logger.info(
+            "Keyword mapping completed: %d terms mapped to %d search keywords",
+            len(mappings),
+            len(context.expanded_keywords),
+        )
 
         return mappings
 
