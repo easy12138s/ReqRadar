@@ -93,9 +93,5 @@ src/reqradar/web/static/
 opencode.json
 .opencode/
 
-# Legacy docs / development plans
-docs/PHASE3_PLAN.md
-docs/requirements/web-module.md
-docs/requirements/user-auth-enhancement.md
-docs/requirements/ide-integration.md
-docs/superpowers/
+# Docs (design specs, requirements, issues — managed separately)
+docs/
