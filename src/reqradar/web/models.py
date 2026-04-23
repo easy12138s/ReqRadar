@@ -124,6 +124,8 @@ class AnalysisTask(Base):
     user: Mapped["User"] = relationship(back_populates="analysis_tasks")
     report: Mapped["Report | None"] = relationship(back_populates="task", uselist=False)
     uploaded_files: Mapped[list["UploadedFile"]] = relationship(back_populates="task")
+    versions: Mapped[list["ReportVersion"]] = relationship(back_populates="task", cascade="all, delete-orphan")
+    chats: Mapped[list["ReportChat"]] = relationship(back_populates="task", cascade="all, delete-orphan")
 
 
 class Report(Base):
@@ -200,3 +202,37 @@ class ReportTemplate(Base):
     created_by: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, default=utc_now, onupdate=utc_now, nullable=True)
+
+
+class ReportVersion(Base):
+    __tablename__ = "report_versions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    task_id: Mapped[int] = mapped_column(Integer, ForeignKey("analysis_tasks.id"), nullable=False, index=True)
+    version_number: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    report_data: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
+    context_snapshot: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
+    content_markdown: Mapped[str] = mapped_column(Text, nullable=False)
+    content_html: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    trigger_type: Mapped[str] = mapped_column(String(50), default="initial", nullable=False)
+    trigger_description: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
+    created_by: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
+
+    task: Mapped["AnalysisTask"] = relationship(back_populates="versions")
+    creator: Mapped["User"] = relationship()
+
+
+class ReportChat(Base):
+    __tablename__ = "report_chats"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    task_id: Mapped[int] = mapped_column(Integer, ForeignKey("analysis_tasks.id"), nullable=False, index=True)
+    version_number: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    role: Mapped[str] = mapped_column(String(20), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    evidence_refs: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
+    intent_type: Mapped[str] = mapped_column(String(50), default="other", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
+
+    task: Mapped["AnalysisTask"] = relationship(back_populates="chats")
