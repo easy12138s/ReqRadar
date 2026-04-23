@@ -85,3 +85,9 @@ class TemplateLoader:
                 dimensions=sec_raw.get("dimensions", []),
             ))
         return TemplateDefinition(name=name, description=description, sections=sections)
+
+    def get_default_template_path(self) -> Path:
+        return Path(__file__).parent.parent / "templates" / "default_report.yaml"
+
+    def get_default_render_template_path(self) -> Path:
+        return Path(__file__).parent.parent / "templates" / "report.md.j2"

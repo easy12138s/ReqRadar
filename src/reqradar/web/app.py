@@ -16,6 +16,9 @@ from reqradar.web.api.analyses import router as analyses_router
 from reqradar.web.api.reports import router as reports_router
 from reqradar.web.api.memory import router as memory_router
 from reqradar.web.api.configs import router as configs_router
+from reqradar.web.api.synonyms import router as synonyms_router
+from reqradar.web.api.templates import router as templates_router
+from reqradar.web.api.profile import router as profile_router
 from reqradar.web.database import Base, create_engine, create_session_factory
 from reqradar.web.dependencies import async_session_factory, CurrentUser, DbSession
 from reqradar.web.exceptions import reqradar_exception_handler
@@ -48,7 +51,12 @@ async def lifespan(app: FastAPI):
         )
         await session.commit()
 
-    app.state.engine = engine
+        from reqradar.web.seed import seed_all
+
+        async with session_factory() as seed_session:
+            await seed_all(seed_session)
+
+        app.state.engine = engine
     app.state.session_factory = session_factory
     app.state.config = config
 
@@ -100,6 +108,9 @@ def create_app(config_path: Optional[Path] = None):
     app.include_router(reports_router)
     app.include_router(memory_router)
     app.include_router(configs_router)
+    app.include_router(synonyms_router)
+    app.include_router(templates_router)
+    app.include_router(profile_router)
 
     static_path = Path(__file__).parent / "static"
     if static_path.exists():
