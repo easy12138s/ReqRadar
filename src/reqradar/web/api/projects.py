@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from reqradar.infrastructure.config import load_config
+from reqradar.infrastructure.config_manager import ConfigManager
 from reqradar.web.dependencies import CurrentUser, DbSession
 from reqradar.web.models import Project
 
@@ -122,6 +123,8 @@ async def trigger_index(project_id: int, current_user: CurrentUser, db: DbSessio
         repo_path = Path(project.repo_path)
         index_path = repo_path / ".reqradar" / "index"
 
+        cm = ConfigManager(db, config)
+
         try:
             from reqradar.modules.code_parser import PythonCodeParser
 
@@ -133,14 +136,21 @@ async def trigger_index(project_id: int, current_user: CurrentUser, db: DbSessio
             with open(graph_file, "w", encoding="utf-8") as f:
                 f.write(code_graph.to_json())
 
-            if config.memory.enabled:
+            memory_enabled = await cm.get_bool("memory.enabled", project_id=project_id, default=config.memory.enabled)
+            if memory_enabled:
                 from reqradar.modules.memory import MemoryManager
 
-                memory_path = repo_path / config.memory.storage_path
+                memory_storage_path = await cm.get_str(
+                    "memory.storage_path", project_id=project_id, default=config.memory.storage_path
+                )
+                memory_path = repo_path / memory_storage_path
                 memory_manager = MemoryManager(storage_path=str(memory_path))
                 memory_manager.load()
 
-            project.index_path = str(index_path)
+            index_storage_path = await cm.get_str(
+                "index.storage_path", project_id=project_id, default=config.index.storage_path
+            )
+            project.index_path = str(repo_path / index_storage_path)
             project.updated_at = datetime.now(timezone.utc)
 
             await project_store.invalidate(project_id)

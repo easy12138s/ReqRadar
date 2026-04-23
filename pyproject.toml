@@ -44,6 +44,13 @@ black = "^24.1.0"
 ruff = "^0.1.14"
 mypy = "^1.8.0"
 
+[tool.poetry.scripts]
+reqradar = "reqradar.cli.main:cli"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
 [tool.black]
 line-length = 100
 
@@ -57,9 +64,6 @@ python_version = "3.12"
 warn_return_any = true
 warn_unused_ignores = true
 
-[tool.poetry.scripts]
-reqradar = "reqradar.cli.main:cli"
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

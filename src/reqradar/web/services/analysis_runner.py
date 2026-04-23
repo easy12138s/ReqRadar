@@ -13,6 +13,7 @@ from reqradar.core.context import AnalysisContext, StepResult
 from reqradar.core.report import ReportRenderer
 from reqradar.core.scheduler import Scheduler
 from reqradar.infrastructure.config import Config
+from reqradar.infrastructure.config_manager import ConfigManager
 from reqradar.web.models import AnalysisTask, Project, Report
 from reqradar.web.services.project_store import project_store
 from reqradar.web.websocket import manager as ws_manager
@@ -100,25 +101,33 @@ class AnalysisRunner:
             )
             memory_data = memory_manager.load() if config.memory.enabled else None
 
+            cm = ConfigManager(db, config)
+
             context = AnalysisContext(
                 requirement_path=Path(task.requirement_name),
                 requirement_text=task.requirement_text,
                 memory_data=memory_data,
             )
 
-            provider = config.llm.provider
+            provider = await cm.get_str("llm.provider", user_id=task.user_id, project_id=project.id, default=config.llm.provider)
+            llm_model = await cm.get_str("llm.model", user_id=task.user_id, project_id=project.id, default=config.llm.model)
+            llm_api_key = await cm.get_str("llm.api_key", user_id=task.user_id, project_id=project.id, default=config.llm.api_key or "")
+            llm_base_url = await cm.get_str("llm.base_url", user_id=task.user_id, project_id=project.id, default=config.llm.base_url or "https://api.openai.com/v1")
+            llm_timeout = await cm.get_int("llm.timeout", user_id=task.user_id, project_id=project.id, default=config.llm.timeout)
+            llm_max_retries = await cm.get_int("llm.max_retries", user_id=task.user_id, project_id=project.id, default=config.llm.max_retries)
+
             llm_kwargs = {
                 "openai": {
-                    "api_key": config.llm.api_key,
-                    "model": config.llm.model,
-                    "base_url": config.llm.base_url or "https://api.openai.com/v1",
-                    "timeout": config.llm.timeout,
-                    "max_retries": config.llm.max_retries,
+                    "api_key": llm_api_key,
+                    "model": llm_model,
+                    "base_url": llm_base_url,
+                    "timeout": llm_timeout,
+                    "max_retries": llm_max_retries,
                     "embedding_model": config.llm.embedding_model,
                     "embedding_dim": config.llm.embedding_dim,
                 },
                 "ollama": {
-                    "model": config.llm.model,
+                    "model": llm_model,
                     "host": config.llm.host or "http://localhost:11434",
                     "embedding_dim": config.llm.embedding_dim,
                 },

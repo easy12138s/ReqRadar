@@ -8,6 +8,7 @@ from pydantic import BaseModel, EmailStr
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from reqradar.infrastructure.config import load_config
 from reqradar.web.dependencies import DbSession, CurrentUser
 from reqradar.web.models import User
 
@@ -88,7 +89,14 @@ async def login(req: LoginRequest, db: DbSession):
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    access_token = create_access_token(user.id)
+    from reqradar.infrastructure.config_manager import ConfigManager
+
+    cm = ConfigManager(db, load_config())
+    expire_minutes = await cm.get_int(
+        "web.access_token_expire_minutes",
+        default=ACCESS_TOKEN_EXPIRE_MINUTES,
+    )
+    access_token = create_access_token(user.id, expires_delta=timedelta(minutes=expire_minutes))
     return TokenResponse(access_token=access_token)
 
 

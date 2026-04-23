@@ -1,9 +1,13 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import ForeignKey, String, Text, Integer, DateTime
+from sqlalchemy import ForeignKey, String, Text, Integer, DateTime, Boolean, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from reqradar.web.database import Base
+
+
+def utc_now() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 class User(Base):
@@ -20,6 +24,37 @@ class User(Base):
 
     projects: Mapped[list["Project"]] = relationship(back_populates="owner")
     analysis_tasks: Mapped[list["AnalysisTask"]] = relationship(back_populates="user")
+    configs: Mapped[list["UserConfig"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+
+
+class UserConfig(Base):
+    __tablename__ = "user_configs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    config_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    config_value: Mapped[str] = mapped_column(Text, nullable=False)
+    value_type: Mapped[str] = mapped_column(String(50), default="string", nullable=False)
+    is_sensitive: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
+
+    user: Mapped["User"] = relationship(back_populates="configs")
+
+    __table_args__ = (UniqueConstraint("user_id", "config_key", name="uq_user_config_key"),)
+
+
+class SystemConfig(Base):
+    __tablename__ = "system_configs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    config_key: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, index=True)
+    config_value: Mapped[str] = mapped_column(Text, nullable=False)
+    value_type: Mapped[str] = mapped_column(String(50), default="string", nullable=False)
+    description: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    is_sensitive: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
 
 
 class Project(Base):
@@ -42,6 +77,24 @@ class Project(Base):
 
     owner: Mapped["User"] = relationship(back_populates="projects")
     analysis_tasks: Mapped[list["AnalysisTask"]] = relationship(back_populates="project")
+    configs: Mapped[list["ProjectConfig"]] = relationship(back_populates="project", cascade="all, delete-orphan")
+
+
+class ProjectConfig(Base):
+    __tablename__ = "project_configs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[int] = mapped_column(Integer, ForeignKey("projects.id"), nullable=False, index=True)
+    config_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    config_value: Mapped[str] = mapped_column(Text, nullable=False)
+    value_type: Mapped[str] = mapped_column(String(50), default="string", nullable=False)
+    is_sensitive: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
+
+    project: Mapped["Project"] = relationship(back_populates="configs")
+
+    __table_args__ = (UniqueConstraint("project_id", "config_key", name="uq_project_config_key"),)
 
 
 class AnalysisTask(Base):

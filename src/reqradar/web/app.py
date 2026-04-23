@@ -15,6 +15,7 @@ from reqradar.web.api.projects import router as projects_router
 from reqradar.web.api.analyses import router as analyses_router
 from reqradar.web.api.reports import router as reports_router
 from reqradar.web.api.memory import router as memory_router
+from reqradar.web.api.configs import router as configs_router
 from reqradar.web.database import Base, create_engine, create_session_factory
 from reqradar.web.dependencies import async_session_factory, CurrentUser, DbSession
 from reqradar.web.exceptions import reqradar_exception_handler
@@ -70,11 +71,22 @@ def create_app(config_path: Optional[Path] = None):
 
         config_module.load_config = _load_with_path
 
+    config = load_config()
+    cors_origins = config.web.cors_origins if hasattr(config.web, "cors_origins") else None
+    if cors_origins and isinstance(cors_origins, str):
+        import json
+        try:
+            cors_origins = json.loads(cors_origins)
+        except json.JSONDecodeError:
+            cors_origins = [cors_origins]
+    if not cors_origins:
+        cors_origins = ["*"]
+
     app = FastAPI(title="ReqRadar", lifespan=lifespan)
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=cors_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -87,6 +99,7 @@ def create_app(config_path: Optional[Path] = None):
     app.include_router(analyses_router)
     app.include_router(reports_router)
     app.include_router(memory_router)
+    app.include_router(configs_router)
 
     static_path = Path(__file__).parent / "static"
     if static_path.exists():
@@ -94,7 +107,16 @@ def create_app(config_path: Optional[Path] = None):
 
     @app.get("/health")
     async def health():
-        return {"status": "ok"}
+        db_ok = False
+        try:
+            async with app.state.session_factory() as session:
+                await session.execute(select(1))
+            db_ok = True
+        except Exception:
+            pass
+
+        status_val = "ok" if db_ok else "degraded"
+        return {"status": status_val, "database": db_ok}
 
     @app.get("/api/metrics")
     async def metrics(current_user: CurrentUser, db: DbSession):

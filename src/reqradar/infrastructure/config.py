@@ -97,6 +97,8 @@ class WebConfig(BaseModel):
     secret_key: str = Field(default="change-me-in-production", description="JWT secret key")
     access_token_expire_minutes: int = Field(default=1440, description="JWT access token expiry in minutes")
     max_concurrent_analyses: int = Field(default=2, description="Maximum concurrent analysis tasks")
+    max_upload_size: int = Field(default=50, description="Maximum file upload size in MB")
+    cors_origins: Optional[str] = Field(default=None, description="CORS allowed origins (JSON array string or empty for all)")
     debug: bool = Field(default=False, description="Enable debug mode")
     static_dir: Optional[str] = Field(default=None, description="Static files directory path")
 

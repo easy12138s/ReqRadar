@@ -86,6 +86,15 @@ async def submit_analysis_upload(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
     content = await file.read()
+
+    config = load_config()
+    max_upload_bytes = config.web.max_upload_size * 1024 * 1024
+    if len(content) > max_upload_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"File size ({len(content)} bytes) exceeds limit ({config.web.max_upload_size}MB)",
+        )
+
     upload_dir = os.path.join(project.repo_path or ".", ".reqradar", "uploads")
     os.makedirs(upload_dir, exist_ok=True)
     file_id = str(uuid.uuid4())[:8]
