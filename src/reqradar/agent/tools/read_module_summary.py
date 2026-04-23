@@ -4,6 +4,7 @@ from reqradar.agent.tools.base import BaseTool, ToolResult
 class ReadModuleSummaryTool(BaseTool):
     name = "read_module_summary"
     description = "获取指定模块的职责描述和代码摘要"
+    required_permissions = ["read:memory"]
     parameters_schema = {
         "name": "read_module_summary",
         "description": "获取指定模块的职责描述和代码摘要",

@@ -4,6 +4,7 @@ from reqradar.agent.tools.base import BaseTool, ToolResult
 class GetTerminologyTool(BaseTool):
     name = "get_terminology"
     description = "获取项目已知的术语定义列表"
+    required_permissions = ["read:memory"]
     parameters_schema = {
         "name": "get_terminology",
         "description": "获取项目已知的术语定义列表",

@@ -4,6 +4,7 @@ from reqradar.agent.tools.base import BaseTool, ToolResult
 class GetDependenciesTool(BaseTool):
     name = "get_dependencies"
     description = "查询指定模块的上下游依赖关系"
+    required_permissions = ["read:code"]
     parameters_schema = {
         "name": "get_dependencies",
         "description": "查询指定模块的上下游依赖关系",

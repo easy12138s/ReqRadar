@@ -4,6 +4,7 @@ from reqradar.agent.tools.base import BaseTool, ToolResult
 class ListModulesTool(BaseTool):
     name = "list_modules"
     description = "列出项目中的所有模块及其职责"
+    required_permissions = ["read:memory"]
     parameters_schema = {
         "name": "list_modules",
         "description": "列出项目中的所有模块及其职责",

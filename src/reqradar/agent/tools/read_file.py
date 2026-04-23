@@ -6,6 +6,7 @@ from reqradar.agent.tools.base import BaseTool, ToolResult
 class ReadFileTool(BaseTool):
     name = "read_file"
     description = "读取项目中指定文件的源代码内容"
+    required_permissions = ["read:code"]
     parameters_schema = {
         "name": "read_file",
         "description": "读取项目中指定文件的源代码内容",

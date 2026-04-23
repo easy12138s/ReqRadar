@@ -4,6 +4,7 @@ from reqradar.agent.tools.base import BaseTool, ToolResult
 class GetContributorsTool(BaseTool):
     name = "get_contributors"
     description = "查询指定文件的主要贡献者（代码作者和维护者）"
+    required_permissions = ["read:git"]
     parameters_schema = {
         "name": "get_contributors",
         "description": "查询指定文件的主要贡献者（代码作者和维护者）",

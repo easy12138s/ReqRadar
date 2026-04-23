@@ -14,6 +14,7 @@ class BaseTool(ABC):
     name: str = ""
     description: str = ""
     parameters_schema: dict | None = None
+    required_permissions: list[str] = []
 
     @classmethod
     def openai_schema(cls) -> dict:

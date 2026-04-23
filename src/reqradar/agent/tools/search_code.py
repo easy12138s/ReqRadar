@@ -4,6 +4,7 @@ from reqradar.agent.tools.base import BaseTool, ToolResult
 class SearchCodeTool(BaseTool):
     name = "search_code"
     description = "在项目代码中搜索包含指定关键词的类、函数或变量"
+    required_permissions = ["read:code"]
     parameters_schema = {
         "name": "search_code",
         "description": "在项目代码中搜索包含指定关键词的类、函数或变量",

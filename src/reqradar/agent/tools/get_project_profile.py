@@ -4,6 +4,7 @@ from reqradar.agent.tools.base import BaseTool, ToolResult
 class GetProjectProfileTool(BaseTool):
     name = "get_project_profile"
     description = "获取项目画像信息，包括项目描述、技术栈和架构风格"
+    required_permissions = ["read:memory"]
     parameters_schema = {
         "name": "get_project_profile",
         "description": "获取项目画像信息，包括项目描述、技术栈和架构风格",

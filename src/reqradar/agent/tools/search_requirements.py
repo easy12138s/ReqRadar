@@ -4,6 +4,7 @@ from reqradar.agent.tools.base import BaseTool, ToolResult
 class SearchRequirementsTool(BaseTool):
     name = "search_requirements"
     description = "在历史需求文档中进行语义搜索，查找与指定查询相似的需求"
+    required_permissions = ["read:history"]
     parameters_schema = {
         "name": "search_requirements",
         "description": "在历史需求文档中进行语义搜索，查找与指定查询相似的需求",
