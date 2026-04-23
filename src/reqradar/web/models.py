@@ -74,10 +74,14 @@ class Project(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False
     )
+    default_template_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("report_templates.id"), nullable=True
+    )
 
     owner: Mapped["User"] = relationship(back_populates="projects")
     analysis_tasks: Mapped[list["AnalysisTask"]] = relationship(back_populates="project")
     configs: Mapped[list["ProjectConfig"]] = relationship(back_populates="project", cascade="all, delete-orphan")
+    default_template: Mapped["ReportTemplate | None"] = relationship()
 
 
 class ProjectConfig(Base):
@@ -113,6 +117,8 @@ class AnalysisTask(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
     )
+    current_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    depth: Mapped[str] = mapped_column(String(20), default="standard", nullable=False)
 
     project: Mapped["Project"] = relationship(back_populates="analysis_tasks")
     user: Mapped["User"] = relationship(back_populates="analysis_tasks")
@@ -147,3 +153,50 @@ class UploadedFile(Base):
     )
 
     task: Mapped["AnalysisTask"] = relationship(back_populates="uploaded_files")
+
+
+class PendingChange(Base):
+    __tablename__ = "pending_changes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[int] = mapped_column(Integer, ForeignKey("projects.id"), nullable=False, index=True)
+    change_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    target_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    old_value: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    new_value: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    diff: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    source: Mapped[str] = mapped_column(String(50), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    resolved_by: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
+
+
+class SynonymMapping(Base):
+    __tablename__ = "synonym_mappings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("projects.id"), nullable=True, index=True)
+    business_term: Mapped[str] = mapped_column(String(200), nullable=False)
+    code_terms: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
+    priority: Mapped[int] = mapped_column(Integer, default=100, nullable=False)
+    source: Mapped[str] = mapped_column(String(50), default="user", nullable=False)
+    created_by: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
+
+    __table_args__ = (UniqueConstraint("project_id", "business_term", name="uq_synonym_project_term"),)
+
+
+class ReportTemplate(Base):
+    __tablename__ = "report_templates"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    definition: Mapped[str] = mapped_column(Text, nullable=False)
+    render_template: Mapped[str] = mapped_column(Text, nullable=False)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_by: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, default=utc_now, onupdate=utc_now, nullable=True)
