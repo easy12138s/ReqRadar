@@ -15,6 +15,7 @@ from reqradar.core.scheduler import Scheduler
 from reqradar.infrastructure.config import Config
 from reqradar.infrastructure.config_manager import ConfigManager
 from reqradar.web.models import AnalysisTask, Project, Report
+from reqradar.web.enums import TaskStatus
 from reqradar.web.services.project_store import project_store
 from reqradar.web.websocket import manager as ws_manager
 
@@ -37,6 +38,7 @@ class AnalysisRunner:
     def __init__(self, max_concurrent: int = 2):
         self._semaphore = asyncio.Semaphore(max_concurrent)
         self._active_tasks: dict[int, asyncio.Task] = {}
+        self.session_factory = None
 
     def submit(self, task_id: int, project: Project, config: Config) -> asyncio.Task:
         if task_id in self._active_tasks and not self._active_tasks[task_id].done():
@@ -53,9 +55,13 @@ class AnalysisRunner:
 
     async def _run_analysis(self, task_id: int, project: Project, config: Config):
         async with self._semaphore:
-            import reqradar.web.dependencies as dep_module
+            if self.session_factory is None:
+                import reqradar.web.dependencies as dep_module
+                factory = dep_module.async_session_factory
+            else:
+                factory = self.session_factory
 
-            async with dep_module.async_session_factory() as db:
+            async with factory() as db:
                 try:
                     await self._execute_pipeline(task_id, project, config, db)
                 except asyncio.CancelledError:
@@ -94,7 +100,7 @@ class AnalysisRunner:
         if task is None:
             return
 
-        task.status = "running"
+        task.status = TaskStatus.RUNNING
         task.started_at = datetime.now(timezone.utc)
         await db.commit()
 
@@ -263,7 +269,7 @@ class AnalysisRunner:
                 risk_level = result_context.deep_analysis.risk_level
 
             task.context_json = result_context.model_dump_json()
-            task.status = "completed"
+            task.status = TaskStatus.COMPLETED
             task.completed_at = datetime.now(timezone.utc)
 
             db.add(Report(
@@ -294,14 +300,14 @@ class AnalysisRunner:
             })
 
         except asyncio.CancelledError:
-            task.status = "cancelled"
+            task.status = TaskStatus.CANCELLED
             task.completed_at = datetime.now(timezone.utc)
             await db.commit()
             await ws_manager.broadcast(task_id, {"type": "analysis_cancelled", "task_id": task_id})
             raise
 
         except Exception as e:
-            task.status = "failed"
+            task.status = TaskStatus.FAILED
             task.error_message = str(e)[:2000]
             task.completed_at = datetime.now(timezone.utc)
             await db.commit()
