@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from fastapi import WebSocket
 
@@ -24,12 +25,18 @@ class ConnectionManager:
     async def broadcast(self, task_id: int, event: dict):
         if task_id not in self._connections:
             return
-        dead: list[WebSocket] = []
-        for ws in self._connections[task_id]:
+
+        connections = list(self._connections[task_id])
+
+        async def _safe_send(ws: WebSocket):
             try:
                 await ws.send_json(event)
+                return None
             except Exception:
-                dead.append(ws)
+                return ws
+
+        results = await asyncio.gather(*[_safe_send(ws) for ws in connections])
+        dead = [ws for ws in results if ws is not None]
         for ws in dead:
             self.unsubscribe(task_id, ws)
 
