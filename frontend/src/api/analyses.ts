@@ -39,3 +39,7 @@ export async function retryAnalysis(id: string): Promise<AnalysisTask> {
   const response = await apiClient.post<AnalysisTask>(`/analyses/${id}/retry`);
   return response.data;
 }
+
+export async function cancelAnalysis(id: string): Promise<void> {
+  await apiClient.post(`/analyses/${id}/cancel`);
+}

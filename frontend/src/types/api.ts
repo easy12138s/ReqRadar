@@ -94,11 +94,16 @@ export interface AnalysisTask {
   updated_at: string;
   completed_at?: string;
   error_message?: string;
+  depth?: AnalysisDepth;
+  current_version?: number;
 }
 
 export interface AnalysisCreate {
   project_id: string;
   text?: string;
+  depth?: AnalysisDepth;
+  template_id?: string;
+  focus_areas?: string[];
 }
 
 export interface AnalysisProgress {
@@ -147,4 +152,119 @@ export interface RegisterRequest {
 export interface AuthResponse {
   access_token: string;
   token_type: string;
+}
+
+// === Round 3 新增类型 ===
+
+export type AnalysisDepth = 'quick' | 'standard' | 'deep';
+
+export interface SynonymMapping {
+  id: string;
+  project_id: string | null;
+  business_term: string;
+  code_terms: string[];
+  priority: number;
+  source: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SynonymMappingCreate {
+  project_id?: string;
+  business_term: string;
+  code_terms: string[];
+  priority?: number;
+}
+
+export interface ReportTemplate {
+  id: string;
+  name: string;
+  description: string;
+  is_default: boolean;
+  definition_yaml: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ReportTemplateCreate {
+  name: string;
+  description: string;
+  definition_yaml: string;
+}
+
+export interface ReportVersion {
+  version_number: number;
+  trigger_type: string;
+  trigger_description: string;
+  created_at: string;
+  created_by: string;
+}
+
+export interface ReportVersionDetail extends ReportVersion {
+  content_markdown: string;
+  content_html: string;
+  report_data: Record<string, unknown>;
+}
+
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  intent_type?: string;
+  created_at: string;
+}
+
+export interface ChatRequest {
+  message: string;
+  version_number?: number;
+}
+
+export interface ChatResponse {
+  reply: string;
+  intent_type: string;
+  updated: boolean;
+  new_version?: number;
+  report_preview?: string;
+}
+
+export interface EvidenceItem {
+  id: string;
+  type: string;
+  source: string;
+  content: string;
+  confidence: string;
+  dimensions: string[];
+  timestamp: string;
+}
+
+export interface PendingChange {
+  id: string;
+  type: 'profile' | 'synonym';
+  description: string;
+  old_value?: string;
+  new_value?: string;
+  status: 'pending' | 'accepted' | 'rejected';
+  created_at: string;
+}
+
+export interface UserPreference {
+  default_depth: AnalysisDepth;
+  report_language: string;
+  focus_areas: string[];
+}
+
+export interface ProjectProfile {
+  description: string;
+  architecture_style: string;
+  tech_stack: {
+    languages: string[];
+    frameworks: string[];
+    key_dependencies: string[];
+  };
+  modules: Array<{
+    name: string;
+    responsibility: string;
+    key_classes: string[];
+    dependencies: string[];
+  }>;
 }
