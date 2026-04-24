@@ -1,8 +1,8 @@
 import type { AnalysisStatus } from './api';
 
 export interface WebSocketMessage {
-  type: 'progress' | 'status' | 'error' | 'complete';
-  data: ProgressData | StatusData | ErrorData | CompleteData;
+  type: 'progress' | 'status' | 'error' | 'complete' | 'agent_thinking' | 'agent_action' | 'dimension_progress' | 'evidence_collected' | 'report_version';
+  data?: ProgressData | StatusData | ErrorData | CompleteData;
 }
 
 export interface ProgressData {

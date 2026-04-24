@@ -45,7 +45,7 @@ export function EvidencePanel({ taskId, versionNumber }: EvidencePanelProps) {
             <div style={{ marginTop: 4 }}>{item.content}</div>
             <div style={{ marginTop: 4 }}>
               {item.dimensions.map((dim) => (
-                <Tag key={dim} size="small">{dim}</Tag>
+                <Tag key={dim}>{dim}</Tag>
               ))}
             </div>
           </div>

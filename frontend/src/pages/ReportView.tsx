@@ -84,6 +84,10 @@ export function ReportView() {
     URL.revokeObjectURL(url);
   };
 
+  if (!taskId) {
+    return <Empty description="无效的任务 ID" />;
+  }
+
   if (loading) {
     return (
       <div style={{ textAlign: 'center', padding: 48 }}>
