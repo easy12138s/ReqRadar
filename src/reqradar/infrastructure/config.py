@@ -119,6 +119,24 @@ class WebConfig(BaseModel):
     cors_origins: Optional[str] = Field(default=None, description="CORS allowed origins (JSON array string or empty for all)")
     debug: bool = Field(default=False, description="Enable debug mode")
     static_dir: Optional[str] = Field(default=None, description="Static files directory path")
+    auto_create_tables: bool = Field(
+        default=False,
+        description="Auto-create DB tables on startup (dev only, prefer Alembic for production)",
+    )
+    allowed_upload_extensions: str = Field(
+        default=".txt,.md,.pdf,.docx,.xlsx,.csv,.json,.yaml,.yml,.html,.png,.jpg,.jpeg,.gif,.bmp",
+        description="Comma-separated list of allowed file upload extensions",
+    )
+    db_pool_size: int = Field(default=5, description="Database connection pool size")
+    db_pool_max_overflow: int = Field(default=10, description="Max overflow connections beyond pool_size")
+
+    @field_validator("secret_key", mode="before")
+    @classmethod
+    def resolve_env_var(cls, v: Optional[str]) -> Optional[str]:
+        if v and isinstance(v, str) and v.startswith("${") and v.endswith("}"):
+            env_var = v[2:-1]
+            return os.getenv(env_var)
+        return v
 
 
 class Config(BaseModel):

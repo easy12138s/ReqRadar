@@ -1,15 +1,18 @@
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI
+
+logger = logging.getLogger("reqradar.web.app")
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select, func, update
 
 from reqradar.core.exceptions import ReqRadarException
-from reqradar.infrastructure.config import load_config
 from reqradar.web.api.auth import router as auth_router, SECRET_KEY as AUTH_SECRET_KEY, ALGORITHM
 from reqradar.web.api.projects import router as projects_router
 from reqradar.web.api.analyses import router as analyses_router
@@ -26,31 +29,45 @@ from reqradar.web.database import Base, create_engine, create_session_factory
 from reqradar.web.dependencies import async_session_factory, CurrentUser, DbSession
 from reqradar.web.exceptions import reqradar_exception_handler
 from reqradar.web.models import AnalysisTask, Project
+from reqradar.web.enums import TaskStatus
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     import reqradar.web.api.auth as auth_module
     import reqradar.web.dependencies as dep_module
+    import reqradar.infrastructure.config as config_module
 
-    config = load_config()
+    config = config_module.load_config()
     web_config = config.web
 
-    engine = create_engine(web_config.database_url)
+    engine = create_engine(
+        web_config.database_url,
+        pool_size=web_config.db_pool_size,
+        max_overflow=web_config.db_pool_max_overflow,
+    )
     session_factory = create_session_factory(engine)
 
     dep_module.async_session_factory = session_factory
     auth_module.SECRET_KEY = web_config.secret_key
     auth_module.ACCESS_TOKEN_EXPIRE_MINUTES = web_config.access_token_expire_minutes
 
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    if web_config.secret_key == "change-me-in-production" and not web_config.debug:
+        logger.warning(
+            "SECURITY WARNING: Using default JWT secret key. "
+            "Set web.secret_key in .reqradar.yaml or REQRADAR_SECRET_KEY env var."
+        )
+
+    if web_config.auto_create_tables:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        logger.warning("auto_create_tables is enabled — use Alembic migrations in production")
 
     async with session_factory() as session:
         await session.execute(
-            update(AnalysisTask)
-            .where(AnalysisTask.status == "running")
-            .values(status="failed", error_message="Server restarted during analysis")
+        update(AnalysisTask)
+        .where(AnalysisTask.status == TaskStatus.RUNNING)
+        .values(status=TaskStatus.FAILED, error_message="Server restarted during analysis")
         )
         await session.commit()
 
@@ -64,7 +81,10 @@ async def lifespan(app: FastAPI):
     app.state.config = config
 
     from reqradar.web.services.analysis_runner import runner
+    from reqradar.web.services.analysis_runner_v2 import runner_v2
     runner._semaphore = asyncio.Semaphore(web_config.max_concurrent_analyses)
+    runner.session_factory = session_factory
+    runner_v2.session_factory = session_factory
 
     yield
 
@@ -72,9 +92,9 @@ async def lifespan(app: FastAPI):
 
 
 def create_app(config_path: Optional[Path] = None):
-    if config_path is not None:
-        import reqradar.infrastructure.config as config_module
+    import reqradar.infrastructure.config as config_module
 
+    if config_path is not None:
         original_load = config_module.load_config
 
         def _load_with_path():
@@ -82,7 +102,7 @@ def create_app(config_path: Optional[Path] = None):
 
         config_module.load_config = _load_with_path
 
-    config = load_config()
+    config = config_module.load_config()
     cors_origins = config.web.cors_origins if hasattr(config.web, "cors_origins") else None
     if cors_origins and isinstance(cors_origins, str):
         import json
@@ -91,7 +111,10 @@ def create_app(config_path: Optional[Path] = None):
         except json.JSONDecodeError:
             cors_origins = [cors_origins]
     if not cors_origins:
-        cors_origins = ["*"]
+        if config.web.debug:
+            cors_origins = ["*"]
+        else:
+            cors_origins = ["http://localhost:8000", "http://127.0.0.1:8000"]
 
     app = FastAPI(title="ReqRadar", lifespan=lifespan)
 
@@ -120,7 +143,15 @@ def create_app(config_path: Optional[Path] = None):
 
     static_path = Path(__file__).parent / "static"
     if static_path.exists():
-        app.mount("/app", StaticFiles(directory=str(static_path), html=True), name="static")
+        app.mount("/app/assets", StaticFiles(directory=str(static_path / "assets")), name="assets")
+
+    @app.get("/app")
+    @app.get("/app/{full_path:path}")
+    async def serve_spa(full_path: str = ""):
+        index_file = static_path / "index.html"
+        if index_file.exists():
+            return FileResponse(str(index_file))
+        return {"detail": "Not found"}
 
     @app.get("/health")
     async def health():
