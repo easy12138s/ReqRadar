@@ -6,7 +6,6 @@ from httpx import ASGITransport, AsyncClient
 
 from reqradar.web.app import create_app
 from reqradar.web.database import Base, create_engine, create_session_factory
-from reqradar.web.dependencies import async_session_factory as dep_session_factory
 
 TEST_DATABASE_URL = "sqlite+aiosqlite:///./test_reqradar_synonyms.db"
 TEST_SECRET_KEY = "test-secret-key-synonyms"
@@ -16,10 +15,12 @@ TEST_SECRET_KEY = "test-secret-key-synonyms"
 async def setup_db():
     import reqradar.web.api.auth as auth_module
     import reqradar.web.dependencies as dep_module
+    import reqradar.infrastructure.config as config_module
 
     original_secret = auth_module.SECRET_KEY
     original_expire = auth_module.ACCESS_TOKEN_EXPIRE_MINUTES
     original_factory = dep_module.async_session_factory
+    original_config = config_module.load_config
 
     engine = create_engine(TEST_DATABASE_URL)
     session_factory = create_session_factory(engine)
@@ -27,6 +28,15 @@ async def setup_db():
     dep_module.async_session_factory = session_factory
     auth_module.SECRET_KEY = TEST_SECRET_KEY
     auth_module.ACCESS_TOKEN_EXPIRE_MINUTES = 1440
+
+    def _test_config():
+        c = original_config()
+        c.web.auto_create_tables = True
+        c.web.debug = True
+        c.web.database_url = TEST_DATABASE_URL
+        return c
+
+    config_module.load_config = _test_config
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -41,6 +51,7 @@ async def setup_db():
     dep_module.async_session_factory = original_factory
     auth_module.SECRET_KEY = original_secret
     auth_module.ACCESS_TOKEN_EXPIRE_MINUTES = original_expire
+    config_module.load_config = original_config
 
     db_path = "./test_reqradar_synonyms.db"
     if os.path.exists(db_path):

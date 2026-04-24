@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import Depends
+from fastapi import Depends, Request
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from sqlalchemy import select
@@ -14,8 +14,9 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 async_session_factory = None
 
 
-async def get_db():
-    async with async_session_factory() as session:
+async def get_db(request: Request):
+    session_factory = getattr(request.app.state, "session_factory", None) or async_session_factory
+    async with session_factory() as session:
         yield session
 
 
