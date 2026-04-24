@@ -19,6 +19,9 @@ from reqradar.web.api.configs import router as configs_router
 from reqradar.web.api.synonyms import router as synonyms_router
 from reqradar.web.api.templates import router as templates_router
 from reqradar.web.api.profile import router as profile_router
+from reqradar.web.api.chatback import router as chatback_router
+from reqradar.web.api.versions import router as versions_router
+from reqradar.web.api.evidence_api import router as evidence_router
 from reqradar.web.database import Base, create_engine, create_session_factory
 from reqradar.web.dependencies import async_session_factory, CurrentUser, DbSession
 from reqradar.web.exceptions import reqradar_exception_handler
@@ -111,6 +114,9 @@ def create_app(config_path: Optional[Path] = None):
     app.include_router(synonyms_router)
     app.include_router(templates_router)
     app.include_router(profile_router)
+    app.include_router(chatback_router)
+    app.include_router(versions_router)
+    app.include_router(evidence_router)
 
     static_path = Path(__file__).parent / "static"
     if static_path.exists():
@@ -122,7 +128,7 @@ def create_app(config_path: Optional[Path] = None):
         try:
             async with app.state.session_factory() as session:
                 await session.execute(select(1))
-            db_ok = True
+                db_ok = True
         except Exception:
             pass
 

@@ -165,6 +165,7 @@ class AnalysisRunner:
                 },
             }
             llm_client = create_llm_client(provider, **llm_kwargs.get(provider, {}))
+            llm_client._current_task_id = task_id
 
             git_analyzer = None
             if project.repo_path and Path(project.repo_path, ".git").exists():
@@ -266,10 +267,23 @@ class AnalysisRunner:
             task.completed_at = datetime.now(timezone.utc)
 
             db.add(Report(
-                task_id=task_id,
-                content_markdown=report_markdown,
-                content_html=report_html,
+            task_id=task_id,
+            content_markdown=report_markdown,
+            content_html=report_html,
             ))
+
+            from reqradar.web.services.version_service import VersionService
+
+            version_service = VersionService(db)
+            await version_service.create_version(
+            task_id=task_id,
+            report_data=result_context.model_dump() if hasattr(result_context, "model_dump") else {},
+            context_snapshot={},
+            content_markdown=report_markdown,
+            content_html=report_html,
+            trigger_type="initial",
+            created_by=task.user_id,
+            )
 
             await db.commit()
 

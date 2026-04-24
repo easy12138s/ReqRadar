@@ -19,7 +19,7 @@ async def run_tool_use_loop(
     tools: list[str],
     tool_registry,
     output_schema: dict,
-    max_rounds: int = 15,
+    max_rounds: int = 5,
     max_total_tokens: int = 8000,
     **kwargs,
 ) -> dict:
@@ -73,7 +73,7 @@ async def run_tool_use_loop(
             response = None
 
         if response is None:
-            logger.info("Tool use not available, falling back to complete_structured")
+            # Tool calling failed or not supported – single fallback to structured output
             result = await _call_llm_structured(llm_client, messages, output_schema, **kwargs)
             return result or {}
 
@@ -103,7 +103,7 @@ async def run_tool_use_loop(
                     continue
 
                 if tracker.is_duplicate(tc_name, tc_args):
-                    logger.info("Dedup: skipping duplicate call to %s with same args", tc_name)
+                    logger.debug("Dedup: skipping duplicate call to %s", tc_name)
                     messages.append(
                         {
                             "role": "tool",
@@ -133,10 +133,10 @@ async def run_tool_use_loop(
                 messages.append({"role": "tool", "tool_call_id": tc_id, "content": result_text})
 
                 logger.info(
-                    "Tool call #%d: %s(%s) -> %d chars",
+                    "Tool #%d: %s(%s) -> %d chars",
                     tracker.call_count,
                     tc_name,
-                    json.dumps(tc_args, ensure_ascii=False)[:80],
+                    json.dumps(tc_args, ensure_ascii=False)[:60],
                     len(result_text),
                 )
 

@@ -173,6 +173,7 @@ class AnalysisRunnerV2:
                 },
             }
             llm_client = create_llm_client(provider, **llm_kwargs.get(provider, {}))
+            llm_client._current_task_id = task_id
 
             index_path = project.index_path or str(Path(project.repo_path) / ".reqradar" / "index")
             repo_path = project.repo_path or "."
@@ -260,7 +261,7 @@ class AnalysisRunnerV2:
                     tools=analysis_tools,
                     tool_registry=tool_registry,
                     output_schema=ANALYZE_SCHEMA,
-                    max_rounds=min(agent.max_steps - agent.step_count, 3),
+                    max_rounds=5,
                     max_total_tokens=config.analysis.tool_use_max_tokens if hasattr(config.analysis, "tool_use_max_tokens") else 8000,
                 )
 
@@ -314,10 +315,24 @@ class AnalysisRunnerV2:
             task.completed_at = datetime.now(timezone.utc)
 
             db.add(Report(
-                task_id=task_id,
-                content_markdown=report_markdown,
-                content_html=report_html,
+            task_id=task_id,
+            content_markdown=report_markdown,
+            content_html=report_html,
             ))
+
+            from reqradar.web.services.version_service import VersionService
+
+            version_service = VersionService(db)
+            context_snapshot = agent.get_context_snapshot()
+            await version_service.create_version(
+            task_id=task_id,
+            report_data=report_data,
+            context_snapshot=context_snapshot,
+            content_markdown=report_markdown,
+            content_html=report_html,
+            trigger_type="initial",
+            created_by=task.user_id,
+            )
 
             await db.commit()
 

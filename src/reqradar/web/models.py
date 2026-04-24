@@ -236,3 +236,24 @@ class ReportChat(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
 
     task: Mapped["AnalysisTask"] = relationship(back_populates="chats")
+
+
+class LLMCallLog(Base):
+    __tablename__ = "llm_call_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    task_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("analysis_tasks.id"), nullable=True, index=True)
+    caller: Mapped[str] = mapped_column(String(100), nullable=False)
+    model: Mapped[str] = mapped_column(String(100), nullable=False)
+    method: Mapped[str] = mapped_column(String(50), nullable=False)
+    prompt_chars: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    completion_chars: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    prompt_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    completion_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    total_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    duration_ms: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    success: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    tool_calls_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    tool_names: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)

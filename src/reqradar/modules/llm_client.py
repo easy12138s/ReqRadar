@@ -4,6 +4,7 @@ import asyncio
 import base64
 import json
 import logging
+import re
 from abc import ABC, abstractmethod
 
 import httpx
@@ -12,6 +13,67 @@ from reqradar.agent.llm_utils import _parse_json_response
 from reqradar.core.exceptions import LLMException
 
 logger = logging.getLogger("reqradar.llm")
+
+
+def _strip_thinking_tags(text: str) -> str:
+    """Remove MiniMax-style ◀thinking▶ and ◀reasoning_content▶ tags from text."""
+    text = re.sub(r'◀thinking▶.*?◀/thinking▶', '', text, flags=re.DOTALL)
+    text = re.sub(r'◀reasoning_content▶.*?◀/reasoning_content▶', '', text, flags=re.DOTALL)
+    return text.strip()
+
+
+def _log_llm_call(
+    caller: str,
+    model: str,
+    method: str,
+    prompt_chars: int,
+    completion_chars: int,
+    duration_ms: int,
+    success: bool,
+    prompt_tokens: int | None = None,
+    completion_tokens: int | None = None,
+    total_tokens: int | None = None,
+    tool_calls_count: int = 0,
+    tool_names: str = "",
+    error_message: str | None = None,
+    task_id: int | None = None,
+):
+    """Log an LLM call to the database (fire-and-forget)."""
+    try:
+        import asyncio
+        from reqradar.web.models import LLMCallLog
+
+        async def _write():
+            import reqradar.web.dependencies as dep_module
+            if dep_module.async_session_factory is None:
+                return
+            async with dep_module.async_session_factory() as session:
+                log = LLMCallLog(
+                    task_id=task_id,
+                    caller=caller,
+                    model=model,
+                    method=method,
+                    prompt_chars=prompt_chars,
+                    completion_chars=completion_chars,
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                    total_tokens=total_tokens,
+                    duration_ms=duration_ms,
+                    success=success,
+                    tool_calls_count=tool_calls_count,
+                    tool_names=tool_names,
+                    error_message=error_message[:2000] if error_message else None,
+                )
+                session.add(log)
+                await session.commit()
+
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(_write())
+        except RuntimeError:
+            pass
+    except Exception:
+        pass
 
 
 class LLMClient(ABC):
@@ -35,13 +97,22 @@ class LLMClient(ABC):
         raise NotImplementedError(f"{self.__class__.__name__} does not support vision")
 
     async def supports_tool_calling(self) -> bool:
-        """检测当前模型是否支持 tool calling（function calling）
-
-        通过发送一个简单的 probe 请求来检测，结果会被缓存。
-        """
+        """检测当前模型是否支持 tool calling（function calling）"""
         if self._tool_calling_supported is not None:
             return self._tool_calling_supported
 
+        model = getattr(self, "model", "unknown").lower()
+
+        # Known models that support function calling
+        KNOWN_TOOL_MODELS = (
+            "minimax", "gpt-4", "gpt-3.5", "claude", "qwen", "deepseek",
+            "gemini", "llama-3", "mixtral",
+        )
+        if any(m in model for m in KNOWN_TOOL_MODELS):
+            self._tool_calling_supported = True
+            return True
+
+        # Fallback: probe once, don't cache failure
         try:
             probe_schema = {
                 "name": "probe_test",
@@ -57,19 +128,18 @@ class LLMClient(ABC):
                 probe_schema,
                 max_tokens=50,
             )
-            self._tool_calling_supported = result is not None
+            if result is not None:
+                self._tool_calling_supported = True
+                return True
         except Exception:
-            self._tool_calling_supported = False
+            pass
 
-        if not self._tool_calling_supported:
-            logger.warning(
-                "Tool calling not supported by %s (model=%s). "
-                "Falling back to structured text output.",
-                self.__class__.__name__,
-                getattr(self, "model", "unknown"),
-            )
-
-        return self._tool_calling_supported
+        logger.warning(
+            "Tool calling not detected for %s (model=%s). "
+            "Falling back to structured text output.",
+            self.__class__.__name__, model,
+        )
+        return False
 
     async def complete_structured(
         self, messages: list[dict,], schema: dict, **kwargs
@@ -127,6 +197,7 @@ class OpenAIClient(LLMClient):
         self.max_retries = max_retries
         self.embedding_model = embedding_model
         self.embedding_dim = embedding_dim
+        self._current_task_id: int | None = None
 
     def _build_headers(self) -> dict[str, str]:
         if not self.api_key or not str(self.api_key).strip():
@@ -138,10 +209,14 @@ class OpenAIClient(LLMClient):
 
     async def complete(self, messages: list[dict], **kwargs) -> str:
         """发送 OpenAI API 请求"""
+        import time
         headers = self._build_headers()
+        prompt_chars = sum(len(m.get("content", "")) for m in messages)
+        model_name = kwargs.get("model", self.model)
+        t0 = time.monotonic()
 
         payload = {
-            "model": kwargs.get("model", self.model),
+            "model": model_name,
             "messages": messages,
             "temperature": kwargs.get("temperature", 0.7),
             "max_tokens": kwargs.get("max_tokens", 1000),
@@ -158,7 +233,19 @@ class OpenAIClient(LLMClient):
                     )
                     response.raise_for_status()
                     result = response.json()
-                    return result["choices"][0]["message"]["content"]
+                    content = result["choices"][0]["message"]["content"]
+                    usage = result.get("usage", {})
+                    duration_ms = int((time.monotonic() - t0) * 1000)
+                    _log_llm_call(
+                        caller="complete", model=model_name, method="complete",
+                        prompt_chars=prompt_chars, completion_chars=len(content),
+                        duration_ms=duration_ms, success=True,
+                        prompt_tokens=usage.get("prompt_tokens"),
+                        completion_tokens=usage.get("completion_tokens"),
+                        total_tokens=usage.get("total_tokens"),
+                        task_id=self._current_task_id,
+                    )
+                    return content
             except httpx.TimeoutException as e:
                 last_error = e
                 if attempt < self.max_retries:
@@ -208,10 +295,21 @@ class OpenAIClient(LLMClient):
             "model": kwargs.get("model", self.model),
             "messages": messages,
             "tools": tools,
-            "tool_choice": {"type": "function", "function": {"name": function_name}},
             "temperature": kwargs.get("temperature", 0.3),
             "max_tokens": kwargs.get("max_tokens", 2000),
         }
+
+        # Only force tool_choice when explicitly requested (some providers e.g. MiniMax
+        # may return 400 if tool_choice is set but the model decides not to call it)
+        # For complete_structured, we always want forced tool_choice since the caller
+        # expects structured JSON output from a specific function.
+        if "tool_choice" not in kwargs:
+            payload["tool_choice"] = {"type": "function", "function": {"name": function_name}}
+
+        import time
+        prompt_chars = sum(len(m.get("content", "") or "") for m in messages)
+        model_name = kwargs.get("model", self.model)
+        t0 = time.monotonic()
 
         last_error = None
         for attempt in range(self.max_retries + 1):
@@ -231,13 +329,34 @@ class OpenAIClient(LLMClient):
 
                 if not tool_calls:
                     if content:
+                        content = _strip_thinking_tags(content)
                         try:
-                            return _parse_json_response(content)
+                            result_data = _parse_json_response(content)
+                            usage = result.get("usage", {})
+                            duration_ms = int((time.monotonic() - t0) * 1000)
+                            _log_llm_call(
+                                caller="complete_structured", model=model_name, method="complete_structured",
+                                prompt_chars=prompt_chars, completion_chars=len(content),
+                                duration_ms=duration_ms, success=True,
+                                prompt_tokens=usage.get("prompt_tokens"),
+                                completion_tokens=usage.get("completion_tokens"),
+                                total_tokens=usage.get("total_tokens"),
+                                task_id=self._current_task_id,
+                            )
+                            return result_data
                         except (json.JSONDecodeError, ValueError) as e:
                             logger.warning(
                                 "No tool_calls and failed to parse content as JSON: %s", e
                             )
-                    logger.warning("No tool_calls in function calling response, returning None")
+                    logger.debug("No tool_calls in function calling response, returning None")
+                    duration_ms = int((time.monotonic() - t0) * 1000)
+                    _log_llm_call(
+                        caller="complete_structured", model=model_name, method="complete_structured",
+                        prompt_chars=prompt_chars, completion_chars=0,
+                        duration_ms=duration_ms, success=False,
+                        error_message="no_tool_calls_no_content",
+                        task_id=self._current_task_id,
+                    )
                     return None
 
                 tool_call = tool_calls[0]
@@ -245,9 +364,30 @@ class OpenAIClient(LLMClient):
 
                 try:
                     parsed = _parse_json_response(arguments_str)
+                    usage = result.get("usage", {})
+                    duration_ms = int((time.monotonic() - t0) * 1000)
+                    _log_llm_call(
+                        caller="complete_structured", model=model_name, method="complete_structured",
+                        prompt_chars=prompt_chars, completion_chars=len(arguments_str),
+                        duration_ms=duration_ms, success=True,
+                        prompt_tokens=usage.get("prompt_tokens"),
+                        completion_tokens=usage.get("completion_tokens"),
+                        total_tokens=usage.get("total_tokens"),
+                        tool_calls_count=len(tool_calls),
+                        task_id=self._current_task_id,
+                    )
                     return parsed
                 except (json.JSONDecodeError, ValueError) as e:
                     logger.warning("Failed to parse function calling arguments: %s", e)
+                    duration_ms = int((time.monotonic() - t0) * 1000)
+                    _log_llm_call(
+                        caller="complete_structured", model=model_name, method="complete_structured",
+                        prompt_chars=prompt_chars, completion_chars=len(arguments_str),
+                        duration_ms=duration_ms, success=False,
+                        error_message=f"json_parse_error: {e}",
+                        tool_calls_count=len(tool_calls),
+                        task_id=self._current_task_id,
+                    )
                     return None
 
             except httpx.HTTPStatusError as e:
@@ -292,8 +432,18 @@ class OpenAIClient(LLMClient):
             "max_tokens": kwargs.get("max_tokens", 4096),
         }
 
+        # MiniMax M2 recommends reasoning_split=True for cleaner output
+        model_lower = payload["model"].lower()
+        if "minimax" in model_lower or "mini-max" in model_lower:
+            payload["reasoning_split"] = True
+
         if "tool_choice" in kwargs:
             payload["tool_choice"] = kwargs["tool_choice"]
+
+        import time as _time
+        _prompt_chars = sum(len(m.get("content", "") or "") for m in messages)
+        _model_name = kwargs.get("model", self.model)
+        _t0 = _time.monotonic()
 
         last_error = None
         for attempt in range(self.max_retries + 1):
@@ -309,9 +459,11 @@ class OpenAIClient(LLMClient):
                     message = result["choices"][0]["message"]
                     tool_calls = message.get("tool_calls", [])
                     content = message.get("content", "")
+                    reasoning_details = message.get("reasoning_details", [])
 
                     if tool_calls:
                         parsed_calls = []
+                        tool_name_list = []
                         for tc in tool_calls:
                             fn = tc.get("function", {})
                             parsed_calls.append(
@@ -321,10 +473,58 @@ class OpenAIClient(LLMClient):
                                     "arguments": fn.get("arguments", "{}"),
                                 }
                             )
+                            tool_name_list.append(fn.get("name", ""))
+                        usage = result.get("usage", {})
+                        duration_ms = int((_time.monotonic() - _t0) * 1000)
+                        logger.info(
+                            "LLM complete_with_tools: model=%s tools=%s tool_calls=%d duration=%dms tokens=%s",
+                            _model_name, tool_name_list, len(tool_calls), duration_ms,
+                            usage.get("total_tokens", "?"),
+                        )
+                        _log_llm_call(
+                            caller="complete_with_tools", model=_model_name, method="complete_with_tools",
+                            prompt_chars=_prompt_chars, completion_chars=len(str(message)),
+                            duration_ms=duration_ms, success=True,
+                            prompt_tokens=usage.get("prompt_tokens"),
+                            completion_tokens=usage.get("completion_tokens"),
+                            total_tokens=usage.get("total_tokens"),
+                            tool_calls_count=len(tool_calls),
+                            tool_names=",".join(tool_name_list),
+                            task_id=self._current_task_id,
+                        )
+                        # Preserve full assistant message for MiniMax Interleaved Thinking
+                        # reasoning_details must be retained across rounds for reasoning continuity.
                         return {"tool_calls": parsed_calls, "assistant_message": message}
                     elif content:
-                        return {"content": content}
+                        # Strip MiniMax thinking tags from content-only responses
+                        cleaned = _strip_thinking_tags(content)
+                        if cleaned.strip():
+                            usage = result.get("usage", {})
+                            duration_ms = int((_time.monotonic() - _t0) * 1000)
+                            _log_llm_call(
+                                caller="complete_with_tools", model=_model_name, method="complete_with_tools",
+                                prompt_chars=_prompt_chars, completion_chars=len(cleaned),
+                                duration_ms=duration_ms, success=True,
+                                prompt_tokens=usage.get("prompt_tokens"),
+                                completion_tokens=usage.get("completion_tokens"),
+                                total_tokens=usage.get("total_tokens"),
+                                task_id=self._current_task_id,
+                            )
+                            return {"content": cleaned}
+                        return None
+                    elif reasoning_details and not content.strip():
+                        # Model only produced reasoning, no content
+                        logger.debug("Model returned only reasoning, no content")
+                        return None
                     else:
+                        duration_ms = int((_time.monotonic() - _t0) * 1000)
+                        _log_llm_call(
+                            caller="complete_with_tools", model=_model_name, method="complete_with_tools",
+                            prompt_chars=_prompt_chars, completion_chars=0,
+                            duration_ms=duration_ms, success=False,
+                            error_message="empty_response",
+                            task_id=self._current_task_id,
+                        )
                         return None
 
             except httpx.HTTPStatusError as e:
@@ -341,15 +541,16 @@ class OpenAIClient(LLMClient):
                         payload.get("tool_choice"), list(payload.keys()),
                         error_body,
                     )
+                    # Don't retry 400s — the request format is wrong
                     return None
                 last_error = e
                 if attempt < self.max_retries:
-                    await asyncio.sleep(2**attempt)
+                    await asyncio.sleep(2 ** attempt)
                     continue
             except httpx.TimeoutException as e:
                 last_error = e
                 if attempt < self.max_retries:
-                    await asyncio.sleep(2**attempt)
+                    await asyncio.sleep(2 ** attempt)
                     continue
             except (httpx.RequestError, json.JSONDecodeError, KeyError) as e:
                 logger.warning("complete_with_tools failed: %s", e)
