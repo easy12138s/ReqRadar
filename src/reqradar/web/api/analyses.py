@@ -15,12 +15,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from reqradar.web.dependencies import CurrentUser, DbSession, get_current_user, get_db
 from reqradar.web.models import AnalysisTask, Project, UploadedFile, User
 from reqradar.web.api.auth import SECRET_KEY, ALGORITHM
+from reqradar.web.enums import TaskStatus
 from reqradar.web.websocket import manager as ws_manager
 from reqradar.infrastructure.config import load_config
 
 logger = logging.getLogger("reqradar.web.api.analyses")
 
 router = APIRouter(prefix="/api/analyses", tags=["analyses"])
+
+ALLOWED_UPLOAD_EXTENSIONS = {
+    ".txt", ".md", ".pdf", ".docx", ".xlsx", ".csv",
+    ".json", ".yaml", ".yml", ".html",
+    ".png", ".jpg", ".jpeg", ".gif", ".bmp",
+}
 
 
 class AnalysisSubmit(BaseModel):
@@ -62,7 +69,7 @@ async def submit_analysis(req: AnalysisSubmit, current_user: CurrentUser, db: Db
         requirement_name=req.requirement_name,
         requirement_text=req.requirement_text,
         depth=req.depth,
-        status="pending",
+        status=TaskStatus.PENDING,
     )
     db.add(task)
     await db.commit()
@@ -87,6 +94,14 @@ async def submit_analysis_upload(
     if project is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
+    filename = file.filename or "upload"
+    ext = os.path.splitext(filename)[1].lower()
+    if ext not in ALLOWED_UPLOAD_EXTENSIONS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"File extension '{ext}' is not allowed. Allowed: {', '.join(sorted(ALLOWED_UPLOAD_EXTENSIONS))}",
+        )
+
     content = await file.read()
 
     config = load_config()
@@ -109,7 +124,7 @@ async def submit_analysis_upload(
         user_id=current_user.id,
         requirement_name=requirement_name,
         requirement_text=content.decode("utf-8", errors="replace"),
-        status="pending",
+        status=TaskStatus.PENDING,
     )
     db.add(task)
     await db.flush()
@@ -182,7 +197,7 @@ async def retry_analysis(task_id: int, current_user: CurrentUser, db: DbSession)
     if task is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analysis task not found")
 
-    if task.status not in ("failed", "completed", "cancelled"):
+    if task.status not in (TaskStatus.FAILED, TaskStatus.COMPLETED, TaskStatus.CANCELLED):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Can only retry failed, completed, or cancelled tasks",
@@ -193,7 +208,7 @@ async def retry_analysis(task_id: int, current_user: CurrentUser, db: DbSession)
     if project is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
-    task.status = "pending"
+    task.status = TaskStatus.PENDING
     task.error_message = None
     task.started_at = None
     task.completed_at = None
@@ -213,13 +228,13 @@ async def cancel_analysis(task_id: int, current_user: CurrentUser, db: DbSession
     task = result.scalar_one_or_none()
     if task is None:
         raise HTTPException(status_code=404, detail="Analysis task not found")
-    if task.status not in ("pending", "running"):
+    if task.status not in (TaskStatus.PENDING, TaskStatus.RUNNING):
         raise HTTPException(status_code=400, detail=f"Cannot cancel task in status: {task.status}")
     config = load_config()
     from reqradar.web.services.analysis_runner import get_runner
     r = get_runner(config)
     r.cancel(task_id)
-    task.status = "cancelled"
+    task.status = TaskStatus.CANCELLED
     task.completed_at = datetime.now(timezone.utc)
     await db.commit()
     return {"success": True, "status": "cancelled"}
@@ -235,6 +250,20 @@ async def analysis_websocket(websocket: WebSocket, task_id: int, token: str = Qu
         return
 
     await websocket.accept()
+
+    session_factory = websocket.app.state.session_factory
+    async with session_factory() as db:
+        result = await db.execute(
+            select(AnalysisTask).where(
+                AnalysisTask.id == task_id,
+                AnalysisTask.user_id == user_id,
+            )
+        )
+        task = result.scalar_one_or_none()
+        if task is None:
+            await websocket.close(code=4003, reason="Task not found or access denied")
+            return
+
     ws_manager.subscribe(task_id, websocket)
 
     try:
