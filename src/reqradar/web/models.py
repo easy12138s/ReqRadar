@@ -4,6 +4,7 @@ from sqlalchemy import ForeignKey, String, Text, Integer, DateTime, Boolean, Uni
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from reqradar.web.database import Base
+from reqradar.web.enums import TaskStatus, ChangeStatus
 
 
 def utc_now() -> datetime:
@@ -109,7 +110,7 @@ class AnalysisTask(Base):
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
     requirement_name: Mapped[str] = mapped_column(String(255), nullable=False)
     requirement_text: Mapped[str] = mapped_column(Text, nullable=False)
-    status: Mapped[str] = mapped_column(String(50), default="pending", nullable=False)
+    status: Mapped[str] = mapped_column(String(50), default=TaskStatus.PENDING, nullable=False)
     context_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -168,7 +169,7 @@ class PendingChange(Base):
     new_value: Mapped[str] = mapped_column(Text, default="", nullable=False)
     diff: Mapped[str] = mapped_column(Text, default="", nullable=False)
     source: Mapped[str] = mapped_column(String(50), nullable=False)
-    status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default=ChangeStatus.PENDING, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     resolved_by: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
