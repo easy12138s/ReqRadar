@@ -11,6 +11,11 @@ const AnalysisSubmit = lazy(() => import('@/pages/AnalysisSubmit').then(m => ({ 
 const AnalysisList = lazy(() => import('@/pages/AnalysisList').then(m => ({ default: m.AnalysisList })));
 const AnalysisProgress = lazy(() => import('@/pages/AnalysisProgress').then(m => ({ default: m.AnalysisProgress })));
 const ReportView = lazy(() => import('@/pages/ReportView').then(m => ({ default: m.ReportView })));
+const ProjectProfile = lazy(() => import('@/pages/ProjectProfile').then(m => ({ default: m.ProjectProfile })));
+const SynonymManager = lazy(() => import('@/pages/SynonymManager').then(m => ({ default: m.SynonymManager })));
+const SettingsLayout = lazy(() => import('@/pages/SettingsLayout').then(m => ({ default: m.SettingsLayout })));
+const TemplateManager = lazy(() => import('@/pages/TemplateManager').then(m => ({ default: m.TemplateManager })));
+const UserPreferences = lazy(() => import('@/pages/UserPreferences').then(m => ({ default: m.UserPreferences })));
 
 function PageLoader() {
   return (
@@ -84,6 +89,13 @@ export default function App() {
                 <Route path="analyses/submit" element={<AnalysisSubmit />} />
                 <Route path="analyses/:id" element={<AnalysisProgress />} />
                 <Route path="reports/:taskId" element={<ReportView />} />
+                <Route path="projects/:id/profile" element={<ProjectProfile />} />
+                <Route path="projects/:id/synonyms" element={<SynonymManager />} />
+                <Route path="settings" element={<SettingsLayout />}>
+                  <Route index element={<Navigate to="/settings/templates" replace />} />
+                  <Route path="templates" element={<TemplateManager />} />
+                  <Route path="preferences" element={<UserPreferences />} />
+                </Route>
               </Route>
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

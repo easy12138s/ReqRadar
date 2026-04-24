@@ -32,3 +32,39 @@ export interface WebSocketState {
   message: WebSocketMessage | null;
   error: string | null;
 }
+
+export interface AgentThinkingMessage extends WebSocketMessage {
+  type: 'agent_thinking';
+  task_id: string;
+  message: string;
+}
+
+export interface AgentActionMessage extends WebSocketMessage {
+  type: 'agent_action';
+  task_id: string;
+  tool_name: string;
+  tool_args: Record<string, unknown>;
+}
+
+export interface DimensionProgressMessage extends WebSocketMessage {
+  type: 'dimension_progress';
+  task_id: string;
+  step: number;
+  max_steps: number;
+  dimensions: Record<string, string>;
+  evidence_count: number;
+}
+
+export interface EvidenceCollectedMessage extends WebSocketMessage {
+  type: 'evidence_collected';
+  task_id: string;
+  evidence_id: string;
+  source: string;
+}
+
+export interface ReportVersionMessage extends WebSocketMessage {
+  type: 'report_version';
+  task_id: string;
+  version_number: number;
+  trigger_type: string;
+}

@@ -4,6 +4,7 @@ import {
   ProjectOutlined,
   FileSearchOutlined,
   HistoryOutlined,
+  SettingOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 
@@ -31,6 +32,11 @@ const items = [
     key: '/analyses/submit',
     icon: <HistoryOutlined />,
     label: '新建分析',
+  },
+  {
+    key: '/settings',
+    icon: <SettingOutlined />,
+    label: '设置',
   },
 ];
 
