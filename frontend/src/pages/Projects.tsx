@@ -13,13 +13,17 @@ import {
   Form,
   Input,
   Select,
+  Space,
 } from 'antd';
 import {
   PlusOutlined,
   CodeOutlined,
   CalendarOutlined,
+  ProfileOutlined,
+  SyncOutlined,
+  BookOutlined,
 } from '@ant-design/icons';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import type { Project, ProjectCreate } from '@/types/api';
 import { getProjects, createProject } from '@/api/projects';
 
@@ -124,12 +128,24 @@ export function Projects() {
                   {project.framework && (
                     <Tag color="cyan">{project.framework}</Tag>
                   )}
+                  <Tag color="default">待检测</Tag>
                 </div>
                 <div style={{ marginTop: 12 }}>
                   <Text type="secondary" style={{ fontSize: 12 }}>
                     <CalendarOutlined />{' '}
                     {new Date(project.created_at).toLocaleDateString()}
                   </Text>
+                </div>
+                <div style={{ marginTop: 12 }}>
+                  <Space size="small" onClick={(e) => e.stopPropagation()}>
+                    <Link to={`/projects/${project.id}/profile`}>
+                      <Button icon={<ProfileOutlined />} size="small">画像管理</Button>
+                    </Link>
+                    <Link to={`/projects/${project.id}/synonyms`}>
+                      <Button icon={<BookOutlined />} size="small">同义词</Button>
+                    </Link>
+                    <Button icon={<SyncOutlined />} size="small">更新画像</Button>
+                  </Space>
                 </div>
               </Card>
             </Col>

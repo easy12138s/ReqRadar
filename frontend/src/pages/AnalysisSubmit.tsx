@@ -13,10 +13,13 @@ import {
   Spin,
 } from 'antd';
 import { SendOutlined } from '@ant-design/icons';
-import type { Project } from '@/types/api';
+import type { Project, AnalysisDepth } from '@/types/api';
 import { getProjects } from '@/api/projects';
 import { createAnalysis, uploadAnalysis } from '@/api/analyses';
 import { FileUploader } from '@/components/FileUploader';
+import { DepthSelector } from '@/components/DepthSelector';
+import { TemplateSelector } from '@/components/TemplateSelector';
+import { FocusAreaSelector } from '@/components/FocusAreaSelector';
 
 const { Title } = Typography;
 const { TextArea } = Input;
@@ -26,6 +29,9 @@ export function AnalysisSubmit() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [depth, setDepth] = useState<AnalysisDepth>('standard');
+  const [templateId, setTemplateId] = useState<string | undefined>(undefined);
+  const [focusAreas, setFocusAreas] = useState<string[]>([]);
   const [textForm] = Form.useForm();
   const navigate = useNavigate();
 
@@ -46,7 +52,12 @@ export function AnalysisSubmit() {
   const handleTextSubmit = async (values: { project_id: string; text: string }) => {
     setSubmitting(true);
     try {
-      const task = await createAnalysis(values);
+      const task = await createAnalysis({
+        ...values,
+        depth,
+        template_id: templateId,
+        focus_areas: focusAreas.length > 0 ? focusAreas : undefined,
+      });
       message.success('分析任务已提交');
       navigate(`/analyses/${task.id}`);
     } catch {
@@ -119,6 +130,15 @@ export function AnalysisSubmit() {
               showCount
               maxLength={50000}
             />
+          </Form.Item>
+          <Form.Item label="分析深度">
+            <DepthSelector value={depth} onChange={(v) => setDepth(v)} />
+          </Form.Item>
+          <Form.Item label="报告模板">
+            <TemplateSelector value={templateId} onChange={(v) => setTemplateId(v)} />
+          </Form.Item>
+          <Form.Item label="关注领域">
+            <FocusAreaSelector value={focusAreas} onChange={(v) => setFocusAreas(v)} />
           </Form.Item>
           <Form.Item>
             <Button

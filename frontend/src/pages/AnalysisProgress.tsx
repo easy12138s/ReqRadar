@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Card,
@@ -16,10 +16,12 @@ import {
   FileTextOutlined,
   ReloadOutlined,
   ArrowLeftOutlined,
+  StopOutlined,
 } from '@ant-design/icons';
-import type { AnalysisTask } from '@/types/api';
-import { getAnalysis, retryAnalysis } from '@/api/analyses';
+import type { AnalysisTask, AnalysisStatus } from '@/types/api';
+import { getAnalysis, retryAnalysis, cancelAnalysis } from '@/api/analyses';
 import { StepProgress } from '@/components/StepProgress';
+import { DimensionProgress } from '@/components/DimensionProgress';
 import { RiskBadge } from '@/components/RiskBadge';
 
 const { Title } = Typography;
@@ -30,6 +32,11 @@ export function AnalysisProgress() {
   const [task, setTask] = useState<AnalysisTask | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [dimensions, setDimensions] = useState<Record<string, string>>({});
+  const [evidenceCount, setEvidenceCount] = useState(0);
+  const [currentStep, setCurrentStep] = useState(0);
+  const [maxSteps, setMaxSteps] = useState(15);
+  const wsRef = useRef<WebSocket | null>(null);
 
   const fetchTask = async () => {
     if (!id) return;
@@ -49,6 +56,49 @@ export function AnalysisProgress() {
   useEffect(() => {
     fetchTask();
   }, [id]);
+
+  const connectWebSocket = useCallback(() => {
+    const token = localStorage.getItem('access_token');
+    if (!token || !id) return;
+
+    const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/api/analyses/${id}/ws?token=${token}`;
+    const ws = new WebSocket(wsUrl);
+    wsRef.current = ws;
+
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'dimension_progress') {
+          setDimensions(msg.dimensions || {});
+          setEvidenceCount(msg.evidence_count || 0);
+          setCurrentStep(msg.step || 0);
+          setMaxSteps(msg.max_steps || 15);
+        } else if (msg.type === 'status') {
+          const data = msg.data as { status: AnalysisStatus; message?: string };
+          if (data.status === 'completed' || data.status === 'failed') {
+            fetchTask();
+          }
+        }
+      } catch {
+        // ignore invalid messages
+      }
+    };
+
+    ws.onerror = () => {
+      // ignore ws errors
+    };
+
+    ws.onclose = () => {
+      // connection closed
+    };
+  }, [id]);
+
+  useEffect(() => {
+    connectWebSocket();
+    return () => {
+      wsRef.current?.close();
+    };
+  }, [connectWebSocket]);
 
   const handleComplete = () => {
     fetchTask();
@@ -156,12 +206,30 @@ export function AnalysisProgress() {
       </Card>
 
       {!isComplete && !isFailed && id && (
-        <StepProgress
-          taskId={id}
-          status={task.status}
-          onComplete={handleComplete}
-          onError={handleError}
-        />
+        <>
+          <Card style={{ marginBottom: 24 }}>
+            <DimensionProgress
+              dimensions={dimensions}
+              evidenceCount={evidenceCount}
+              step={currentStep}
+              maxSteps={maxSteps}
+            />
+          </Card>
+          <StepProgress
+            taskId={id}
+            status={task.status}
+            onComplete={handleComplete}
+            onError={handleError}
+          />
+          <div style={{ marginTop: 16 }}>
+            <Button danger icon={<StopOutlined />} onClick={async () => {
+              try { await cancelAnalysis(id); message.success('已停止分析'); }
+              catch { message.error('停止失败'); }
+            }}>
+              停止并生成报告
+            </Button>
+          </div>
+        </>
       )}
 
       {isComplete && (
