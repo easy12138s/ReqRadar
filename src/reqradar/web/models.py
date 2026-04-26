@@ -64,10 +64,8 @@ class Project(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(Text, default="", nullable=False)
-    repo_path: Mapped[str] = mapped_column(String(1024), default="", nullable=False)
-    docs_path: Mapped[str] = mapped_column(String(1024), default="", nullable=False)
-    index_path: Mapped[str] = mapped_column(String(1024), default="", nullable=False)
-    config_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
+    source_type: Mapped[str] = mapped_column(String(20), default="local", nullable=False)
+    source_url: Mapped[str] = mapped_column(String(1024), default="", nullable=False)
     owner_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=lambda: datetime.now(timezone.utc), nullable=False

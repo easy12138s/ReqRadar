@@ -59,3 +59,17 @@ def test_analysis_task_new_fields():
     )
     assert task.current_version == 1
     assert task.depth == "standard"
+
+
+def test_project_model_has_source_fields():
+    columns = {c.name for c in Project.__table__.columns}
+    assert "source_type" in columns
+    assert "source_url" in columns
+
+
+def test_project_model_no_old_path_fields():
+    columns = {c.name for c in Project.__table__.columns}
+    assert "repo_path" not in columns
+    assert "docs_path" not in columns
+    assert "index_path" not in columns
+    assert "config_json" not in columns
