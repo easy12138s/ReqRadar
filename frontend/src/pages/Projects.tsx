@@ -12,30 +12,42 @@ import {
   Modal,
   Form,
   Input,
-  Select,
+  Upload,
   Space,
 } from 'antd';
 import {
-  PlusOutlined,
   CodeOutlined,
   CalendarOutlined,
   ProfileOutlined,
   SyncOutlined,
   BookOutlined,
+  UploadOutlined,
+  GithubOutlined,
+  FolderOpenOutlined,
 } from '@ant-design/icons';
 import { useNavigate, Link } from 'react-router-dom';
-import type { Project, ProjectCreate } from '@/types/api';
-import { getProjects, createProject } from '@/api/projects';
+import type { Project, ProjectCreateFromLocal, ProjectCreateFromGit } from '@/types/api';
+import { getProjects, createFromZip, createFromGit, createFromLocal } from '@/api/projects';
 
 const { Title, Text, Paragraph } = Typography;
-const { Option } = Select;
+
+const SOURCE_TYPE_LABELS: Record<string, { text: string; color: string }> = {
+  zip: { text: 'ZIP', color: 'orange' },
+  git: { text: 'Git', color: 'green' },
+  local: { text: '本地路径', color: 'blue' },
+};
 
 export function Projects() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
-  const [modalVisible, setModalVisible] = useState(false);
-  const [form] = Form.useForm();
+  const [zipModalVisible, setZipModalVisible] = useState(false);
+  const [gitModalVisible, setGitModalVisible] = useState(false);
+  const [localModalVisible, setLocalModalVisible] = useState(false);
+  const [zipForm] = Form.useForm();
+  const [gitForm] = Form.useForm();
+  const [localForm] = Form.useForm();
   const [submitting, setSubmitting] = useState(false);
+  const [zipFile, setZipFile] = useState<File | null>(null);
   const navigate = useNavigate();
 
   const fetchProjects = async () => {
@@ -54,13 +66,48 @@ export function Projects() {
     fetchProjects();
   }, []);
 
-  const handleCreate = async (values: ProjectCreate) => {
+  const handleCreateFromZip = async (values: { name: string; description: string }) => {
+    if (!zipFile) {
+      message.error('请选择 ZIP 文件');
+      return;
+    }
     setSubmitting(true);
     try {
-      await createProject(values);
+      await createFromZip(values.name, values.description, zipFile);
       message.success('项目创建成功');
-      setModalVisible(false);
-      form.resetFields();
+      setZipModalVisible(false);
+      zipForm.resetFields();
+      setZipFile(null);
+      fetchProjects();
+    } catch {
+      message.error('创建项目失败');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleCreateFromGit = async (values: ProjectCreateFromGit) => {
+    setSubmitting(true);
+    try {
+      await createFromGit(values);
+      message.success('项目创建成功');
+      setGitModalVisible(false);
+      gitForm.resetFields();
+      fetchProjects();
+    } catch {
+      message.error('创建项目失败');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleCreateFromLocal = async (values: ProjectCreateFromLocal) => {
+    setSubmitting(true);
+    try {
+      await createFromLocal(values);
+      message.success('项目创建成功');
+      setLocalModalVisible(false);
+      localForm.resetFields();
       fetchProjects();
     } catch {
       message.error('创建项目失败');
@@ -90,13 +137,17 @@ export function Projects() {
         <Title level={3} style={{ margin: 0 }}>
           项目
         </Title>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={() => setModalVisible(true)}
-        >
-          新建项目
-        </Button>
+        <Space>
+          <Button icon={<UploadOutlined />} onClick={() => setZipModalVisible(true)}>
+            上传 ZIP
+          </Button>
+          <Button icon={<GithubOutlined />} onClick={() => setGitModalVisible(true)}>
+            Git 克隆
+          </Button>
+          <Button type="primary" icon={<FolderOpenOutlined />} onClick={() => setLocalModalVisible(true)}>
+            本地路径
+          </Button>
+        </Space>
       </div>
 
       {projects.length === 0 ? (
@@ -104,13 +155,17 @@ export function Projects() {
           description="暂无项目"
           image={Empty.PRESENTED_IMAGE_SIMPLE}
         >
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => setModalVisible(true)}
-          >
-            创建项目
-          </Button>
+          <Space>
+            <Button icon={<UploadOutlined />} onClick={() => setZipModalVisible(true)}>
+              上传 ZIP
+            </Button>
+            <Button icon={<GithubOutlined />} onClick={() => setGitModalVisible(true)}>
+              Git 克隆
+            </Button>
+            <Button type="primary" icon={<FolderOpenOutlined />} onClick={() => setLocalModalVisible(true)}>
+              本地路径
+            </Button>
+          </Space>
         </Empty>
       ) : (
         <Row gutter={[16, 16]}>
@@ -124,11 +179,9 @@ export function Projects() {
               >
                 <Paragraph ellipsis={{ rows: 2 }}>{project.description}</Paragraph>
                 <div style={{ marginTop: 12 }}>
-                  <Tag color="blue">{project.language}</Tag>
-                  {project.framework && (
-                    <Tag color="cyan">{project.framework}</Tag>
-                  )}
-                  <Tag color="default">待检测</Tag>
+                  <Tag color={SOURCE_TYPE_LABELS[project.source_type]?.color || 'default'}>
+                    {SOURCE_TYPE_LABELS[project.source_type]?.text || project.source_type}
+                  </Tag>
                 </div>
                 <div style={{ marginTop: 12 }}>
                   <Text type="secondary" style={{ fontSize: 12 }}>
@@ -154,48 +207,113 @@ export function Projects() {
       )}
 
       <Modal
-        title="新建项目"
-        open={modalVisible}
-        onCancel={() => {
-          setModalVisible(false);
-          form.resetFields();
-        }}
+        title="上传 ZIP 创建项目"
+        open={zipModalVisible}
+        onCancel={() => { setZipModalVisible(false); zipForm.resetFields(); setZipFile(null); }}
         footer={null}
       >
-        <Form form={form} onFinish={handleCreate} layout="vertical">
+        <Form form={zipForm} onFinish={handleCreateFromZip} layout="vertical">
           <Form.Item
             label="项目名称"
             name="name"
-            rules={[{ required: true, message: '请输入项目名称' }]}
+            rules={[
+              { required: true, message: '请输入项目名称' },
+              { pattern: /^[a-zA-Z0-9_-]{1,64}$/, message: '仅支持字母、数字、下划线、连字符，1-64字符' },
+            ]}
           >
-            <Input placeholder="请输入项目名称" />
+            <Input placeholder="my-project" />
           </Form.Item>
-          <Form.Item
-            label="项目描述"
-            name="description"
-            rules={[{ required: true, message: '请输入项目描述' }]}
-          >
+          <Form.Item label="项目描述" name="description">
             <Input.TextArea rows={3} placeholder="请输入项目描述" />
           </Form.Item>
           <Form.Item
-            label="编程语言"
-            name="language"
-            rules={[{ required: true, message: '请选择编程语言' }]}
+            label="ZIP 文件"
+            required
           >
-            <Select placeholder="请选择编程语言">
-              <Option value="python">Python</Option>
-              <Option value="javascript">JavaScript</Option>
-              <Option value="typescript">TypeScript</Option>
-              <Option value="java">Java</Option>
-              <Option value="go">Go</Option>
-              <Option value="rust">Rust</Option>
-              <Option value="csharp">C#</Option>
-              <Option value="cpp">C++</Option>
-              <Option value="other">其他</Option>
-            </Select>
+            <Upload
+              beforeUpload={(file) => {
+                setZipFile(file);
+                return false;
+              }}
+              accept=".zip"
+              maxCount={1}
+              onRemove={() => setZipFile(null)}
+            >
+              <Button icon={<UploadOutlined />}>选择 ZIP 文件</Button>
+            </Upload>
           </Form.Item>
-          <Form.Item label="框架" name="framework">
-            <Input placeholder="框架（可选）" />
+          <Form.Item>
+            <Button type="primary" htmlType="submit" loading={submitting} block>
+              创建
+            </Button>
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title="Git 克隆创建项目"
+        open={gitModalVisible}
+        onCancel={() => { setGitModalVisible(false); gitForm.resetFields(); }}
+        footer={null}
+      >
+        <Form form={gitForm} onFinish={handleCreateFromGit} layout="vertical">
+          <Form.Item
+            label="项目名称"
+            name="name"
+            rules={[
+              { required: true, message: '请输入项目名称' },
+              { pattern: /^[a-zA-Z0-9_-]{1,64}$/, message: '仅支持字母、数字、下划线、连字符，1-64字符' },
+            ]}
+          >
+            <Input placeholder="my-project" />
+          </Form.Item>
+          <Form.Item label="项目描述" name="description">
+            <Input.TextArea rows={3} placeholder="请输入项目描述" />
+          </Form.Item>
+          <Form.Item
+            label="Git 仓库地址"
+            name="git_url"
+            rules={[{ required: true, message: '请输入 Git 仓库地址' }]}
+          >
+            <Input placeholder="https://github.com/user/repo.git" />
+          </Form.Item>
+          <Form.Item label="分支（可选）" name="branch">
+            <Input placeholder="main" />
+          </Form.Item>
+          <Form.Item>
+            <Button type="primary" htmlType="submit" loading={submitting} block>
+              克隆并创建
+            </Button>
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title="本地路径创建项目"
+        open={localModalVisible}
+        onCancel={() => { setLocalModalVisible(false); localForm.resetFields(); }}
+        footer={null}
+      >
+        <Form form={localForm} onFinish={handleCreateFromLocal} layout="vertical">
+          <Form.Item
+            label="项目名称"
+            name="name"
+            rules={[
+              { required: true, message: '请输入项目名称' },
+              { pattern: /^[a-zA-Z0-9_-]{1,64}$/, message: '仅支持字母、数字、下划线、连字符，1-64字符' },
+            ]}
+          >
+            <Input placeholder="my-project" />
+          </Form.Item>
+          <Form.Item label="项目描述" name="description">
+            <Input.TextArea rows={3} placeholder="请输入项目描述" />
+          </Form.Item>
+          <Form.Item
+            label="本地路径"
+            name="local_path"
+            rules={[{ required: true, message: '请输入本地路径' }]}
+          >
+            <Input placeholder="/path/to/your/project" />
           </Form.Item>
           <Form.Item>
             <Button type="primary" htmlType="submit" loading={submitting} block>

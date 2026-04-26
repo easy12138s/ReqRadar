@@ -12,13 +12,15 @@ import {
   Button,
   Form,
   Input,
-  Select,
   message,
+  Tree,
 } from 'antd';
 import {
   EditOutlined,
   SaveOutlined,
   CloseOutlined,
+  FolderOutlined,
+  FileOutlined,
 } from '@ant-design/icons';
 import type {
   Project,
@@ -28,16 +30,32 @@ import type {
   ModuleEntry,
   TeamMember,
   HistoryEntry,
+  FileTreeNode,
 } from '@/types/api';
-import { getProject, updateProject, getProjectMemory } from '@/api/projects';
+import { getProject, updateProject, getProjectMemory, getProjectFiles } from '@/api/projects';
 
 const { Title, Paragraph } = Typography;
-const { Option } = Select;
+
+const SOURCE_TYPE_LABELS: Record<string, { text: string; color: string }> = {
+  zip: { text: 'ZIP', color: 'orange' },
+  git: { text: 'Git', color: 'green' },
+  local: { text: '本地路径', color: 'blue' },
+};
+
+function buildAntTree(nodes: FileTreeNode[]): import('antd').TreeDataNode[] {
+  return nodes.map((node) => ({
+    key: node.path,
+    title: node.name,
+    icon: node.type === 'directory' ? <FolderOutlined /> : <FileOutlined />,
+    children: node.children ? buildAntTree(node.children) : undefined,
+  }));
+}
 
 export function ProjectDetail() {
   const { id } = useParams<{ id: string }>();
   const [project, setProject] = useState<Project | null>(null);
   const [memory, setMemory] = useState<ProjectMemory | null>(null);
+  const [fileTree, setFileTree] = useState<FileTreeNode[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [form] = Form.useForm();
@@ -47,12 +65,14 @@ export function ProjectDetail() {
     if (!id) return;
     setLoading(true);
     try {
-      const [projectData, memoryData] = await Promise.all([
+      const [projectData, memoryData, filesData] = await Promise.all([
         getProject(id),
         getProjectMemory(id),
+        getProjectFiles(id).catch(() => []),
       ]);
       setProject(projectData);
       setMemory(memoryData);
+      setFileTree(filesData);
       form.setFieldsValue(projectData);
     } catch {
       message.error('加载项目失败');
@@ -109,29 +129,8 @@ export function ProjectDetail() {
       <Form.Item
         label="项目描述"
         name="description"
-        rules={[{ required: true }]}
       >
         <Input.TextArea rows={4} />
-      </Form.Item>
-      <Form.Item
-        label="编程语言"
-        name="language"
-        rules={[{ required: true }]}
-      >
-        <Select>
-          <Option value="python">Python</Option>
-          <Option value="javascript">JavaScript</Option>
-          <Option value="typescript">TypeScript</Option>
-          <Option value="java">Java</Option>
-          <Option value="go">Go</Option>
-          <Option value="rust">Rust</Option>
-          <Option value="csharp">C#</Option>
-          <Option value="cpp">C++</Option>
-          <Option value="other">其他</Option>
-        </Select>
-      </Form.Item>
-      <Form.Item label="框架" name="framework">
-        <Input />
       </Form.Item>
       <Form.Item>
         <Button type="primary" htmlType="submit" loading={saving} icon={<SaveOutlined />}>
@@ -161,12 +160,12 @@ export function ProjectDetail() {
         <Descriptions.Item label="项目描述">
           <Paragraph>{project.description}</Paragraph>
         </Descriptions.Item>
-        <Descriptions.Item label="编程语言">
-          <Tag color="blue">{project.language}</Tag>
+        <Descriptions.Item label="来源类型">
+          <Tag color={SOURCE_TYPE_LABELS[project.source_type]?.color || 'default'}>
+            {SOURCE_TYPE_LABELS[project.source_type]?.text || project.source_type}
+          </Tag>
         </Descriptions.Item>
-        <Descriptions.Item label="框架">
-          {project.framework || '-'}
-        </Descriptions.Item>
+        <Descriptions.Item label="来源地址">{project.source_url || '-'}</Descriptions.Item>
         <Descriptions.Item label="创建时间">
           {new Date(project.created_at).toLocaleString()}
         </Descriptions.Item>
@@ -182,6 +181,19 @@ export function ProjectDetail() {
       key: 'overview',
       label: '概览',
       children: overviewContent,
+    },
+    {
+      key: 'files',
+      label: '文件浏览',
+      children: fileTree.length > 0 ? (
+        <Tree
+          showIcon
+          defaultExpandedKeys={[fileTree[0]?.path]}
+          treeData={buildAntTree(fileTree)}
+        />
+      ) : (
+        <Empty description="暂无文件" />
+      ),
     },
     {
       key: 'memory',

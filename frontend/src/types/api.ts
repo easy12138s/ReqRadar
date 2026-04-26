@@ -10,25 +10,37 @@ export interface Project {
   id: string;
   name: string;
   description: string;
-  language: string;
-  framework?: string;
+  source_type: 'zip' | 'git' | 'local';
+  source_url: string;
   created_at: string;
   updated_at: string;
   owner_id: string;
 }
 
-export interface ProjectCreate {
+export interface ProjectCreateFromLocal {
   name: string;
   description: string;
-  language: string;
-  framework?: string;
+  local_path: string;
+}
+
+export interface ProjectCreateFromGit {
+  name: string;
+  description: string;
+  git_url: string;
+  branch?: string;
 }
 
 export interface ProjectUpdate {
   name?: string;
   description?: string;
-  language?: string;
-  framework?: string;
+}
+
+export interface FileTreeNode {
+  name: string;
+  path: string;
+  type: 'file' | 'directory';
+  size?: number;
+  children?: FileTreeNode[];
 }
 
 export interface ProjectMemory {

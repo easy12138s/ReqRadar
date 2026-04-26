@@ -1,9 +1,11 @@
 import { apiClient } from './client';
 import type {
+  FileTreeNode,
   HistoryEntry,
   ModuleEntry,
   Project,
-  ProjectCreate,
+  ProjectCreateFromGit,
+  ProjectCreateFromLocal,
   ProjectMemory,
   ProjectUpdate,
   TeamMember,
@@ -15,8 +17,28 @@ export async function getProjects(): Promise<Project[]> {
   return response.data;
 }
 
-export async function createProject(data: ProjectCreate): Promise<Project> {
-  const response = await apiClient.post<Project>('/projects', data);
+export async function createFromLocal(data: ProjectCreateFromLocal): Promise<Project> {
+  const response = await apiClient.post<Project>('/projects/from-local', data);
+  return response.data;
+}
+
+export async function createFromGit(data: ProjectCreateFromGit): Promise<Project> {
+  const response = await apiClient.post<Project>('/projects/from-git', data);
+  return response.data;
+}
+
+export async function createFromZip(
+  name: string,
+  description: string,
+  file: File,
+): Promise<Project> {
+  const formData = new FormData();
+  formData.append('name', name);
+  formData.append('description', description);
+  formData.append('file', file);
+  const response = await apiClient.post<Project>('/projects/from-zip', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
   return response.data;
 }
 
@@ -27,9 +49,18 @@ export async function getProject(id: string): Promise<Project> {
 
 export async function updateProject(
   id: string,
-  data: ProjectUpdate
+  data: ProjectUpdate,
 ): Promise<Project> {
   const response = await apiClient.put<Project>(`/projects/${id}`, data);
+  return response.data;
+}
+
+export async function deleteProject(id: string): Promise<void> {
+  await apiClient.delete(`/projects/${id}`);
+}
+
+export async function getProjectFiles(id: string): Promise<FileTreeNode[]> {
+  const response = await apiClient.get<FileTreeNode[]>(`/projects/${id}/files`);
   return response.data;
 }
 
