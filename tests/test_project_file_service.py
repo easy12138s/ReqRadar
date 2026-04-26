@@ -154,7 +154,7 @@ def test_get_project_path_tilde_expansion():
 
 def test_clone_git_invalid_url(service, tmp_path):
     service.create_project_dirs("git-proj")
-    with pytest.raises(Exception):
+    with pytest.raises(RuntimeError):
         service.clone_git("git-proj", "https://invalid-url-that-does-not-exist-12345.com/repo.git")
 
 
@@ -174,3 +174,35 @@ def test_get_requirements_path(service, tmp_path):
     service.create_project_dirs("req-proj")
     result = service.get_requirements_path("req-proj")
     assert result == tmp_path / "data" / "req-proj" / "requirements"
+
+
+def test_project_name_validation_rejects_traversal(service):
+    with pytest.raises(ValueError, match="Invalid project name"):
+        service.get_project_path("../etc")
+
+
+def test_project_name_validation_rejects_slashes(service):
+    with pytest.raises(ValueError, match="Invalid project name"):
+        service.get_project_path("foo/bar")
+
+
+def test_project_name_validation_rejects_spaces(service):
+    with pytest.raises(ValueError, match="Invalid project name"):
+        service.get_project_path("bad name")
+
+
+def test_extract_zip_rejects_path_traversal(service, tmp_path):
+    zip_path = tmp_path / "evil.zip"
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.writestr("../../etc/crontab", "* * * * * root echo pwned\n")
+    zip_bytes = zip_path.read_bytes()
+
+    service.create_project_dirs("evil-proj")
+    with pytest.raises(ValueError, match="path traversal"):
+        service.extract_zip("evil-proj", zip_bytes)
+
+
+def test_clone_git_rejects_disallowed_url_scheme(service, tmp_path):
+    service.create_project_dirs("scheme-proj")
+    with pytest.raises(ValueError, match="scheme not allowed"):
+        service.clone_git("scheme-proj", "file:///etc/passwd")
