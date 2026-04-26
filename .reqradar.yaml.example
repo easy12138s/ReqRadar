@@ -69,6 +69,7 @@ web:
   allowed_upload_extensions: .txt,.md,.pdf,.docx,.xlsx,.csv,.json,.yaml,.yml,.html,.png,.jpg,.jpeg,.gif,.bmp
   db_pool_size: 5
   db_pool_max_overflow: 10
+  data_root: ~/.reqradar/data
 
 reporting:
   default_template_id:

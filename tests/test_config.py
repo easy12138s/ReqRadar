@@ -54,3 +54,17 @@ def test_agent_config_defaults():
 
     reporting = ReportingConfig()
     assert reporting.default_template_id == 1
+
+
+def test_web_config_data_root_default():
+    from reqradar.infrastructure.config import WebConfig
+
+    wc = WebConfig()
+    assert wc.data_root == "~/.reqradar/data"
+
+
+def test_web_config_data_root_custom():
+    from reqradar.infrastructure.config import WebConfig
+
+    wc = WebConfig(data_root="/custom/data")
+    assert wc.data_root == "/custom/data"

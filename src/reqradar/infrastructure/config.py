@@ -129,6 +129,7 @@ class WebConfig(BaseModel):
     )
     db_pool_size: int = Field(default=5, description="Database connection pool size")
     db_pool_max_overflow: int = Field(default=10, description="Max overflow connections beyond pool_size")
+    data_root: str = Field(default="~/.reqradar/data", description="Root directory for project file storage (supports ~ expansion)")
 
     @field_validator("secret_key", mode="before")
     @classmethod
