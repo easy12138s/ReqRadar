@@ -16,6 +16,7 @@ from reqradar.infrastructure.config import Config
 from reqradar.infrastructure.config_manager import ConfigManager
 from reqradar.web.models import AnalysisTask, Project, Report
 from reqradar.web.enums import TaskStatus
+from reqradar.web.services.project_file_service import ProjectFileService
 from reqradar.web.services.project_store import project_store
 from reqradar.web.websocket import manager as ws_manager
 
@@ -107,16 +108,15 @@ class AnalysisRunner:
         await ws_manager.broadcast(task_id, {"type": "analysis_started", "task_id": task_id})
 
         try:
-            index_path = project.index_path or str(Path(project.repo_path) / ".reqradar" / "index")
-            repo_path = project.repo_path or "."
+            file_svc = ProjectFileService(config.web)
+            repo_path = str(file_svc.detect_code_root(project.name))
+            index_path = str(file_svc.get_index_path(project.name))
 
             code_graph = await project_store.get_code_graph(project.id, index_path)
             vector_store = await project_store.get_vector_store(project.id, index_path)
 
-            memory_manager = MemoryManager(
-                storage_path=str(Path(project.repo_path) / config.memory.storage_path)
-                if project.repo_path else config.memory.storage_path
-            )
+            memory_path = str(file_svc.get_memory_path(project.name))
+            memory_manager = MemoryManager(storage_path=memory_path)
             memory_data = memory_manager.load() if config.memory.enabled else None
 
             from reqradar.modules.memory_manager import AnalysisMemoryManager
@@ -124,10 +124,8 @@ class AnalysisRunner:
             analysis_memory = AnalysisMemoryManager(
                 project_id=project.id,
                 user_id=task.user_id,
-                project_storage_path=str(Path(project.repo_path) / config.memory.project_storage_path)
-                if project.repo_path else config.memory.project_storage_path,
-                user_storage_path=str(Path(project.repo_path) / config.memory.user_storage_path)
-                if project.repo_path else config.memory.user_storage_path,
+                project_storage_path=memory_path,
+                user_storage_path=memory_path,
                 memory_enabled=config.memory.enabled,
             )
 
@@ -174,17 +172,17 @@ class AnalysisRunner:
             llm_client._current_task_id = task_id
 
             git_analyzer = None
-            if project.repo_path and Path(project.repo_path, ".git").exists():
+            if Path(repo_path, ".git").exists():
                 try:
                     git_analyzer = GitAnalyzer(
-                        repo_path=Path(project.repo_path),
+                        repo_path=Path(repo_path),
                         lookback_months=config.git.lookback_months,
                     )
                 except Exception:
                     logger.warning("Failed to init GitAnalyzer for project %d", project.id)
 
             tool_registry = ToolRegistry()
-            repo_path_str = str(project.repo_path) if project.repo_path else "."
+            repo_path_str = repo_path
 
             if code_graph:
                 tool_registry.register(SearchCodeTool(code_graph=code_graph, repo_path=repo_path_str))

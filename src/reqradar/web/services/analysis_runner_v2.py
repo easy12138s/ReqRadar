@@ -21,6 +21,7 @@ from reqradar.infrastructure.template_loader import TemplateLoader
 from reqradar.modules.memory_manager import AnalysisMemoryManager
 from reqradar.web.models import AnalysisTask, Report, Project
 from reqradar.web.enums import TaskStatus
+from reqradar.web.services.project_file_service import ProjectFileService
 from reqradar.web.services.project_store import project_store
 from reqradar.web.websocket import manager as ws_manager
 
@@ -108,19 +109,17 @@ class AnalysisRunnerV2:
         )
         agent.state = AgentState.ANALYZING
 
-        memory_manager = MemoryManager(
-            storage_path=str(Path(project.repo_path) / config.memory.storage_path)
-            if project.repo_path else config.memory.storage_path
-        )
+        file_svc = ProjectFileService(config.web)
+        memory_path = str(file_svc.get_memory_path(project.name))
+
+        memory_manager = MemoryManager(storage_path=memory_path)
         memory_data = memory_manager.load() if config.memory.enabled else None
 
         analysis_memory = AnalysisMemoryManager(
             project_id=project.id,
             user_id=task.user_id,
-            project_storage_path=str(Path(project.repo_path) / config.memory.project_storage_path)
-            if project.repo_path else config.memory.project_storage_path,
-            user_storage_path=str(Path(project.repo_path) / config.memory.user_storage_path)
-            if project.repo_path else config.memory.user_storage_path,
+            project_storage_path=memory_path,
+            user_storage_path=memory_path,
             memory_enabled=config.memory.enabled,
         )
 
@@ -168,8 +167,9 @@ class AnalysisRunnerV2:
         llm_client = create_llm_client(provider, **llm_kwargs.get(provider, {}))
         llm_client._current_task_id = task.id
 
-        index_path = project.index_path or str(Path(project.repo_path) / ".reqradar" / "index")
-        repo_path = project.repo_path or "."
+        file_svc = ProjectFileService(config.web)
+        repo_path = str(file_svc.detect_code_root(project.name))
+        index_path = str(file_svc.get_index_path(project.name))
 
         code_graph = await project_store.get_code_graph(project.id, index_path)
         vector_store = await project_store.get_vector_store(project.id, index_path)
@@ -194,8 +194,8 @@ class AnalysisRunnerV2:
 
         try:
             git_analyzer = None
-            if project.repo_path and Path(project.repo_path, ".git").exists():
-                git_analyzer = GitAnalyzer(repo_path=Path(project.repo_path), lookback_months=config.git.lookback_months)
+            if Path(repo_path, ".git").exists():
+                git_analyzer = GitAnalyzer(repo_path=Path(repo_path), lookback_months=config.git.lookback_months)
             if git_analyzer:
                 tool_registry.register(GetContributorsTool(git_analyzer=git_analyzer))
         except Exception:
