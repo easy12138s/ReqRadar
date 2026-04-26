@@ -114,7 +114,12 @@ def create_app(config_path: Optional[Path] = None):
         if config.web.debug:
             cors_origins = ["*"]
         else:
-            cors_origins = ["http://localhost:8000", "http://127.0.0.1:8000"]
+            cors_origins = [
+                "http://localhost:8000",
+                "http://127.0.0.1:8000",
+                "http://localhost:5173",
+                "http://127.0.0.1:5173",
+            ]
 
     app = FastAPI(title="ReqRadar", lifespan=lifespan)
 
