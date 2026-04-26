@@ -30,7 +30,7 @@ async def db_session():
         await session.flush()
 
         # 预置测试项目
-        project = Project(name="Test Project", description="", repo_path="", docs_path="", owner_id=user.id)
+        project = Project(name="Test-Project", description="", source_type="local", source_url="/tmp", owner_id=user.id)
         session.add(project)
         await session.commit()
 

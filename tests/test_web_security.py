@@ -81,8 +81,8 @@ async def test_upload_rejects_dangerous_extension(setup_db):
         token = await _register_and_login(client, "upload_sec@example.com")
 
         resp = await client.post(
-            "/api/projects",
-            json={"name": "Upload Sec Project", "repo_path": "/tmp/nonexistent"},
+            "/api/projects/from-local",
+            json={"name": "Upload-Sec-Project", "description": "test", "local_path": "/tmp"},
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 201
@@ -109,8 +109,8 @@ async def test_upload_accepts_allowed_extension(setup_db):
         token = await _register_and_login(client, "upload_ok@example.com")
 
         resp = await client.post(
-            "/api/projects",
-            json={"name": "Upload OK Project", "repo_path": "/tmp/nonexistent"},
+            "/api/projects/from-local",
+            json={"name": "Upload-OK-Project", "description": "test", "local_path": "/tmp"},
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 201

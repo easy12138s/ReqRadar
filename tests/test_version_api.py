@@ -75,8 +75,8 @@ async def auth_client(setup_db):
         headers = {"Authorization": f"Bearer {token}"}
 
         proj_resp = await client.post(
-            "/api/projects",
-            json={"name": "Versions Project", "description": "test"},
+            "/api/projects/from-local",
+            json={"name": "Versions-Project", "description": "test", "local_path": "/tmp"},
             headers=headers,
         )
         project_id = proj_resp.json()["id"]
