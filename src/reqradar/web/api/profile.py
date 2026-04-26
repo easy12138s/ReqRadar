@@ -1,5 +1,4 @@
 import logging
-from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
@@ -50,8 +49,9 @@ async def _get_project(project_id: int, user_id: int, db: DbSession) -> Project:
 
 def _build_project_memory(project: Project) -> ProjectMemory:
     config = load_config()
-    storage_path = project.repo_path or "."
-    memory_path = Path(storage_path) / config.memory.project_storage_path
+    from reqradar.web.services.project_file_service import ProjectFileService
+    file_svc = ProjectFileService(config.web)
+    memory_path = file_svc.get_memory_path(project.name)
     return ProjectMemory(storage_path=str(memory_path), project_id=project.id)
 
 

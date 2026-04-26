@@ -1,17 +1,23 @@
 import json
 import logging
-from pathlib import Path
-from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
+from reqradar.infrastructure.config import load_config
 from reqradar.web.dependencies import CurrentUser, DbSession
 from reqradar.web.models import AnalysisTask, Project
 
 logger = logging.getLogger("reqradar.web.api.memory")
+
+
+def _get_memory_manager(project: Project) -> "MemoryManager":
+    from reqradar.modules.memory import MemoryManager
+    from reqradar.web.services.project_file_service import ProjectFileService
+    config = load_config()
+    file_svc = ProjectFileService(config.web)
+    return MemoryManager(storage_path=str(file_svc.get_memory_path(project.name)))
 
 router = APIRouter(prefix="/api/projects", tags=["memory"])
 
@@ -50,12 +56,7 @@ async def get_terminology(project_id: int, current_user: CurrentUser, db: DbSess
     if project is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
-    from reqradar.modules.memory import MemoryManager
-
-    memory = MemoryManager(
-        storage_path=str(Path(project.repo_path) / ".reqradar" / "memory")
-        if project.repo_path else ".reqradar/memory"
-    )
+    memory = _get_memory_manager(project)
     data = memory.load()
     terms = data.get("terminology", [])
     return [TermItem(
@@ -74,12 +75,7 @@ async def get_modules(project_id: int, current_user: CurrentUser, db: DbSession)
     if project is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
-    from reqradar.modules.memory import MemoryManager
-
-    memory = MemoryManager(
-        storage_path=str(Path(project.repo_path) / ".reqradar" / "memory")
-        if project.repo_path else ".reqradar/memory"
-    )
+    memory = _get_memory_manager(project)
     data = memory.load()
     modules = data.get("modules", [])
     return [ModuleItem(
@@ -98,12 +94,7 @@ async def get_team(project_id: int, current_user: CurrentUser, db: DbSession):
     if project is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
-    from reqradar.modules.memory import MemoryManager
-
-    memory = MemoryManager(
-        storage_path=str(Path(project.repo_path) / ".reqradar" / "memory")
-        if project.repo_path else ".reqradar/memory"
-    )
+    memory = _get_memory_manager(project)
     data = memory.load()
     team = data.get("team", [])
     return [ContributorItem(

@@ -112,7 +112,10 @@ async def submit_analysis_upload(
             detail=f"File size ({len(content)} bytes) exceeds limit ({config.web.max_upload_size}MB)",
         )
 
-    upload_dir = os.path.join(project.repo_path or ".", ".reqradar", "uploads")
+    config = load_config()
+    from reqradar.web.services.project_file_service import ProjectFileService
+    file_svc = ProjectFileService(config.web)
+    upload_dir = str(file_svc.get_requirements_path(project.name))
     os.makedirs(upload_dir, exist_ok=True)
     file_id = str(uuid.uuid4())[:8]
     file_path = os.path.join(upload_dir, f"{file_id}_{file.filename}")
