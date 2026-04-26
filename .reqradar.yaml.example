@@ -2,13 +2,13 @@ llm:
   provider: openai
   model: gpt-4o-mini
   api_key: ${OPENAI_API_KEY}
-  base_url: https://api.openai.com/v1  # 可替换为其他 OpenAI 兼容 API
+  base_url: https://api.openai.com/v1
   timeout: 60
   max_retries: 2
 
 vision:
   provider: openai
-  model: gpt-4o  # 需要支持视觉能力的模型
+  model: gpt-4o
   api_key: ${OPENAI_API_KEY}
   base_url: https://api.openai.com/v1
   timeout: 120
@@ -47,3 +47,28 @@ output:
 log:
   level: INFO
   format: console
+
+agent:
+  mode: react
+  max_steps_quick: 10
+  max_steps_standard: 15
+  max_steps_deep: 25
+  version_limit: 10
+
+web:
+  host: 0.0.0.0
+  port: 8000
+  database_url: sqlite+aiosqlite:///./reqradar.db
+  secret_key: ${REQRADAR_SECRET_KEY}
+  access_token_expire_minutes: 1440
+  max_concurrent_analyses: 2
+  max_upload_size: 50
+  cors_origins:
+  debug: false
+  auto_create_tables: false
+  allowed_upload_extensions: .txt,.md,.pdf,.docx,.xlsx,.csv,.json,.yaml,.yml,.html,.png,.jpg,.jpeg,.gif,.bmp
+  db_pool_size: 5
+  db_pool_max_overflow: 10
+
+reporting:
+  default_template_id:

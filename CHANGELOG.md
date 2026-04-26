@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-04-24
+
+### Added
+
+- ReAct Agent 执行模式（AnalysisRunnerV2）：迭代工具调用 + 7 维度追踪 + 终止判定
+- Chatback 对话式追问：意图分类 + 上下文恢复 + 单轮/多轮对话
+- 报告版本管理：版本创建/列表/回滚/对比，版本数上限控制
+- 同义词映射 CRUD：业务术语 ↔ 代码术语，按项目/优先级/来源管理
+- 报告模板自定义：YAML 定义 + Jinja2 渲染模板，DB 存储
+- 三级配置优先级：User > Project > System > YAML > 代码默认值
+- LLM 调用审计日志（llm_call_logs 表）
+- TaskStatus / ChangeStatus 枚举替代字符串字面量
+- WebSocket 并发广播（asyncio.gather）
+
+### Security
+
+- JWT 密钥支持 `${ENV_VAR}` 环境变量引用，默认密钥生产环境触发警告
+- CORS 生产模式默认限制为 localhost，debug 模式允许 `*`
+- 文件上传扩展名白名单
+- WebSocket 订阅前校验任务归属
+
+### Changed
+
+- AnalysisRunnerV2._execute_agent 拆分为 _init_agent / _init_tools / _load_template / _save_report
+- 数据库连接池配置（pool_size / max_overflow / pool_pre_ping），SQLite 保持 WAL + pragma
+- get_db 依赖从全局可变状态改为 app.state.session_factory（向后兼容）
+- auto_create_tables 默认关闭，推荐 Alembic 迁移
+- 前端启用 TypeScript strict 模式
+- ruff 配置增加 SIM/RUF 规则 + isort known-first-party
+- mypy 配置增加 ignore_missing_imports + exclude
+- pre-commit 增加 ruff-format hook + sqlalchemy stubs
+
 ## [0.4.0] - 2026-04-23
 
 ### Added
