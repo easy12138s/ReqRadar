@@ -3,7 +3,6 @@ import logging
 import re
 import shutil
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
@@ -109,25 +108,38 @@ async def list_projects(current_user: CurrentUser, db: DbSession):
 @router.post("/from-local", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
 async def create_from_local(req: ProjectFromLocal, current_user: CurrentUser, db: DbSession):
     svc = _get_file_service()
-    local_path = Path(req.local_path)
-    if not local_path.exists():
+    try:
+        local_path = svc.validate_local_path(req.local_path)
+    except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Local path does not exist: {req.local_path}",
+            detail=str(e),
         )
 
     project = await _create_project_record(req.name, req.description, "local", req.local_path, current_user.id, db)
     svc.create_project_dirs(req.name)
 
     src_code = svc.get_project_path(req.name) / "project_code"
+    copy_errors = []
     try:
         for item in local_path.iterdir():
-            if item.is_dir():
-                shutil.copytree(str(item), str(src_code / item.name), dirs_exist_ok=True)
-            else:
-                shutil.copy2(str(item), str(src_code / item.name))
+            try:
+                if item.is_dir() and not item.is_symlink():
+                    shutil.copytree(str(item), str(src_code / item.name), dirs_exist_ok=True)
+                elif item.is_file() and not item.is_symlink():
+                    shutil.copy2(str(item), str(src_code / item.name))
+            except (shutil.SpecialFileError, OSError) as e:
+                logger.debug("Skipping special file %s: %s", item, e)
+                copy_errors.append(str(item))
     except Exception as e:
-        logger.warning("Failed to copy local path files for project '%s': %s", req.name, e)
+        logger.exception("Failed to copy local path files for project '%s'", req.name)
+        svc.delete_project_files(req.name)
+        await db.delete(project)
+        await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to copy local path files: {str(e)[:500]}",
+        )
 
     return project
 
@@ -222,10 +234,14 @@ async def delete_project(project_id: int, current_user: CurrentUser, db: DbSessi
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
     svc = _get_file_service()
+    project_name = project.name
+    try:
+        svc.delete_project_files(project_name)
+    except Exception:
+        logger.exception("Failed to delete files for project '%s'", project_name)
     await db.delete(project)
     await db.commit()
-    svc.delete_project_files(project.name)
-    return {"success": True, "message": f"Project '{project.name}' deleted"}
+    return {"success": True, "message": f"Project '{project_name}' deleted"}
 
 
 @router.get("/{project_id}/files", response_model=list[FileTreeNode])

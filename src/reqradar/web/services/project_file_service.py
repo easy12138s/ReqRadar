@@ -146,6 +146,21 @@ class ProjectFileService:
 
         return _build_tree(base)
 
+    ALLOWED_LOCAL_PREFIXES = ("/home/", "/opt/", "/srv/", "/data/", "/var/lib/", "/Users/", "/workspace/", "/tmp")
+
+    def validate_local_path(self, local_path: str) -> Path:
+        p = Path(local_path).resolve()
+        if not p.exists():
+            raise ValueError(f"Local path does not exist: {local_path}")
+        if not p.is_dir():
+            raise ValueError(f"Local path is not a directory: {local_path}")
+        resolved_str = str(p) + "/"
+        if not any(resolved_str.startswith(prefix) for prefix in self.ALLOWED_LOCAL_PREFIXES):
+            raise ValueError(
+                f"Local path must be under one of: {', '.join(self.ALLOWED_LOCAL_PREFIXES)}. Got: {local_path}"
+            )
+        return p
+
     @staticmethod
     def is_git_available() -> bool:
         return shutil.which("git") is not None

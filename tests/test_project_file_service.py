@@ -206,3 +206,18 @@ def test_clone_git_rejects_disallowed_url_scheme(service, tmp_path):
     service.create_project_dirs("scheme-proj")
     with pytest.raises(ValueError, match="scheme not allowed"):
         service.clone_git("scheme-proj", "file:///etc/passwd")
+
+
+def test_validate_local_path_accepts_allowed_prefix(service):
+    result = service.validate_local_path("/tmp")
+    assert result.is_dir()
+
+
+def test_validate_local_path_rejects_nonexistent(service):
+    with pytest.raises(ValueError, match="does not exist"):
+        service.validate_local_path("/opt/nonexistent_dir_xyz_12345")
+
+
+def test_validate_local_path_rejects_disallowed_prefix(service):
+    with pytest.raises(ValueError, match="must be under one of"):
+        service.validate_local_path("/etc")

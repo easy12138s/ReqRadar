@@ -82,6 +82,8 @@ class Project(Base):
     configs: Mapped[list["ProjectConfig"]] = relationship(back_populates="project", cascade="all, delete-orphan")
     default_template: Mapped["ReportTemplate | None"] = relationship()
 
+    __table_args__ = (UniqueConstraint("name", "owner_id", name="uq_project_name_owner"),)
+
 
 class ProjectConfig(Base):
     __tablename__ = "project_configs"

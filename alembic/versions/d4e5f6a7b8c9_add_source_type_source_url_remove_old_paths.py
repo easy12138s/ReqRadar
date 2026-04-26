@@ -17,6 +17,7 @@ depends_on = None
 def upgrade() -> None:
     op.add_column('projects', sa.Column('source_type', sa.String(20), nullable=False, server_default='local'))
     op.add_column('projects', sa.Column('source_url', sa.String(1024), nullable=False, server_default=''))
+    op.create_unique_constraint('uq_project_name_owner', 'projects', ['name', 'owner_id'])
     op.drop_column('projects', 'repo_path')
     op.drop_column('projects', 'docs_path')
     op.drop_column('projects', 'index_path')
@@ -28,5 +29,6 @@ def downgrade() -> None:
     op.add_column('projects', sa.Column('docs_path', sa.String(1024), nullable=False, server_default=''))
     op.add_column('projects', sa.Column('index_path', sa.String(1024), nullable=False, server_default=''))
     op.add_column('projects', sa.Column('config_json', sa.Text(), nullable=False, server_default='{}'))
+    op.drop_constraint('uq_project_name_owner', 'projects', type_='unique')
     op.drop_column('projects', 'source_type')
     op.drop_column('projects', 'source_url')
