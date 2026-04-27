@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import ForeignKey, String, Text, Integer, DateTime, Boolean, UniqueConstraint
+from sqlalchemy import ForeignKey, String, Text, Integer, DateTime, Boolean, JSON, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from reqradar.web.database import Base
@@ -111,7 +111,7 @@ class AnalysisTask(Base):
     requirement_name: Mapped[str] = mapped_column(String(255), nullable=False)
     requirement_text: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(50), default=TaskStatus.PENDING, nullable=False)
-    context_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
+    context_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -162,7 +162,7 @@ class PendingChange(Base):
     __tablename__ = "pending_changes"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    project_id: Mapped[int] = mapped_column(Integer, ForeignKey("projects.id"), nullable=False, index=True)
+    project_id: Mapped[int] = mapped_column(Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
     change_type: Mapped[str] = mapped_column(String(50), nullable=False)
     target_id: Mapped[str] = mapped_column(String(200), nullable=False)
     old_value: Mapped[str] = mapped_column(Text, default="", nullable=False)
@@ -181,7 +181,7 @@ class SynonymMapping(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     project_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("projects.id"), nullable=True, index=True)
     business_term: Mapped[str] = mapped_column(String(200), nullable=False)
-    code_terms: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
+    code_terms: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
     priority: Mapped[int] = mapped_column(Integer, default=100, nullable=False)
     source: Mapped[str] = mapped_column(String(50), default="user", nullable=False)
     created_by: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
@@ -211,8 +211,8 @@ class ReportVersion(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     task_id: Mapped[int] = mapped_column(Integer, ForeignKey("analysis_tasks.id"), nullable=False, index=True)
     version_number: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
-    report_data: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
-    context_snapshot: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
+    report_data: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    context_snapshot: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     content_markdown: Mapped[str] = mapped_column(Text, nullable=False)
     content_html: Mapped[str] = mapped_column(Text, default="", nullable=False)
     trigger_type: Mapped[str] = mapped_column(String(50), default="initial", nullable=False)
@@ -232,7 +232,7 @@ class ReportChat(Base):
     version_number: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     role: Mapped[str] = mapped_column(String(20), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
-    evidence_refs: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
+    evidence_refs: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
     intent_type: Mapped[str] = mapped_column(String(50), default="other", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
 

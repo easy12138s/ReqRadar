@@ -7,11 +7,9 @@ logger = logging.getLogger("reqradar.synonym_resolver")
 
 
 class SynonymResolver:
-    HARD_CODED_SYNONYMS: dict[str, list[str]] = {}
 
     def __init__(self):
-        if not self.HARD_CODED_SYNONYMS:
-            self.HARD_CODED_SYNONYMS = dict(_COMMON_SYNONYMS) if _COMMON_SYNONYMS else {}
+        self._hard_coded_synonyms: dict[str, list[str]] = dict(_COMMON_SYNONYMS) if _COMMON_SYNONYMS else {}
 
     def resolve(
         self,
@@ -68,7 +66,7 @@ class SynonymResolver:
                     if isinstance(ct, str) and ct not in results:
                         results.append(ct)
         else:
-            hard_coded = self.HARD_CODED_SYNONYMS.get(term, [])
+            hard_coded = self._hard_coded_synonyms.get(term, [])
             results.extend(hard_coded)
 
         return results

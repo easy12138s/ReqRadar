@@ -4,10 +4,12 @@
 class ReqRadarException(Exception):
     """基础异常类"""
 
-    def __init__(self, message: str, cause: Exception = None):
+    def __init__(self, message: str, cause: Exception | None = None):
         super().__init__(message)
         self.message = message
         self.cause = cause
+        if cause is not None:
+            self.__cause__ = cause
 
 
 class FatalError(ReqRadarException):

@@ -1,4 +1,3 @@
-import json
 import logging
 from datetime import datetime, timezone
 from typing import Optional
@@ -58,12 +57,7 @@ class ChatbackService:
         if version is None:
             return {"reply": "未找到指定版本的报告。", "intent_type": "error", "updated": False}
 
-        report_data = {}
-        if isinstance(version.report_data, str):
-            try:
-                report_data = json.loads(version.report_data)
-            except (json.JSONDecodeError, TypeError):
-                report_data = {}
+        report_data = version.report_data or {}
 
         context_snapshot = await self.version_service.get_context_snapshot(task_id, version_number)
         if context_snapshot is None:
@@ -97,7 +91,7 @@ class ChatbackService:
             version_number=version_number,
             role="agent",
             content=reply,
-            evidence_refs=json.dumps([ev["id"] for ev in context_snapshot.get("evidence_list", [])[:5]], ensure_ascii=False),
+            evidence_refs=[ev["id"] for ev in context_snapshot.get("evidence_list", [])[:5]],
         )
 
         db = self.version_service.db
@@ -194,7 +188,7 @@ class ChatbackService:
         if current_version is None:
             return {"success": False, "error": "Version not found"}
 
-        report_data = updated_report_data or (json.loads(current_version.report_data) if isinstance(current_version.report_data, str) else current_version.report_data)
+        report_data = updated_report_data or current_version.report_data or {}
         context_snapshot = await self.version_service.get_context_snapshot(task_id, version_number)
         content_md = updated_content_markdown or current_version.content_markdown
 
@@ -229,7 +223,7 @@ class ChatbackService:
                 "role": c.role,
                 "content": c.content,
                 "intent_type": c.intent_type,
-                "evidence_refs": json.loads(c.evidence_refs) if isinstance(c.evidence_refs, str) else c.evidence_refs,
+                "evidence_refs": c.evidence_refs or [],
                 "created_at": c.created_at.isoformat() if c.created_at else None,
             }
             for c in chats

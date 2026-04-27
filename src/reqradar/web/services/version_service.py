@@ -1,4 +1,3 @@
-import json
 import logging
 from typing import Optional
 
@@ -39,8 +38,8 @@ class VersionService:
         version = ReportVersion(
             task_id=task_id,
             version_number=new_version_number,
-            report_data=json.dumps(report_data, ensure_ascii=False, default=str),
-            context_snapshot=json.dumps(context_snapshot, ensure_ascii=False, default=str),
+            report_data=report_data,
+            context_snapshot=context_snapshot,
             content_markdown=content_markdown,
             content_html=content_html,
             trigger_type=trigger_type,
@@ -94,8 +93,8 @@ class VersionService:
         target = await self.get_version(task_id, target_version)
         if target is None:
             return None
-        report_data = json.loads(target.report_data) if isinstance(target.report_data, str) else target.report_data
-        context_snapshot = json.loads(target.context_snapshot) if isinstance(target.context_snapshot, str) else target.context_snapshot
+        report_data = target.report_data
+        context_snapshot = target.context_snapshot
         new_version = await self.create_version(
             task_id=task_id,
             report_data=report_data,
@@ -132,10 +131,7 @@ class VersionService:
         version = await self.get_version(task_id, version_number)
         if version is None:
             return None
-        snapshot_str = version.context_snapshot
-        if isinstance(snapshot_str, str):
-            try:
-                return json.loads(snapshot_str)
-            except (json.JSONDecodeError, TypeError):
-                return {}
-        return snapshot_str if isinstance(snapshot_str, dict) else {}
+        snapshot = version.context_snapshot
+        if isinstance(snapshot, dict):
+            return snapshot
+        return {}

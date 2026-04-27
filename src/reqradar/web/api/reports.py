@@ -1,4 +1,3 @@
-import json
 import logging
 from typing import Optional
 
@@ -29,11 +28,11 @@ class ReportResponse(BaseModel):
         risk_level = "unknown"
         if task.context_json:
             try:
-                ctx = json.loads(task.context_json)
+                ctx = task.context_json
                 deep = ctx.get("deep_analysis")
                 if deep and isinstance(deep, dict):
                     risk_level = deep.get("risk_level", "unknown")
-            except (json.JSONDecodeError, AttributeError):
+            except AttributeError:
                 pass
 
         return cls(

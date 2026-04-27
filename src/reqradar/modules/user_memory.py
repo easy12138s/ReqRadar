@@ -63,18 +63,28 @@ class UserMemory:
             "analysis_id": analysis_id,
             "date": datetime.now().strftime("%Y-%m-%d"),
         })
+        self.save()
 
     def set_preference(self, key: str, value: str) -> None:
         self.load()
         self._data["preferences"][key] = value
+        self.save()
 
     def add_focus_area(self, area: str, priority: str = "medium") -> None:
         self.load()
         self._data["focus_areas"].append({"area": area, "priority": priority})
+        self.save()
 
     def add_term_preference(self, term: str, definition: str) -> None:
         self.load()
         self._data["term_preference"].append({"term": term, "definition": definition})
+        self.save()
+
+    def batch_add_corrections(self, corrections: list[dict]) -> None:
+        self.load()
+        for c in corrections:
+            self._data["corrections"].append(c)
+        self.save()
 
     def get_corrections_for_term(self, business_term: str) -> list[str]:
         self.load()

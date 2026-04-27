@@ -4,22 +4,14 @@ import asyncio
 import base64
 import json
 import logging
-import re
 from abc import ABC, abstractmethod
 
 import httpx
 
-from reqradar.agent.llm_utils import _parse_json_response
+from reqradar.agent.llm_utils import _parse_json_response, _strip_thinking_tags
 from reqradar.core.exceptions import LLMException
 
 logger = logging.getLogger("reqradar.llm")
-
-
-def _strip_thinking_tags(text: str) -> str:
-    """Remove MiniMax-style ◀thinking▶ and ◀reasoning_content▶ tags from text."""
-    text = re.sub(r'◀thinking▶.*?◀/thinking▶', '', text, flags=re.DOTALL)
-    text = re.sub(r'◀reasoning_content▶.*?◀/reasoning_content▶', '', text, flags=re.DOTALL)
-    return text.strip()
 
 
 def _log_llm_call(

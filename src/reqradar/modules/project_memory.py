@@ -67,10 +67,12 @@ class ProjectMemory:
         self.load()
         self._data["overview"] = overview
         self._save_changelog("Updated project overview")
+        self.save()
 
     def update_name(self, name: str) -> None:
         self.load()
         self._data["name"] = name
+        self.save()
 
     def add_tech_stack(self, category: str, items: list[str]) -> None:
         self.load()
@@ -79,6 +81,7 @@ class ProjectMemory:
         for item in items:
             if item not in existing:
                 existing.append(item)
+        self.save()
 
     def add_module(self, name: str, responsibility: str = "", key_classes: list[str] | None = None) -> None:
         self.load()
@@ -89,6 +92,7 @@ class ProjectMemory:
                     m["responsibility"] = responsibility
                 if key_classes:
                     m["key_classes"] = key_classes
+                self.save()
                 return
         modules.append({
             "name": name,
@@ -97,6 +101,7 @@ class ProjectMemory:
             "dependencies": [],
             "path": "",
         })
+        self.save()
 
     def add_term(self, term: str, definition: str, domain: str = "") -> None:
         self.load()
@@ -106,15 +111,54 @@ class ProjectMemory:
                 t["definition"] = definition
                 if domain:
                     t["domain"] = domain
+                self.save()
                 return
         terms.append({"term": term, "definition": definition, "domain": domain})
+        self.save()
 
-    def add_constraint(self, description: str, constraint_type: str = "other") -> None:
+    def batch_add_terms(self, terms: list[dict]) -> None:
         self.load()
-        self._data.setdefault("constraints", []).append({
-            "description": description,
-            "type": constraint_type,
-        })
+        existing = self._data.setdefault("terms", [])
+        existing_map = {t["term"]: t for t in existing}
+        for item in terms:
+            term, definition, domain = item["term"], item["definition"], item.get("domain", "")
+            if term in existing_map:
+                existing_map[term]["definition"] = definition
+                if domain:
+                    existing_map[term]["domain"] = domain
+            else:
+                existing.append({"term": term, "definition": definition, "domain": domain})
+        self.save()
+
+    def batch_add_modules(self, modules: list[dict]) -> None:
+        self.load()
+        existing = self._data.setdefault("modules", [])
+        existing_map = {m["name"]: m for m in existing}
+        for item in modules:
+            name = item["name"]
+            if name in existing_map:
+                if item.get("responsibility"):
+                    existing_map[name]["responsibility"] = item["responsibility"]
+                if item.get("key_classes"):
+                    existing_map[name]["key_classes"] = item["key_classes"]
+            else:
+                existing.append({
+                    "name": name,
+                    "responsibility": item.get("responsibility", ""),
+                    "key_classes": item.get("key_classes", []),
+                    "dependencies": [],
+                    "path": "",
+                })
+        self.save()
+
+    def batch_add_constraints(self, constraints: list[dict]) -> None:
+        self.load()
+        for c in constraints:
+            self._data.setdefault("constraints", []).append({
+                "description": c["description"],
+                "type": c.get("constraint_type", "other"),
+            })
+        self.save()
 
     def _save_changelog(self, description: str) -> None:
         self._data.setdefault("changelog", []).append({

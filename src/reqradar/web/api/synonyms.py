@@ -1,4 +1,3 @@
-import json
 import logging
 from typing import Optional
 
@@ -8,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from reqradar.web.dependencies import CurrentUser, DbSession, get_db, get_current_user
-from reqradar.web.models import SynonymMapping
+from reqradar.web.models import Project, SynonymMapping
 
 logger = logging.getLogger("reqradar.web.api.synonyms")
 
@@ -42,12 +41,11 @@ class SynonymResponse(BaseModel):
 
     @classmethod
     def from_orm_with_terms(cls, mapping: SynonymMapping) -> "SynonymResponse":
-        terms = json.loads(mapping.code_terms) if mapping.code_terms else []
         return cls(
             id=mapping.id,
             project_id=mapping.project_id,
             business_term=mapping.business_term,
-            code_terms=terms,
+            code_terms=mapping.code_terms or [],
             priority=mapping.priority,
             source=mapping.source,
             created_by=mapping.created_by,
@@ -71,7 +69,7 @@ async def create_synonym(req: SynonymCreate, current_user: CurrentUser, db: DbSe
     mapping = SynonymMapping(
         project_id=req.project_id,
         business_term=req.business_term,
-        code_terms=json.dumps(req.code_terms),
+        code_terms=req.code_terms,
         priority=req.priority,
         source=req.source,
         created_by=current_user.id,
@@ -94,10 +92,15 @@ async def update_synonym(
     if mapping is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Synonym mapping not found")
 
+    if mapping.project_id is not None:
+        project_result = await db.execute(select(Project).where(Project.id == mapping.project_id, Project.owner_id == current_user.id))
+        if project_result.scalar_one_or_none() is None:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to modify synonyms in this project")
+
     if req.business_term is not None:
         mapping.business_term = req.business_term
     if req.code_terms is not None:
-        mapping.code_terms = json.dumps(req.code_terms)
+        mapping.code_terms = req.code_terms
     if req.priority is not None:
         mapping.priority = req.priority
 
@@ -119,6 +122,11 @@ async def delete_synonym(
     mapping = result.scalar_one_or_none()
     if mapping is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Synonym mapping not found")
+
+    project_result = await db.execute(select(Project).where(Project.id == project_id, Project.owner_id == current_user.id))
+    if project_result.scalar_one_or_none() is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to delete synonyms in this project")
+
     await db.delete(mapping)
     await db.commit()
     return None

@@ -19,7 +19,7 @@ async def get_evidence_chain(
     current_user: CurrentUser,
     version_number: int | None = None,
 ):
-    task_result = await db.execute(select(AnalysisTask).where(AnalysisTask.id == task_id))
+    task_result = await db.execute(select(AnalysisTask).where(AnalysisTask.id == task_id, AnalysisTask.user_id == current_user.id))
     task = task_result.scalar_one_or_none()
     if task is None:
         raise HTTPException(status_code=404, detail="Analysis task not found")
@@ -55,7 +55,7 @@ async def get_evidence_detail(
     current_user: CurrentUser,
     version_number: int | None = None,
 ):
-    task_result = await db.execute(select(AnalysisTask).where(AnalysisTask.id == task_id))
+    task_result = await db.execute(select(AnalysisTask).where(AnalysisTask.id == task_id, AnalysisTask.user_id == current_user.id))
     task = task_result.scalar_one_or_none()
     if task is None:
         raise HTTPException(status_code=404, detail="Analysis task not found")

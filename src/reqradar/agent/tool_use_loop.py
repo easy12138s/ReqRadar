@@ -114,11 +114,14 @@ async def run_tool_use_loop(
                     continue
 
                 tracker.track_call(tc_name, tc_args)
-                tool = tool_map[tc_name]
 
                 try:
-                    result = await tool.execute(**tc_args)
-                    result_text = result.data if result.success else f"Error: {result.error}"
+                    result = await tool_registry.execute_with_permissions(
+                        tc_name, **tc_args
+                    )
+                    result_text = (
+                        result.data if result.success else f"Error: {result.error}"
+                    )
                 except Exception as e:
                     result_text = f"Error executing {tc_name}: {e}"
 

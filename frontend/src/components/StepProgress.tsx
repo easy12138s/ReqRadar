@@ -1,7 +1,5 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
 import { Steps, Card, Typography } from 'antd';
 import type { AnalysisStatus } from '@/types/api';
-import type { WebSocketMessage } from '@/types/websocket';
 
 const { Title, Text } = Typography;
 
@@ -15,75 +13,12 @@ const STEP_ITEMS = [
 ];
 
 interface StepProgressProps {
-  taskId: string;
+  currentStep: number;
+  progressMessage: string;
   status: AnalysisStatus;
-  onComplete?: () => void;
-  onError?: (message: string) => void;
 }
 
-export function StepProgress({ taskId, status, onComplete, onError }: StepProgressProps) {
-  const [currentStep, setCurrentStep] = useState(0);
-  const [progressMessage, setMessage] = useState('连接中...');
-  const wsRef = useRef<WebSocket | null>(null);
-
-  const connect = useCallback(() => {
-    const token = localStorage.getItem('access_token');
-    if (!token) return;
-
-    const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/api/analyses/${taskId}/ws?token=${token}`;
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      setMessage('已连接，等待更新...');
-    };
-
-    ws.onmessage = (event) => {
-      try {
-        const msg: WebSocketMessage = JSON.parse(event.data);
-        if (msg.type === 'progress') {
-          const data = msg.data as { step: number; total_steps: number; step_name: string; message: string };
-          setCurrentStep(data.step);
-          setMessage(data.message || data.step_name);
-        } else if (msg.type === 'status') {
-          const data = msg.data as { status: AnalysisStatus; message?: string };
-          setMessage(data.message || `状态: ${data.status}`);
-          if (data.status === 'completed') {
-            setCurrentStep(5);
-            onComplete?.();
-          } else if (data.status === 'failed') {
-            onError?.('分析失败');
-          }
-        } else if (msg.type === 'error') {
-          const data = msg.data as { message: string };
-          setMessage(`错误: ${data.message}`);
-          onError?.(data.message);
-        } else if (msg.type === 'complete') {
-          setCurrentStep(5);
-          onComplete?.();
-        }
-      } catch {
-        setMessage('收到无效消息');
-      }
-    };
-
-    ws.onerror = () => {
-      setMessage('WebSocket 连接错误');
-      onError?.('WebSocket 错误');
-    };
-
-    ws.onclose = () => {
-      setMessage('连接已关闭');
-    };
-  }, [taskId, onComplete, onError]);
-
-  useEffect(() => {
-    connect();
-    return () => {
-      wsRef.current?.close();
-    };
-  }, [connect]);
-
+export function StepProgress({ currentStep, progressMessage, status }: StepProgressProps) {
   const getStepStatus = (index: number) => {
     if (index < currentStep) return 'finish';
     if (index === currentStep) {

@@ -1,3 +1,4 @@
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -9,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from reqradar.infrastructure.config import load_config
-from reqradar.web.dependencies import DbSession, CurrentUser
+from reqradar.web.dependencies import DbSession, CurrentUser, oauth2_scheme
 from reqradar.web.models import User
 
 
@@ -18,6 +19,14 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 ALGORITHM = "HS256"
 SECRET_KEY = "change-me-in-production"
 ACCESS_TOKEN_EXPIRE_MINUTES = 1440
+
+_revoked_tokens: set[str] = set()
+
+
+def get_secret_key(request=None) -> str:
+    if request and hasattr(request.app.state, "secret_key"):
+        return request.app.state.secret_key
+    return SECRET_KEY
 
 
 def hash_password(password: str) -> str:
@@ -29,13 +38,13 @@ def verify_password(password: str, password_hash: str) -> bool:
 
 
 class RegisterRequest(BaseModel):
-    email: str
+    email: EmailStr
     password: str
     display_name: str
 
 
 class LoginRequest(BaseModel):
-    email: str
+    email: EmailStr
     password: str
 
 
@@ -54,6 +63,18 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
 
 
+def _validate_password_strength(password: str) -> str | None:
+    if len(password) < 8:
+        return "Password must be at least 8 characters long"
+    if not re.search(r"[A-Z]", password):
+        return "Password must contain at least one uppercase letter"
+    if not re.search(r"[a-z]", password):
+        return "Password must contain at least one lowercase letter"
+    if not re.search(r"\d", password):
+        return "Password must contain at least one digit"
+    return None
+
+
 def create_access_token(user_id: int, expires_delta: Optional[timedelta] = None) -> str:
     expire = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
     to_encode = {"sub": str(user_id), "exp": expire}
@@ -62,6 +83,10 @@ def create_access_token(user_id: int, expires_delta: Optional[timedelta] = None)
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def register(req: RegisterRequest, db: DbSession):
+    pw_error = _validate_password_strength(req.password)
+    if pw_error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=pw_error)
+
     result = await db.execute(select(User).where(User.email == req.email))
     if result.scalar_one_or_none() is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
@@ -103,3 +128,9 @@ async def login(req: LoginRequest, db: DbSession):
 @router.get("/me", response_model=UserResponse)
 async def me(current_user: CurrentUser):
     return current_user
+
+
+@router.post("/logout")
+async def logout(token: str = Depends(oauth2_scheme)):
+    _revoked_tokens.add(token)
+    return {"detail": "Successfully logged out"}

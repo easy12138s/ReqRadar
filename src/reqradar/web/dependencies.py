@@ -23,8 +23,13 @@ async def get_db(request: Request):
 DbSession = Annotated[AsyncSession, Depends(get_db)]
 
 
-async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)], db: DbSession):
-    from reqradar.web.api.auth import SECRET_KEY, ALGORITHM
+async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)], request: Request, db: DbSession):
+    from reqradar.web.api.auth import ALGORITHM, _revoked_tokens
+
+    secret_key = getattr(request.app.state, "secret_key", None)
+    if secret_key is None:
+        from reqradar.web.api.auth import SECRET_KEY
+        secret_key = SECRET_KEY
 
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -32,7 +37,9 @@ async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)], db: Db
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, secret_key, algorithms=[ALGORITHM])
+        if token in _revoked_tokens:
+            raise credentials_exception
         user_id_raw = payload.get("sub")
         if user_id_raw is None:
             raise credentials_exception

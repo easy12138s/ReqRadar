@@ -62,11 +62,11 @@ async def setup_db():
 async def _register_and_login(client: AsyncClient, email: str) -> str:
     await client.post(
         "/api/auth/register",
-        json={"email": email, "password": "secret123", "display_name": email},
+        json={"email": email, "password": "Secret123", "display_name": email},
     )
     resp = await client.post(
         "/api/auth/login",
-        json={"email": email, "password": "secret123"},
+        json={"email": email, "password": "Secret123"},
     )
     return resp.json()["access_token"]
 

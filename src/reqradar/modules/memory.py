@@ -1,6 +1,7 @@
 """项目记忆管理器 - 按项目隔离的领域知识存储"""
 
 import logging
+import warnings
 from datetime import datetime
 from pathlib import Path
 
@@ -30,6 +31,11 @@ class MemoryManager:
     """
 
     def __init__(self, storage_path: str = ".reqradar/memory"):
+        warnings.warn(
+            "MemoryManager is deprecated. Use ProjectMemory instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.storage_path = Path(storage_path)
         self.memory_file = self.storage_path / "memory.yaml"
         self._data: dict = {}
@@ -504,6 +510,48 @@ class MemoryManager:
             )
         else:
             self.save()
+
+    def batch_add_terms(self, terms: list[dict]) -> None:
+        self.load()
+        terminology = self._data["terminology"]
+        existing_map = {t.get("term"): t for t in terminology}
+        for item in terms:
+            term, definition = item["term"], item["definition"]
+            context = item.get("context", "")
+            domain = item.get("domain", "")
+            related_modules = item.get("related_modules", None)
+            if term in existing_map:
+                existing_map[term]["definition"] = definition
+                if context:
+                    existing_map[term]["context"] = context
+                if domain:
+                    existing_map[term]["domain"] = domain
+                if related_modules is not None:
+                    existing_map[term]["related_modules"] = related_modules
+            else:
+                terminology.append({
+                    "term": term,
+                    "definition": definition,
+                    "context": context,
+                    "domain": domain,
+                    "related_modules": related_modules or [],
+                    "source": "llm_extract",
+                })
+        self.save()
+
+    def batch_add_module_requirement_history(self, entries: list[dict]) -> None:
+        self.load()
+        for entry in entries:
+            module_name = entry.get("module", "")
+            requirement_text = entry.get("requirement", "")
+            for mod in self._data["modules"]:
+                if mod.get("name") == module_name:
+                    history = mod.setdefault("requirement_history", [])
+                    history.append({"requirement": requirement_text})
+                    if len(history) > 10:
+                        mod["requirement_history"] = history[-10:]
+                    break
+        self.save()
 
     def _default_memory(self) -> dict:
         return {

@@ -2,14 +2,13 @@ import { useState, useEffect } from 'react';
 import { Card, Form, Select, Checkbox, Button, message, Spin } from 'antd';
 import { getConfig, setConfig } from '@/api/configs';
 import type { AnalysisDepth } from '@/types/api';
+import { FOCUS_AREAS } from '@/constants/focusAreas';
 
 const DEPTH_OPTIONS = [
   { label: '快速 (10步)', value: 'quick' },
   { label: '标准 (15步)', value: 'standard' },
   { label: '深度 (25步)', value: 'deep' },
 ];
-
-const FOCUS_AREA_OPTIONS = ['安全性', '性能', '兼容性', '可维护性', '可扩展性', '用户体验'];
 
 export function UserPreferences() {
   const [form] = Form.useForm();
@@ -72,7 +71,7 @@ export function UserPreferences() {
           <Select options={[{ label: '中文', value: 'zh' }, { label: 'English', value: 'en' }]} />
         </Form.Item>
         <Form.Item name="focus_areas" label="关注领域">
-          <Checkbox.Group options={FOCUS_AREA_OPTIONS} />
+          <Checkbox.Group options={[...FOCUS_AREAS]} />
         </Form.Item>
         <Form.Item>
           <Button type="primary" htmlType="submit" loading={saving}>保存设置</Button>

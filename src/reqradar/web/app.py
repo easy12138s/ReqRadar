@@ -28,6 +28,7 @@ from reqradar.web.api.evidence_api import router as evidence_router
 from reqradar.web.database import Base, create_engine, create_session_factory
 from reqradar.web.dependencies import async_session_factory, CurrentUser, DbSession
 from reqradar.web.exceptions import reqradar_exception_handler
+from reqradar.web.middleware.rate_limit import RateLimitMiddleware
 from reqradar.web.models import AnalysisTask, Project
 from reqradar.web.enums import TaskStatus
 
@@ -51,11 +52,13 @@ async def lifespan(app: FastAPI):
     dep_module.async_session_factory = session_factory
     auth_module.SECRET_KEY = web_config.secret_key
     auth_module.ACCESS_TOKEN_EXPIRE_MINUTES = web_config.access_token_expire_minutes
+    app.state.secret_key = web_config.secret_key
 
     if web_config.secret_key == "change-me-in-production" and not web_config.debug:
-        logger.warning(
-            "SECURITY WARNING: Using default JWT secret key. "
-            "Set web.secret_key in .reqradar.yaml or REQRADAR_SECRET_KEY env var."
+        raise RuntimeError(
+            "FATAL: Default JWT secret key detected in production mode. "
+            "Set web.secret_key in .reqradar.yaml or REQRADAR_SECRET_KEY env var. "
+            "Refusing to start with insecure default key."
         )
 
     if web_config.auto_create_tables:
@@ -130,6 +133,8 @@ def create_app(config_path: Optional[Path] = None):
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    app.add_middleware(RateLimitMiddleware, requests_per_minute=60)
 
     app.add_exception_handler(ReqRadarException, reqradar_exception_handler)
 

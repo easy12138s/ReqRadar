@@ -1,4 +1,3 @@
-import json
 import logging
 from typing import Optional
 
@@ -26,6 +25,11 @@ async def list_versions(
     db: DbSession,
     current_user: CurrentUser,
 ):
+    task_result = await db.execute(select(AnalysisTask).where(AnalysisTask.id == task_id, AnalysisTask.user_id == current_user.id))
+    task = task_result.scalar_one_or_none()
+    if task is None:
+        raise HTTPException(status_code=404, detail="Analysis task not found")
+
     service = VersionService(db)
     versions = await service.list_versions(task_id)
     return {
@@ -48,17 +52,19 @@ async def get_version(
     db: DbSession,
     current_user: CurrentUser,
 ):
+    task_result = await db.execute(select(AnalysisTask).where(AnalysisTask.id == task_id, AnalysisTask.user_id == current_user.id))
+    task = task_result.scalar_one_or_none()
+    if task is None:
+        raise HTTPException(status_code=404, detail="Analysis task not found")
+
     service = VersionService(db)
     version = await service.get_version(task_id, version_number)
     if version is None:
         raise HTTPException(status_code=404, detail="Version not found")
 
     report_data = version.report_data
-    if isinstance(report_data, str):
-        try:
-            report_data = json.loads(report_data)
-        except (json.JSONDecodeError, TypeError):
-            report_data = {}
+    if report_data is None:
+        report_data = {}
 
     return {
         "version_number": version.version_number,
@@ -79,6 +85,11 @@ async def rollback_version(
     db: DbSession,
     current_user: CurrentUser,
 ):
+    task_result = await db.execute(select(AnalysisTask).where(AnalysisTask.id == task_id, AnalysisTask.user_id == current_user.id))
+    task = task_result.scalar_one_or_none()
+    if task is None:
+        raise HTTPException(status_code=404, detail="Analysis task not found")
+
     service = VersionService(db)
     user_id = current_user.id if hasattr(current_user, "id") else 1
     new_version = await service.rollback(task_id, req.version_number, user_id=user_id)

@@ -75,3 +75,16 @@ exclude = ["alembic/versions/"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+addopts = "--cov=reqradar --cov-report=term-missing --cov-report=html -q"
+
+[tool.coverage.run]
+source = ["src/reqradar"]
+omit = ["tests/*", "*/migrations/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "pass",
+]

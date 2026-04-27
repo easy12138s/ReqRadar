@@ -67,11 +67,11 @@ async def auth_client(setup_db):
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         await client.post(
             "/api/auth/register",
-            json={"email": "projv2@example.com", "password": "secret123", "display_name": "Proj V2 User"},
+            json={"email": "projv2@example.com", "password": "Secret123", "display_name": "Proj V2 User"},
         )
         login_resp = await client.post(
             "/api/auth/login",
-            json={"email": "projv2@example.com", "password": "secret123"},
+            json={"email": "projv2@example.com", "password": "Secret123"},
         )
         token = login_resp.json()["access_token"]
         headers = {"Authorization": f"Bearer {token}"}

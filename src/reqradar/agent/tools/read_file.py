@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from reqradar.agent.tools.base import BaseTool, ToolResult
+from reqradar.agent.tools.security import PathSandbox, SensitiveFileFilter
 
 
 class ReadFileTool(BaseTool):
@@ -34,6 +35,8 @@ class ReadFileTool(BaseTool):
 
     def __init__(self, repo_path: str = ""):
         self.repo_path = repo_path
+        self._sandbox = PathSandbox(repo_path) if repo_path else None
+        self._sensitive_filter = SensitiveFileFilter()
 
     async def execute(self, **kwargs) -> ToolResult:
         file_path = kwargs.get("path", "")
@@ -44,6 +47,14 @@ class ReadFileTool(BaseTool):
             return ToolResult(success=False, data="", error="No file path provided")
 
         full_path = Path(self.repo_path) / file_path
+        resolved = str(full_path.resolve())
+
+        if self._sandbox and not self._sandbox.is_allowed(resolved):
+            return ToolResult(success=False, data="", error=f"Access denied: path escapes project root: {file_path}")
+
+        if self._sensitive_filter.is_sensitive(file_path):
+            return ToolResult(success=False, data="", error=f"Access denied: sensitive file: {file_path}")
+
         if not full_path.exists():
             return ToolResult(success=False, data="", error=f"File not found: {file_path}")
 

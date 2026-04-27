@@ -1,5 +1,4 @@
 import asyncio
-import json
 import logging
 import os
 import uuid
@@ -112,7 +111,6 @@ async def submit_analysis_upload(
             detail=f"File size ({len(content)} bytes) exceeds limit ({config.web.max_upload_size}MB)",
         )
 
-    config = load_config()
     from reqradar.web.services.project_file_service import ProjectFileService
     file_svc = ProjectFileService(config.web)
     upload_dir = str(file_svc.get_requirements_path(project.name))
@@ -142,7 +140,6 @@ async def submit_analysis_upload(
     await db.commit()
     await db.refresh(task)
 
-    config = load_config()
     asyncio.create_task(_run_analysis_background(task.id, project, config))
 
     return task
@@ -174,17 +171,17 @@ async def get_analysis(task_id: int, current_user: CurrentUser, db: DbSession):
     if task is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analysis task not found")
 
-    step_summary = None
-    if task.context_json:
-        try:
-            ctx = json.loads(task.context_json)
-            step_results = ctx.get("step_results", {})
-            step_summary = {
-                name: {"success": r.get("success", False), "confidence": r.get("confidence", 0.0)}
-                for name, r in step_results.items()
-            }
-        except (json.JSONDecodeError, AttributeError):
-            pass
+        step_summary = None
+        if task.context_json:
+            try:
+                ctx = task.context_json
+                step_results = ctx.get("step_results", {})
+                step_summary = {
+                    name: {"success": r.get("success", False), "confidence": r.get("confidence", 0.0)}
+                    for name, r in step_results.items()
+                }
+            except AttributeError:
+                pass
 
     response = AnalysisDetailResponse.model_validate(task)
     response.step_summary = step_summary
@@ -215,7 +212,7 @@ async def retry_analysis(task_id: int, current_user: CurrentUser, db: DbSession)
     task.error_message = None
     task.started_at = None
     task.completed_at = None
-    task.context_json = "{}"
+    task.context_json = {}
     await db.commit()
     await db.refresh(task)
 
@@ -227,7 +224,7 @@ async def retry_analysis(task_id: int, current_user: CurrentUser, db: DbSession)
 
 @router.post("/{task_id}/cancel")
 async def cancel_analysis(task_id: int, current_user: CurrentUser, db: DbSession):
-    result = await db.execute(select(AnalysisTask).where(AnalysisTask.id == task_id))
+    result = await db.execute(select(AnalysisTask).where(AnalysisTask.id == task_id, AnalysisTask.user_id == current_user.id))
     task = result.scalar_one_or_none()
     if task is None:
         raise HTTPException(status_code=404, detail="Analysis task not found")

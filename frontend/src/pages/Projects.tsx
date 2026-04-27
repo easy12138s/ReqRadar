@@ -28,6 +28,7 @@ import {
 import { useNavigate, Link } from 'react-router-dom';
 import type { Project, ProjectCreateFromLocal, ProjectCreateFromGit } from '@/types/api';
 import { getProjects, createFromZip, createFromGit, createFromLocal } from '@/api/projects';
+import { apiClient } from '@/api/client';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -65,6 +66,15 @@ export function Projects() {
   useEffect(() => {
     fetchProjects();
   }, []);
+
+  const handleRegenerateProfile = async (projectId: string) => {
+    try {
+      await apiClient.post(`/projects/${projectId}/index`);
+      message.success('画像更新已触发');
+    } catch {
+      message.error('画像更新失败');
+    }
+  };
 
   const handleCreateFromZip = async (values: { name: string; description: string }) => {
     if (!zipFile) {
@@ -197,7 +207,7 @@ export function Projects() {
                     <Link to={`/projects/${project.id}/synonyms`}>
                       <Button icon={<BookOutlined />} size="small">同义词</Button>
                     </Link>
-                    <Button icon={<SyncOutlined />} size="small">更新画像</Button>
+                    <Button icon={<SyncOutlined />} size="small" onClick={(e) => { e.stopPropagation(); handleRegenerateProfile(project.id); }}>更新画像</Button>
                   </Space>
                 </div>
               </Card>

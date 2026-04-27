@@ -229,7 +229,7 @@ class AnalysisRunnerV2:
     ):
         from reqradar.web.services.version_service import VersionService
 
-        task.context_json = json.dumps(agent.get_context_snapshot(), ensure_ascii=False, default=str)
+        task.context_json = agent.get_context_snapshot()
         task.status = TaskStatus.COMPLETED
         task.completed_at = datetime.now(timezone.utc)
 

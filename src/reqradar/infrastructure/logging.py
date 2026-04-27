@@ -32,6 +32,8 @@ def setup_logging(level: str = "INFO", use_rich: bool = True) -> structlog.Bound
             structlog.stdlib.add_logger_name,
             structlog.stdlib.add_log_level,
             structlog.processors.TimeStamper(fmt="iso"),
+            structlog.processors.StackInfoRenderer(),
+            structlog.processors.format_exc_info,
             structlog.processors.JSONRenderer(),
         ]
 
@@ -59,7 +61,7 @@ def log_error(error: Exception, context: dict = None):
     if context is None:
         context = {}
 
-    if hasattr(error, "level"):
+    if hasattr(error, "level") and hasattr(error.level, "value"):
         context["error_level"] = error.level.value
 
     if isinstance(error, Exception):

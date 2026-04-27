@@ -35,6 +35,7 @@ export function AnalysisProgress() {
   const [dimensions, setDimensions] = useState<Record<string, string>>({});
   const [evidenceCount, setEvidenceCount] = useState(0);
   const [currentStep, setCurrentStep] = useState(0);
+  const [stepProgressMessage, setStepProgressMessage] = useState('连接中...');
   const [maxSteps, setMaxSteps] = useState(15);
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -65,24 +66,42 @@ export function AnalysisProgress() {
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        if (msg.type === 'dimension_progress') {
-          setDimensions(msg.dimensions || {});
-          setEvidenceCount(msg.evidence_count || 0);
-          setCurrentStep(msg.step || 0);
-          setMaxSteps(msg.max_steps || 15);
-        } else if (msg.type === 'status') {
-          const data = msg.data as { status: AnalysisStatus; message?: string };
-          if (data.status === 'completed' || data.status === 'failed') {
-            fetchTask();
-          }
+  ws.onmessage = (event) => {
+    try {
+      const msg = JSON.parse(event.data);
+      if (msg.type === 'dimension_progress') {
+        setDimensions(msg.dimensions || {});
+        setEvidenceCount(msg.evidence_count || 0);
+        setCurrentStep(msg.step || 0);
+        setMaxSteps(msg.max_steps || 15);
+      } else if (msg.type === 'status') {
+        const data = msg.data as { status: AnalysisStatus; message?: string };
+        if (data.status === 'completed') {
+          setCurrentStep(5);
+          setStepProgressMessage(data.message || '分析完成');
+          fetchTask();
+        } else if (data.status === 'failed') {
+          setStepProgressMessage(data.message || '分析失败');
+          fetchTask();
+        } else {
+          setStepProgressMessage(data.message || `状态: ${data.status}`);
         }
-      } catch {
-        // ignore invalid messages
+      } else if (msg.type === 'progress') {
+        const data = msg.data as { step: number; total_steps: number; step_name: string; message: string };
+        setCurrentStep(data.step);
+        setStepProgressMessage(data.message || data.step_name);
+      } else if (msg.type === 'complete') {
+        setCurrentStep(5);
+        setStepProgressMessage('分析完成');
+        fetchTask();
+      } else if (msg.type === 'error') {
+        const data = msg.data as { message: string };
+        setStepProgressMessage(`错误: ${data.message}`);
       }
-    };
+    } catch {
+      // ignore invalid messages
+    }
+  };
 
     ws.onerror = () => {
       // ignore ws errors
@@ -99,16 +118,6 @@ export function AnalysisProgress() {
       wsRef.current?.close();
     };
   }, [connectWebSocket]);
-
-  const handleComplete = () => {
-    fetchTask();
-    message.success('分析已完成');
-  };
-
-  const handleError = (msg: string) => {
-    setError(msg);
-    fetchTask();
-  };
 
   const handleRetry = async () => {
     if (!id) return;
@@ -215,12 +224,11 @@ export function AnalysisProgress() {
               maxSteps={maxSteps}
             />
           </Card>
-          <StepProgress
-            taskId={id}
-            status={task.status}
-            onComplete={handleComplete}
-            onError={handleError}
-          />
+            <StepProgress
+              currentStep={currentStep}
+              progressMessage={stepProgressMessage}
+              status={task.status}
+            />
           <div style={{ marginTop: 16 }}>
             <Button danger icon={<StopOutlined />} onClick={async () => {
               try { await cancelAnalysis(id); message.success('已停止分析'); }

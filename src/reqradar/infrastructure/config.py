@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Optional
 
 import yaml
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class LLMConfig(BaseModel):
@@ -153,6 +153,19 @@ class Config(BaseModel):
     reporting: ReportingConfig = Field(default_factory=ReportingConfig)
     log: LogConfig = Field(default_factory=LogConfig)
     web: WebConfig = Field(default_factory=WebConfig)
+
+    @model_validator(mode="after")
+    def _validate_critical_settings(self) -> "Config":
+        if (
+            self.web.secret_key == "change-me-in-production"
+            and not self.web.debug
+            and not os.getenv("REQRADAR_TESTING")
+        ):
+            raise ValueError(
+                "web.secret_key must be changed from default in production mode. "
+                "Set REQRADAR_SECRET_KEY env var or web.secret_key in .reqradar.yaml"
+            )
+        return self
 
 
 def _resolve_env_vars(value: str) -> str:

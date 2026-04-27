@@ -8,6 +8,8 @@ logger = logging.getLogger("reqradar.web.services.project_store")
 
 
 class ProjectStore:
+    MAX_CACHED_PROJECTS = 32
+
     def __init__(self):
         self._code_graphs: dict[int, object] = {}
         self._vector_stores: dict[int, object] = {}
@@ -41,6 +43,9 @@ class ProjectStore:
 
             async with self._lock:
                 self._code_graphs[project_id] = code_graph
+                while len(self._code_graphs) > self.MAX_CACHED_PROJECTS:
+                    oldest_key = next(iter(self._code_graphs))
+                    del self._code_graphs[oldest_key]
 
             return code_graph
         except Exception:
@@ -67,6 +72,9 @@ class ProjectStore:
 
             async with self._lock:
                 self._vector_stores[project_id] = vector_store
+                while len(self._vector_stores) > self.MAX_CACHED_PROJECTS:
+                    oldest_key = next(iter(self._vector_stores))
+                    del self._vector_stores[oldest_key]
 
             return vector_store
         except Exception:

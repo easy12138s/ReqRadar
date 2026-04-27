@@ -11,10 +11,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from reqradar.infrastructure.config import load_config
-from reqradar.infrastructure.config_manager import ConfigManager
 from reqradar.web.dependencies import CurrentUser, DbSession, get_current_user, get_db
 from reqradar.web.models import Project, User
 from reqradar.web.services.project_file_service import ProjectFileService
+from reqradar.web.services.project_index_service import ProjectIndexService
 
 logger = logging.getLogger("reqradar.web.api.projects")
 
@@ -125,9 +125,9 @@ async def create_from_local(req: ProjectFromLocal, current_user: CurrentUser, db
         for item in local_path.iterdir():
             try:
                 if item.is_dir() and not item.is_symlink():
-                    shutil.copytree(str(item), str(src_code / item.name), dirs_exist_ok=True)
+                    await asyncio.to_thread(shutil.copytree, str(item), str(src_code / item.name), dirs_exist_ok=True)
                 elif item.is_file() and not item.is_symlink():
-                    shutil.copy2(str(item), str(src_code / item.name))
+                    await asyncio.to_thread(shutil.copy2, str(item), str(src_code / item.name))
             except (shutil.SpecialFileError, OSError) as e:
                 logger.debug("Skipping special file %s: %s", item, e)
                 copy_errors.append(str(item))
@@ -267,86 +267,8 @@ async def trigger_index(project_id: int, current_user: CurrentUser, db: DbSessio
     if project is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
-    async def _run_index():
-        from reqradar.web.services.project_store import project_store
-
-        config = load_config()
-        svc = ProjectFileService(config.web)
-        repo_path = svc.detect_code_root(project.name)
-        index_path = svc.get_index_path(project.name)
-
-        cm = ConfigManager(db, config)
-
-        try:
-            from reqradar.modules.code_parser import PythonCodeParser
-
-            parser = PythonCodeParser()
-            code_graph = parser.parse_directory(repo_path)
-
-            index_path.mkdir(parents=True, exist_ok=True)
-            graph_file = index_path / "code_graph.json"
-            with open(graph_file, "w", encoding="utf-8") as f:
-                f.write(code_graph.to_json())
-
-            try:
-                from reqradar.modules.vector_store import ChromaVectorStore, CHROMA_AVAILABLE
-
-                if CHROMA_AVAILABLE:
-                    req_dir = svc.get_requirements_path(project.name)
-                    vectorstore_path = index_path / "vectorstore"
-
-                    if req_dir.exists() and any(req_dir.iterdir()):
-                        from reqradar.modules.loaders import LoaderRegistry
-                        from reqradar.modules.vector_store import Document
-
-                        vs = ChromaVectorStore(
-                            persist_directory=str(vectorstore_path),
-                            embedding_model=config.index.embedding_model,
-                        )
-
-                        for doc_path in req_dir.rglob("*"):
-                            if doc_path.is_file():
-                                loader = LoaderRegistry.get_for_file(doc_path)
-                                if loader is None:
-                                    continue
-                                try:
-                                    loaded_docs = loader.load(
-                                        doc_path,
-                                        chunk_size=config.loader.chunk_size,
-                                        chunk_overlap=config.loader.chunk_overlap,
-                                    )
-                                    documents = [
-                                        Document(
-                                            id=f"{doc_path.stem}_{i}",
-                                            content=doc.content,
-                                            metadata={**doc.metadata, "format": doc.format},
-                                        )
-                                        for i, doc in enumerate(loaded_docs)
-                                    ]
-                                    if documents:
-                                        vs.add_documents(documents)
-                                except Exception:
-                                    logger.warning("Failed to index file %s", doc_path)
-
-                        vs.persist()
-                        logger.info("Vector store built for project %d", project_id)
-            except Exception:
-                logger.warning("Vector store build failed for project %d", project_id, exc_info=True)
-
-            memory_enabled = await cm.get_bool("memory.enabled", project_id=project_id, default=config.memory.enabled)
-            if memory_enabled:
-                from reqradar.modules.memory import MemoryManager
-
-                memory_path = svc.get_memory_path(project.name)
-                memory_manager = MemoryManager(storage_path=str(memory_path))
-                memory_manager.load()
-
-            await project_store.invalidate(project_id)
-
-            logger.info("Index build completed for project %d", project_id)
-        except Exception:
-            logger.exception("Index build failed for project %d", project_id)
-
-    asyncio.create_task(_run_index())
+    config = load_config()
+    index_service = ProjectIndexService(config.web)
+    asyncio.create_task(index_service.build_index(project, db, config))
 
     return {"message": "Index build started", "project_id": project_id}

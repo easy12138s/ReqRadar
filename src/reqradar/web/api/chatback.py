@@ -11,7 +11,7 @@ from reqradar.web.services.version_service import VersionService
 
 logger = logging.getLogger("reqradar.api.chatback")
 
-router = APIRouter(prefix="/analyses/{task_id}", tags=["chatback"])
+router = APIRouter(prefix="/api/analyses/{task_id}", tags=["chatback"])
 
 
 class ChatRequest(BaseModel):
@@ -30,7 +30,7 @@ async def chat(
     db: DbSession,
     current_user: CurrentUser,
 ):
-    task_result = await db.execute(select(AnalysisTask).where(AnalysisTask.id == task_id))
+    task_result = await db.execute(select(AnalysisTask).where(AnalysisTask.id == task_id, AnalysisTask.user_id == current_user.id))
     task = task_result.scalar_one_or_none()
     if task is None:
         raise HTTPException(status_code=404, detail="Analysis task not found")
@@ -56,6 +56,11 @@ async def get_chat_history(
     current_user: CurrentUser,
     version_number: int | None = Query(default=None),
 ):
+    task_result = await db.execute(select(AnalysisTask).where(AnalysisTask.id == task_id, AnalysisTask.user_id == current_user.id))
+    task = task_result.scalar_one_or_none()
+    if task is None:
+        raise HTTPException(status_code=404, detail="Analysis task not found")
+
     version_service = VersionService(db)
     chatback_service = ChatbackService(version_service=version_service)
     messages = await chatback_service.get_chat_history(task_id, version_number)
@@ -69,6 +74,11 @@ async def save_chat_version(
     db: DbSession,
     current_user: CurrentUser,
 ):
+    task_result = await db.execute(select(AnalysisTask).where(AnalysisTask.id == task_id, AnalysisTask.user_id == current_user.id))
+    task = task_result.scalar_one_or_none()
+    if task is None:
+        raise HTTPException(status_code=404, detail="Analysis task not found")
+
     user_id = current_user.id
     version_service = VersionService(db)
     chatback_service = ChatbackService(version_service=version_service)

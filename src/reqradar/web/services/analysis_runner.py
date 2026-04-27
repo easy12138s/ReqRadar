@@ -1,5 +1,4 @@
 import asyncio
-import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
@@ -266,7 +265,7 @@ class AnalysisRunner:
             if result_context.deep_analysis and result_context.deep_analysis.risk_level:
                 risk_level = result_context.deep_analysis.risk_level
 
-            task.context_json = result_context.model_dump_json()
+            task.context_json = result_context.model_dump()
             task.status = TaskStatus.COMPLETED
             task.completed_at = datetime.now(timezone.utc)
 

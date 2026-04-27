@@ -31,7 +31,11 @@ EXCEPTION_STATUS_MAP = {
 
 
 async def reqradar_exception_handler(request: Request, exc: ReqRadarException):
-    status_code = EXCEPTION_STATUS_MAP.get(type(exc), 500)
+    status_code = 500
+    for exc_type, code in EXCEPTION_STATUS_MAP.items():
+        if isinstance(exc, exc_type):
+            status_code = code
+            break
     return JSONResponse(
         status_code=status_code,
         content={"detail": exc.message},

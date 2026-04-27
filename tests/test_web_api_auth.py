@@ -66,7 +66,7 @@ async def test_register_success(setup_db):
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.post(
             "/api/auth/register",
-            json={"email": "user@example.com", "password": "secret123", "display_name": "Test User"},
+            json={"email": "user@example.com", "password": "Secret123", "display_name": "Test User"},
         )
         assert response.status_code == 201
         data = response.json()
@@ -81,7 +81,7 @@ async def test_register_duplicate_email(setup_db):
     app = create_app()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        payload = {"email": "dup@example.com", "password": "secret123", "display_name": "User One"}
+        payload = {"email": "dup@example.com", "password": "Secret123", "display_name": "User One"}
         response = await client.post("/api/auth/register", json=payload)
         assert response.status_code == 201
 
@@ -96,12 +96,12 @@ async def test_login_success(setup_db):
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         await client.post(
             "/api/auth/register",
-            json={"email": "login@example.com", "password": "secret123", "display_name": "Login User"},
+            json={"email": "login@example.com", "password": "Secret123", "display_name": "Login User"},
         )
 
         response = await client.post(
             "/api/auth/login",
-            json={"email": "login@example.com", "password": "secret123"},
+            json={"email": "login@example.com", "password": "Secret123"},
         )
         assert response.status_code == 200
         data = response.json()
@@ -116,12 +116,12 @@ async def test_login_wrong_password(setup_db):
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         await client.post(
             "/api/auth/register",
-            json={"email": "wrongpw@example.com", "password": "secret123", "display_name": "Wrong PW User"},
+            json={"email": "wrongpw@example.com", "password": "Secret123", "display_name": "Wrong PW User"},
         )
 
         response = await client.post(
             "/api/auth/login",
-            json={"email": "wrongpw@example.com", "password": "wrongpassword"},
+            json={"email": "wrongpw@example.com", "password": "WrongPw1"},
         )
         assert response.status_code == 401
 
@@ -133,12 +133,12 @@ async def test_me_authenticated(setup_db):
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         await client.post(
             "/api/auth/register",
-            json={"email": "me@example.com", "password": "secret123", "display_name": "Me User"},
+            json={"email": "me@example.com", "password": "Secret123", "display_name": "Me User"},
         )
 
         login_resp = await client.post(
             "/api/auth/login",
-            json={"email": "me@example.com", "password": "secret123"},
+            json={"email": "me@example.com", "password": "Secret123"},
         )
         token = login_resp.json()["access_token"]
 
