@@ -1,6 +1,6 @@
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Layout, Menu } from 'antd';
-import { FileTextOutlined, SettingOutlined } from '@ant-design/icons';
+import { FileTextOutlined, SettingOutlined, ApiOutlined } from '@ant-design/icons';
 
 const { Sider, Content } = Layout;
 
@@ -9,6 +9,7 @@ export function SettingsLayout() {
   const location = useLocation();
 
   const menuItems = [
+    { key: '/settings/llm', icon: <ApiOutlined />, label: '大模型配置' },
     { key: '/settings/templates', icon: <FileTextOutlined />, label: '报告模板' },
     { key: '/settings/preferences', icon: <SettingOutlined />, label: '用户偏好' },
   ];

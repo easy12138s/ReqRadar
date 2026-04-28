@@ -50,18 +50,21 @@ export function AnalysisSubmit() {
   }, []);
 
   const handleTextSubmit = async (values: { project_id: string; text: string }) => {
+    console.log('Form submitted with values:', values);
     setSubmitting(true);
     try {
       const task = await createAnalysis({
-        ...values,
+        project_id: values.project_id,
+        text: values.text,
         depth,
         template_id: templateId,
         focus_areas: focusAreas.length > 0 ? focusAreas : undefined,
       });
       message.success('分析任务已提交');
       navigate(`/analyses/${task.id}`);
-    } catch {
-      message.error('提交分析失败');
+    } catch (err) {
+      console.error('Submit analysis failed:', err);
+      message.error('提交分析失败，请检查输入或联系管理员');
     } finally {
       setSubmitting(false);
     }
@@ -104,6 +107,9 @@ export function AnalysisSubmit() {
         <Form
           form={textForm}
           onFinish={handleTextSubmit}
+          onFinishFailed={(errorInfo) => {
+            console.warn('Form validation failed:', errorInfo);
+          }}
           layout="vertical"
         >
           <Form.Item

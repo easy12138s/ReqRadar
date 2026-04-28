@@ -32,7 +32,13 @@ apiClient.interceptors.response.use(
     } else if (status === 403) {
       message.error('没有权限执行此操作');
     } else if (status === 422) {
-      message.error('请求参数错误');
+      const detail = error.response?.data?.detail;
+      if (Array.isArray(detail)) {
+        const msgs = detail.map((d: { loc?: string[]; msg?: string }) => `${d.loc?.join('.')}: ${d.msg}`).join('; ');
+        message.error(`参数错误: ${msgs}`);
+      } else {
+        message.error(`请求参数错误: ${detail || '请检查输入'}`);
+      }
     } else if (status && status >= 500) {
       message.error('服务器错误，请稍后重试');
     } else if (!error.response) {

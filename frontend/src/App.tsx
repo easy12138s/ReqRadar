@@ -16,6 +16,7 @@ const SynonymManager = lazy(() => import('@/pages/SynonymManager').then(m => ({ 
 const SettingsLayout = lazy(() => import('@/pages/SettingsLayout').then(m => ({ default: m.SettingsLayout })));
 const TemplateManager = lazy(() => import('@/pages/TemplateManager').then(m => ({ default: m.TemplateManager })));
 const UserPreferences = lazy(() => import('@/pages/UserPreferences').then(m => ({ default: m.UserPreferences })));
+const LLMConfig = lazy(() => import('@/pages/LLMConfig').then(m => ({ default: m.LLMConfig })));
 
 function PageLoader() {
   return (
@@ -92,7 +93,8 @@ export default function App() {
                 <Route path="projects/:id/profile" element={<ProjectProfile />} />
                 <Route path="projects/:id/synonyms" element={<SynonymManager />} />
                 <Route path="settings" element={<SettingsLayout />}>
-                  <Route index element={<Navigate to="/settings/templates" replace />} />
+                  <Route index element={<Navigate to="/settings/llm" replace />} />
+                  <Route path="llm" element={<LLMConfig />} />
                   <Route path="templates" element={<TemplateManager />} />
                   <Route path="preferences" element={<UserPreferences />} />
                 </Route>

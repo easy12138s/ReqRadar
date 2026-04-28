@@ -67,6 +67,7 @@ async def get_profile(project_id: int, current_user: CurrentUser, db: DbSession)
 
 
 @router.get("/{project_id}/profile/pending", response_model=list[PendingChangeResponse])
+@router.get("/{project_id}/pending-changes", response_model=list[PendingChangeResponse])
 async def get_pending_changes(project_id: int, current_user: CurrentUser, db: DbSession):
     project = await _get_project(project_id, current_user.id, db)
     manager = PendingChangeManager(db)
@@ -75,27 +76,31 @@ async def get_pending_changes(project_id: int, current_user: CurrentUser, db: Db
 
 
 @router.post("/{project_id}/profile/pending/{change_id}", response_model=PendingChangeResponse)
-async def resolve_pending_change(
+@router.post("/{project_id}/pending-changes/{change_id}/accept", response_model=PendingChangeResponse)
+async def accept_pending_change(
     project_id: int,
     change_id: int,
-    req: PendingChangeAction,
     current_user: CurrentUser,
     db: DbSession,
 ):
     project = await _get_project(project_id, current_user.id, db)
     manager = PendingChangeManager(db)
-
-    if req.action == "accept":
-        change = await manager.accept(change_id, resolved_by=current_user.id)
-    elif req.action == "reject":
-        change = await manager.reject(change_id, resolved_by=current_user.id)
-    else:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Action must be 'accept' or 'reject'",
-        )
-
+    change = await manager.accept(change_id, resolved_by=current_user.id)
     if change is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pending change not found")
+    return change
 
+
+@router.post("/{project_id}/pending-changes/{change_id}/reject", response_model=PendingChangeResponse)
+async def reject_pending_change(
+    project_id: int,
+    change_id: int,
+    current_user: CurrentUser,
+    db: DbSession,
+):
+    project = await _get_project(project_id, current_user.id, db)
+    manager = PendingChangeManager(db)
+    change = await manager.reject(change_id, resolved_by=current_user.id)
+    if change is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pending change not found")
     return change

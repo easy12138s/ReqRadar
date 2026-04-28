@@ -66,20 +66,23 @@ async def lifespan(app: FastAPI):
             await conn.run_sync(Base.metadata.create_all)
         logger.warning("auto_create_tables is enabled — use Alembic migrations in production")
 
-    async with session_factory() as session:
-        await session.execute(
-        update(AnalysisTask)
-        .where(AnalysisTask.status == TaskStatus.RUNNING)
-        .values(status=TaskStatus.FAILED, error_message="Server restarted during analysis")
-        )
-        await session.commit()
+    try:
+        async with session_factory() as session:
+            await session.execute(
+                update(AnalysisTask)
+                .where(AnalysisTask.status == TaskStatus.RUNNING)
+                .values(status=TaskStatus.FAILED, error_message="Server restarted during analysis")
+            )
+            await session.commit()
+    except Exception:
+        logger.debug("No RUNNING tasks to recover or table not yet created")
 
-        from reqradar.web.seed import seed_all
+    from reqradar.web.seed import seed_all
 
-        async with session_factory() as seed_session:
-            await seed_all(seed_session)
+    async with session_factory() as seed_session:
+        await seed_all(seed_session)
 
-        app.state.engine = engine
+    app.state.engine = engine
     app.state.session_factory = session_factory
     app.state.config = config
 

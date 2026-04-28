@@ -31,9 +31,19 @@ ALLOWED_UPLOAD_EXTENSIONS = {
 
 class AnalysisSubmit(BaseModel):
     project_id: int
-    requirement_name: str
-    requirement_text: str
+    requirement_name: Optional[str] = None
+    requirement_text: Optional[str] = None
+    text: Optional[str] = None
+    title: Optional[str] = None
     depth: str = "standard"
+    template_id: Optional[int] = None
+    focus_areas: Optional[list[str]] = None
+
+    def get_name(self) -> str:
+        return self.requirement_name or self.title or f"Analysis-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+
+    def get_text(self) -> str:
+        return self.requirement_text or self.text or ""
 
 
 class AnalysisResponse(BaseModel):
@@ -65,8 +75,8 @@ async def submit_analysis(req: AnalysisSubmit, current_user: CurrentUser, db: Db
     task = AnalysisTask(
         project_id=req.project_id,
         user_id=current_user.id,
-        requirement_name=req.requirement_name,
-        requirement_text=req.requirement_text,
+        requirement_name=req.get_name(),
+        requirement_text=req.get_text(),
         depth=req.depth,
         status=TaskStatus.PENDING,
     )
