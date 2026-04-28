@@ -40,7 +40,7 @@ class AnalysisAgent:
         self.depth = depth
         self.max_steps = max_steps or DEPTH_MAX_STEPS.get(depth, 15)
         self.state: AgentState = AgentState.INIT
-        self.step_count: int = 0  # Incremented ONLY by analysis_runner_v2._execute_agent outer loop. Counts analysis iterations, NOT individual tool calls.
+        self.step_count: int = 0
         self.evidence_collector = EvidenceCollector()
         self.dimension_tracker = DimensionTracker()
         self.visited_files: list[str] = []

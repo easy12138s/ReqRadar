@@ -240,10 +240,8 @@ async def cancel_analysis(task_id: int, current_user: CurrentUser, db: DbSession
         raise HTTPException(status_code=404, detail="Analysis task not found")
     if task.status not in (TaskStatus.PENDING, TaskStatus.RUNNING):
         raise HTTPException(status_code=400, detail=f"Cannot cancel task in status: {task.status}")
-    config = load_config()
-    from reqradar.web.services.analysis_runner import get_runner
-    r = get_runner(config)
-    r.cancel(task_id)
+    from reqradar.web.services.analysis_runner import runner
+    runner.cancel(task_id)
     task.status = TaskStatus.CANCELLED
     task.completed_at = datetime.now(timezone.utc)
     await db.commit()

@@ -1,15 +1,30 @@
 import logging
-from typing import Optional
-
-from reqradar.agent.steps import _COMMON_SYNONYMS
 
 logger = logging.getLogger("reqradar.synonym_resolver")
+
+_COMMON_SYNONYMS = {
+    "配置": ["config", "configuration", "settings", "conf", "env"],
+    "数据库": ["database", "db", "models", "schema", "migration", "orm"],
+    "认证": ["auth", "authentication", "jwt", "token", "login", "credential"],
+    "授权": ["authorization", "permission", "role", "access", "acl"],
+    "API": ["api", "endpoint", "route", "router", "view"],
+    "前端": ["frontend", "ui", "component", "page", "view"],
+    "后端": ["backend", "server", "service", "handler"],
+    "部署": ["deploy", "docker", "ci", "cd", "pipeline"],
+    "日志": ["log", "logging", "logger", "audit"],
+    "缓存": ["cache", "redis", "memo", "store"],
+    "用户": ["user", "account", "profile", "member"],
+    "项目": ["project", "repo", "repository"],
+    "分析": ["analysis", "analyze", "report", "assessment"],
+    "报告": ["report", "render", "template", "output"],
+    "索引": ["index", "search", "vector", "embedding"],
+}
 
 
 class SynonymResolver:
 
     def __init__(self):
-        self._hard_coded_synonyms: dict[str, list[str]] = dict(_COMMON_SYNONYMS) if _COMMON_SYNONYMS else {}
+        self._hard_coded_synonyms: dict[str, list[str]] = dict(_COMMON_SYNONYMS)
 
     def resolve(
         self,

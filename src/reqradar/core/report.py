@@ -7,7 +7,6 @@ from typing import Optional
 
 from jinja2 import Template
 
-from reqradar.core.context import AnalysisContext
 from reqradar.infrastructure.config import Config
 
 logger = logging.getLogger("reqradar.report")
@@ -46,134 +45,14 @@ class ReportRenderer:
             logger.warning("Template file not found: %s, using inline fallback", template_path)
             self.template = Template(_INLINE_FALLBACK_TEMPLATE)
 
-    def render(self, context: AnalysisContext, generated_content: dict = None) -> str:
-        understanding = context.understanding
-        analysis = context.deep_analysis
-        retrieved = context.retrieved_context
-        gen = context.generated_content
-
-        warnings = []
-        for step_name, result in context.step_results.items():
-            if not result.success:
-                warnings.append(f"步骤 {step_name} 执行失败: {result.error}")
-
-        risk_level = analysis.risk_level if analysis else "unknown"
-        risk_badge = _risk_level_to_badge(risk_level)
-
-        code_hits = len(analysis.impact_modules) if analysis else 0
-        domain_count = len(analysis.impact_domains) if analysis else 0
-        if analysis and analysis.change_assessment:
-            code_hits = max(code_hits, len(analysis.change_assessment))
-        if domain_count > 0:
-            impact_scope = f"{code_hits} 个代码命中 + {domain_count} 个推断影响域"
-        elif code_hits > 0:
-            impact_scope = f"{code_hits} 个代码命中"
-        else:
-            impact_scope = "未匹配到直接代码"
-
-        raw_priority = understanding.priority_suggestion if understanding and understanding.priority_suggestion else "未定"
-        if isinstance(raw_priority, dict):
-            priority = raw_priority.get("suggestion", raw_priority.get("level", str(raw_priority)))
-        else:
-            priority = raw_priority
-        priority_reason = understanding.priority_reason if understanding else ""
-
-        project_profile = None
-        modules_info = None
-        if context.memory_data:
-            project_profile = context.memory_data.get("project_profile")
-            modules_info = context.memory_data.get("modules", [])
-
-        impact_narrative = gen.impact_narrative if gen and gen.impact_narrative else ""
-        if not impact_narrative and analysis and analysis.impact_narrative:
-            impact_narrative = analysis.impact_narrative
-
-        risk_narrative = gen.risk_narrative if gen and gen.risk_narrative else ""
-        if not risk_narrative and analysis and analysis.risk_narrative:
-            risk_narrative = analysis.risk_narrative
-
-        implementation_suggestion = gen.implementation_suggestion if gen and gen.implementation_suggestion else ""
-        executive_summary = gen.executive_summary if gen and gen.executive_summary else ""
-        technical_summary = gen.technical_summary if gen and gen.technical_summary else ""
-        decision_highlights = gen.decision_highlights if gen and gen.decision_highlights else []
-
-        decision_summary = analysis.decision_summary if analysis else None
-        evidence_items = analysis.evidence_items if analysis else []
-        impact_domains = analysis.impact_domains if analysis else []
-
-        formatted_project_profile = None
-        if project_profile and isinstance(project_profile, dict):
-            formatted_project_profile = dict(project_profile)
-            ts = formatted_project_profile.get("tech_stack", {})
-            if isinstance(ts, dict):
-                parts = []
-                if ts.get("languages"):
-                    parts.append("语言: " + ", ".join(ts["languages"]))
-                if ts.get("frameworks"):
-                    parts.append("框架: " + ", ".join(ts["frameworks"]))
-                if ts.get("key_dependencies"):
-                    parts.append("依赖: " + ", ".join(ts["key_dependencies"]))
-                formatted_project_profile["tech_stack"] = "; ".join(parts) if parts else "未知"
-
-        template_data = {
-            "requirement_title": context.requirement_path.stem,
-            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "requirement_path": str(context.requirement_path),
-            "requirement_understanding": gen.requirement_understanding if gen else (understanding.summary if understanding else "无法生成"),
-            "executive_summary": executive_summary,
-            "technical_summary": technical_summary,
-            "decision_highlights": decision_highlights,
-            "decision_summary": decision_summary,
-            "evidence_items": evidence_items,
-            "impact_domains": impact_domains,
-            "terms": [t.model_dump() for t in understanding.terms] if understanding and understanding.terms else [],
-            "keywords": understanding.keywords if understanding else [],
-            "constraints": understanding.constraints if understanding else [],
-            "structured_constraints": [c.model_dump() for c in understanding.structured_constraints] if understanding and understanding.structured_constraints else [],
-            "similar_requirements": retrieved.similar_requirements if retrieved else [],
-            "impact_modules": analysis.impact_modules if analysis else [],
-            "change_assessment": [ca.model_dump() for ca in analysis.change_assessment] if analysis and analysis.change_assessment else [],
-            "impact_narrative": impact_narrative,
-            "contributors": analysis.contributors if analysis else [],
-            "risk_level": risk_level,
-            "risk_badge": risk_badge,
-            "risks": [r.model_dump() for r in analysis.risks] if analysis and analysis.risks else [],
-            "risk_details": analysis.risk_details if analysis else [],
-            "risk_narrative": risk_narrative,
-            "verification_points": analysis.verification_points if analysis else [],
-            "implementation_hints": analysis.implementation_hints.model_dump() if analysis and analysis.implementation_hints else None,
-            "implementation_suggestion": implementation_suggestion,
-            "priority": priority,
-            "priority_reason": priority_reason,
-            "impact_scope": impact_scope,
-            "confidence": context.overall_confidence * 100,
-            "process_completion": context.process_completion,
-            "content_completeness": context.content_completeness,
-            "evidence_support": context.evidence_support,
-            "content_confidence": context.content_confidence,
-            "warnings": warnings,
-            "project_profile": formatted_project_profile,
-            "modules_info": modules_info,
-        }
-
-        return self.template.render(**template_data)
-
-    def render_from_dict(self, report_data: dict, context: AnalysisContext | None = None) -> str:
+    def render_from_data(self, report_data: dict) -> str:
         template_data = dict(report_data)
-        if context:
-            risk_level = context.deep_analysis.risk_level if context.deep_analysis else "unknown"
-            template_data["risk_badge"] = _risk_level_to_badge(risk_level)
-            template_data.setdefault("content_completeness", context.content_completeness)
-            template_data.setdefault("evidence_support", context.evidence_support)
-            template_data.setdefault("content_confidence", context.content_confidence)
-            template_data.setdefault("process_completion", context.process_completion)
-        else:
-            risk_level = template_data.get("risk_level", "unknown")
-            template_data.setdefault("content_completeness", "partial")
-            template_data.setdefault("evidence_support", "low")
-            template_data.setdefault("content_confidence", "medium")
-            template_data.setdefault("process_completion", "full")
+        risk_level = template_data.get("risk_level", "unknown")
         template_data.setdefault("risk_badge", _risk_level_to_badge(risk_level))
+        template_data.setdefault("content_completeness", "partial")
+        template_data.setdefault("evidence_support", "low")
+        template_data.setdefault("content_confidence", "medium")
+        template_data.setdefault("process_completion", "full")
         template_data.setdefault("priority", "unknown")
         template_data.setdefault("priority_reason", "")
         template_data.setdefault("warnings", [])

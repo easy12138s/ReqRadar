@@ -46,7 +46,6 @@ def test_agent_config_defaults():
     from reqradar.infrastructure.config import AgentConfig, ReportingConfig
 
     agent = AgentConfig()
-    assert agent.mode == "legacy"
     assert agent.max_steps == 15
     assert agent.max_steps_quick == 10
     assert agent.max_steps_deep == 25

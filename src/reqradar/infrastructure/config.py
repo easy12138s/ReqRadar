@@ -48,7 +48,7 @@ class VisionConfig(BaseModel):
 
 class MemoryConfig(BaseModel):
     enabled: bool = Field(default=True, description="Enable project memory")
-    storage_path: str = Field(default=".reqradar/memory", description="Memory storage directory (legacy)")
+    storage_path: str = Field(default=".reqradar/memory", description="Memory storage directory")
     project_storage_path: str = Field(default=".reqradar/memories", description="Project memory storage path")
     user_storage_path: str = Field(default=".reqradar/user_memories", description="User memory storage path")
 
@@ -79,7 +79,6 @@ class AnalysisConfig(BaseModel):
 
 
 class AgentConfig(BaseModel):
-    mode: str = Field(default="legacy", description="Analysis mode: legacy (fixed pipeline) or react (ReAct agent)")
     max_steps: int = Field(default=15, description="Max agent steps for standard depth")
     max_steps_quick: int = Field(default=10, description="Max agent steps for quick depth")
     max_steps_deep: int = Field(default=25, description="Max agent steps for deep depth")

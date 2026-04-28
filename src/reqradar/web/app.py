@@ -87,10 +87,8 @@ async def lifespan(app: FastAPI):
     app.state.config = config
 
     from reqradar.web.services.analysis_runner import runner
-    from reqradar.web.services.analysis_runner_v2 import runner_v2
     runner._semaphore = asyncio.Semaphore(web_config.max_concurrent_analyses)
     runner.session_factory = session_factory
-    runner_v2.session_factory = session_factory
 
     yield
 

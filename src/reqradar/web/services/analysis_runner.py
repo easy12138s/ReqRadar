@@ -1,19 +1,25 @@
 import asyncio
+import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 
 import markdown
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from reqradar.core.context import AnalysisContext, StepResult
+from reqradar.agent.analysis_agent import AnalysisAgent, AgentState
+from reqradar.agent.llm_utils import _call_llm_structured
+from reqradar.agent.prompts.analysis_phase import build_analysis_system_prompt, build_analysis_user_prompt, build_termination_prompt
+from reqradar.agent.prompts.report_phase import build_report_generation_prompt
+from reqradar.agent.schemas import ANALYZE_SCHEMA
+from reqradar.agent.tools import ToolRegistry
 from reqradar.core.report import ReportRenderer
-from reqradar.core.scheduler import Scheduler
 from reqradar.infrastructure.config import Config
 from reqradar.infrastructure.config_manager import ConfigManager
-from reqradar.web.models import AnalysisTask, Project, Report
+from reqradar.infrastructure.template_loader import TemplateLoader
+from reqradar.modules.memory_manager import AnalysisMemoryManager
+from reqradar.web.models import AnalysisTask, Report, Project
 from reqradar.web.enums import TaskStatus
 from reqradar.web.services.project_file_service import ProjectFileService
 from reqradar.web.services.project_store import project_store
@@ -21,17 +27,36 @@ from reqradar.web.websocket import manager as ws_manager
 
 logger = logging.getLogger("reqradar.web.services.analysis_runner")
 
-
-async def _load_template_definition(db, template_id, template_loader):
-    from reqradar.web.models import ReportTemplate
-
-    result = await db.execute(
-        select(ReportTemplate).where(ReportTemplate.id == template_id)
-    )
-    tmpl = result.scalar_one_or_none()
-    if tmpl:
-        return template_loader.load_from_db_data(tmpl.definition, tmpl.render_template)
-    return None
+REPORT_DATA_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "requirement_title": {"type": "string"},
+        "requirement_understanding": {"type": "string"},
+        "executive_summary": {"type": "string"},
+        "technical_summary": {"type": "string"},
+        "impact_narrative": {"type": "string"},
+        "risk_narrative": {"type": "string"},
+        "risk_level": {"type": "string", "enum": ["critical", "high", "medium", "low", "unknown"]},
+        "decision_highlights": {"type": "array", "items": {"type": "string"}},
+        "impact_domains": {"type": "array"},
+        "impact_modules": {"type": "array"},
+        "change_assessment": {"type": "array"},
+        "risks": {"type": "array"},
+        "decision_summary": {"type": "object"},
+        "evidence_items": {"type": "array"},
+        "verification_points": {"type": "array", "items": {"type": "string"}},
+        "implementation_suggestion": {"type": "string"},
+        "priority": {"type": "string"},
+        "priority_reason": {"type": "string"},
+        "terms": {"type": "array"},
+        "keywords": {"type": "array", "items": {"type": "string"}},
+        "constraints": {"type": "array", "items": {"type": "string"}},
+        "structured_constraints": {"type": "array"},
+        "contributors": {"type": "array"},
+        "warnings": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": ["requirement_title", "risk_level"],
+}
 
 
 class AnalysisRunner:
@@ -46,7 +71,7 @@ class AnalysisRunner:
 
         task = asyncio.create_task(self._run_analysis(task_id, project, config))
 
-        def _on_done(t: asyncio.Task):
+        def _on_done(t):
             self._active_tasks.pop(task_id, None)
 
         task.add_done_callback(_on_done)
@@ -63,37 +88,173 @@ class AnalysisRunner:
 
             async with factory() as db:
                 try:
-                    await self._execute_pipeline(task_id, project, config, db)
+                    await self._execute_agent(task_id, project, config, db)
                 except asyncio.CancelledError:
-                    logger.info("Analysis task %d cancelled", task_id)
+                    logger.info("Agent analysis task %d cancelled", task_id)
                     raise
                 except Exception:
-                    logger.exception("Analysis task %d failed", task_id)
+                    logger.exception("Agent analysis task %d failed", task_id)
 
-    async def _execute_pipeline(self, task_id: int, project: Project, config: Config, db: AsyncSession):
-        from reqradar.agent.steps import (
-            step_analyze,
-            step_extract,
-            step_generate,
-            step_map_keywords,
-            step_read,
-            step_retrieve,
-        )
-        from reqradar.modules.llm_client import create_llm_client
-        from reqradar.agent.tools import (
-            ToolRegistry,
-            SearchCodeTool,
-            ReadFileTool,
-            ReadModuleSummaryTool,
-            ListModulesTool,
-            SearchRequirementsTool,
-            GetDependenciesTool,
-            GetContributorsTool,
-            GetProjectProfileTool,
-            GetTerminologyTool,
-        )
-        from reqradar.modules.git_analyzer import GitAnalyzer
+    async def _init_agent(
+        self, task: AnalysisTask, project: Project, config: Config, db: AsyncSession
+    ) -> tuple[AnalysisAgent, AnalysisMemoryManager, ConfigManager, object | None]:
         from reqradar.modules.memory import MemoryManager
+
+        depth = task.depth if hasattr(task, "depth") and task.depth else "standard"
+        agent = AnalysisAgent(
+            requirement_text=task.requirement_text,
+            project_id=project.id,
+            user_id=task.user_id,
+            depth=depth,
+        )
+        agent.state = AgentState.ANALYZING
+
+        file_svc = ProjectFileService(config.web)
+        memory_path = str(file_svc.get_memory_path(project.name))
+
+        memory_manager = MemoryManager(storage_path=memory_path)
+        memory_data = memory_manager.load() if config.memory.enabled else None
+
+        analysis_memory = AnalysisMemoryManager(
+            project_id=project.id,
+            user_id=task.user_id,
+            project_storage_path=memory_path,
+            user_storage_path=memory_path,
+            memory_enabled=config.memory.enabled,
+        )
+
+        agent.project_memory_text = analysis_memory.get_project_profile_text()
+        agent.user_memory_text = analysis_memory.get_user_memory_text()
+
+        cm = ConfigManager(db, config)
+
+        return agent, analysis_memory, cm, memory_data
+
+    async def _init_tools(
+        self, agent: AnalysisAgent, task: AnalysisTask, project: Project, config: Config,
+        db: AsyncSession, cm: ConfigManager, memory_data,
+    ) -> tuple[ToolRegistry, object]:
+        from reqradar.modules.llm_client import create_llm_client
+        from reqradar.modules.git_analyzer import GitAnalyzer
+        from reqradar.agent.tools import (
+            SearchCodeTool, ReadFileTool, ReadModuleSummaryTool,
+            ListModulesTool, SearchRequirementsTool, GetDependenciesTool,
+            GetContributorsTool, GetProjectProfileTool, GetTerminologyTool,
+        )
+        from reqradar.agent.tools.security import PathSandbox, SensitiveFileFilter
+
+        provider = await cm.get_str("llm.provider", user_id=task.user_id, project_id=project.id, default=config.llm.provider)
+        llm_model = await cm.get_str("llm.model", user_id=task.user_id, project_id=project.id, default=config.llm.model)
+        llm_api_key = await cm.get_str("llm.api_key", user_id=task.user_id, project_id=project.id, default=config.llm.api_key or "")
+        llm_base_url = await cm.get_str("llm.base_url", user_id=task.user_id, project_id=project.id, default=config.llm.base_url or "https://api.openai.com/v1")
+
+        llm_kwargs = {
+            "openai": {
+                "api_key": llm_api_key,
+                "model": llm_model,
+                "base_url": llm_base_url,
+                "timeout": config.llm.timeout,
+                "max_retries": config.llm.max_retries,
+                "embedding_model": config.llm.embedding_model,
+                "embedding_dim": config.llm.embedding_dim,
+            },
+            "ollama": {
+                "model": llm_model,
+                "host": config.llm.host or "http://localhost:11434",
+                "embedding_dim": config.llm.embedding_dim,
+            },
+        }
+        llm_client = create_llm_client(provider, **llm_kwargs.get(provider, {}))
+        llm_client._current_task_id = task.id
+
+        file_svc = ProjectFileService(config.web)
+        repo_path = str(file_svc.detect_code_root(project.name))
+        index_path = str(file_svc.get_index_path(project.name))
+
+        code_graph = await project_store.get_code_graph(project.id, index_path)
+        vector_store = await project_store.get_vector_store(project.id, index_path)
+
+        path_sandbox = PathSandbox(allowed_root=repo_path)
+        sensitive_filter = SensitiveFileFilter()
+        user_permissions = {"read:code", "read:memory", "read:history", "read:git", "write:report", "read:user_memory"}
+        tool_registry = ToolRegistry(user_permissions=user_permissions)
+
+        if code_graph:
+            tool_registry.register(SearchCodeTool(code_graph=code_graph, repo_path=repo_path))
+            tool_registry.register(GetDependenciesTool(code_graph=code_graph, memory_data=memory_data))
+
+        tool_registry.register(ReadFileTool(repo_path=repo_path))
+        tool_registry.register(ReadModuleSummaryTool(memory_data=memory_data))
+        tool_registry.register(ListModulesTool(memory_data=memory_data))
+        tool_registry.register(GetProjectProfileTool(memory_data=memory_data))
+        tool_registry.register(GetTerminologyTool(memory_data=memory_data))
+
+        if vector_store:
+            tool_registry.register(SearchRequirementsTool(vector_store=vector_store))
+
+        try:
+            git_analyzer = None
+            if Path(repo_path, ".git").exists():
+                git_analyzer = GitAnalyzer(repo_path=Path(repo_path), lookback_months=config.git.lookback_months)
+            if git_analyzer:
+                tool_registry.register(GetContributorsTool(git_analyzer=git_analyzer))
+        except Exception:
+            logger.warning("Failed to init GitAnalyzer for project %d", project.id)
+
+        return tool_registry, llm_client
+
+    async def _load_template(self, config: Config, db: AsyncSession):
+        from reqradar.web.models import ReportTemplate
+
+        template_loader = TemplateLoader()
+        template_def = None
+        template_id = config.reporting.default_template_id if hasattr(config, "reporting") else None
+        if template_id:
+            tmpl_result = await db.execute(select(ReportTemplate).where(ReportTemplate.id == template_id))
+            tmpl_obj = tmpl_result.scalar_one_or_none()
+            if tmpl_obj:
+                template_def = template_loader.load_from_db_data(tmpl_obj.definition, tmpl_obj.render_template)
+
+        if template_def is None:
+            try:
+                template_def = template_loader.load_definition(template_loader.get_default_template_path())
+            except Exception:
+                template_def = None
+
+        return template_def
+
+    async def _save_report(
+        self, task: AnalysisTask, agent: AnalysisAgent, report_data: dict,
+        report_markdown: str, report_html: str, db: AsyncSession,
+    ):
+        from reqradar.web.services.version_service import VersionService
+
+        task.context_json = agent.get_context_snapshot()
+        task.status = TaskStatus.COMPLETED
+        task.completed_at = datetime.now(timezone.utc)
+
+        db.add(Report(
+            task_id=task.id,
+            content_markdown=report_markdown,
+            content_html=report_html,
+        ))
+
+        version_service = VersionService(db)
+        context_snapshot = agent.get_context_snapshot()
+        await version_service.create_version(
+            task_id=task.id,
+            report_data=report_data,
+            context_snapshot=context_snapshot,
+            content_markdown=report_markdown,
+            content_html=report_html,
+            trigger_type="initial",
+            created_by=task.user_id,
+        )
+
+        await db.commit()
+
+    async def _execute_agent(self, task_id: int, project: Project, config: Config, db: AsyncSession):
+        from reqradar.agent.tool_use_loop import run_tool_use_loop
 
         result = await db.execute(select(AnalysisTask).where(AnalysisTask.id == task_id))
         task = result.scalar_one_or_none()
@@ -107,188 +268,91 @@ class AnalysisRunner:
         await ws_manager.broadcast(task_id, {"type": "analysis_started", "task_id": task_id})
 
         try:
-            file_svc = ProjectFileService(config.web)
-            repo_path = str(file_svc.detect_code_root(project.name))
-            index_path = str(file_svc.get_index_path(project.name))
+            agent, analysis_memory, cm, memory_data = await self._init_agent(task, project, config, db)
+            tool_registry, llm_client = await self._init_tools(agent, task, project, config, db, cm, memory_data)
+            template_def = await self._load_template(config, db)
 
-            code_graph = await project_store.get_code_graph(project.id, index_path)
-            vector_store = await project_store.get_vector_store(project.id, index_path)
+            section_descriptions = None
+            if template_def:
+                section_descriptions = [
+                    {"id": s.id, "title": s.title, "description": s.description, "requirements": s.requirements, "dimensions": s.dimensions, "required": s.required}
+                    for s in template_def.sections
+                ]
 
-            memory_path = str(file_svc.get_memory_path(project.name))
-            memory_manager = MemoryManager(storage_path=memory_path)
-            memory_data = memory_manager.load() if config.memory.enabled else None
-
-            from reqradar.modules.memory_manager import AnalysisMemoryManager
-
-            analysis_memory = AnalysisMemoryManager(
-                project_id=project.id,
-                user_id=task.user_id,
-                project_storage_path=memory_path,
-                user_storage_path=memory_path,
-                memory_enabled=config.memory.enabled,
+            system_prompt = build_analysis_system_prompt(
+                project_memory=agent.project_memory_text,
+                user_memory=agent.user_memory_text,
+                historical_context=agent.historical_context,
+                dimension_status=agent.dimension_tracker.status_summary(),
+                template_sections=section_descriptions,
             )
 
-            from reqradar.infrastructure.template_loader import TemplateLoader
+            tool_names = tool_registry.list_names()
 
-            template_loader = TemplateLoader()
-            if config.reporting.default_template_id:
-                template_def = await _load_template_definition(db, config.reporting.default_template_id, template_loader)
-            else:
-                template_def = None
+            await ws_manager.broadcast(task_id, {
+                "type": "agent_thinking",
+                "task_id": task_id,
+                "message": "开始分析需求...",
+            })
 
-            cm = ConfigManager(db, config)
+            while not agent.should_terminate():
+                user_prompt = build_analysis_user_prompt(
+                    requirement_text=agent.requirement_text,
+                    agent_context=agent.get_context_text() + "\n\n" + agent.get_weak_dimensions_text(),
+                )
 
-            context = AnalysisContext(
-                requirement_path=Path(task.requirement_name),
-                requirement_text=task.requirement_text,
-                memory_data=memory_data,
-            )
+                tool_result_data = await run_tool_use_loop(
+                    llm_client,
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                    tools=tool_names,
+                    tool_registry=tool_registry,
+                    output_schema=ANALYZE_SCHEMA,
+                    max_rounds=5,
+                    max_total_tokens=config.analysis.tool_use_max_tokens if hasattr(config.analysis, "tool_use_max_tokens") else 8000,
+                )
 
-            provider = await cm.get_str("llm.provider", user_id=task.user_id, project_id=project.id, default=config.llm.provider)
-            llm_model = await cm.get_str("llm.model", user_id=task.user_id, project_id=project.id, default=config.llm.model)
-            llm_api_key = await cm.get_str("llm.api_key", user_id=task.user_id, project_id=project.id, default=config.llm.api_key or "")
-            llm_base_url = await cm.get_str("llm.base_url", user_id=task.user_id, project_id=project.id, default=config.llm.base_url or "https://api.openai.com/v1")
-            llm_timeout = await cm.get_int("llm.timeout", user_id=task.user_id, project_id=project.id, default=config.llm.timeout)
-            llm_max_retries = await cm.get_int("llm.max_retries", user_id=task.user_id, project_id=project.id, default=config.llm.max_retries)
+                if tool_result_data:
+                    self._update_agent_from_tool_result(agent, tool_result_data)
 
-            llm_kwargs = {
-                "openai": {
-                    "api_key": llm_api_key,
-                    "model": llm_model,
-                    "base_url": llm_base_url,
-                    "timeout": llm_timeout,
-                    "max_retries": llm_max_retries,
-                    "embedding_model": config.llm.embedding_model,
-                    "embedding_dim": config.llm.embedding_dim,
-                },
-                "ollama": {
-                    "model": llm_model,
-                    "host": config.llm.host or "http://localhost:11434",
-                    "embedding_dim": config.llm.embedding_dim,
-                },
-            }
-            llm_client = create_llm_client(provider, **llm_kwargs.get(provider, {}))
-            llm_client._current_task_id = task_id
+                agent.step_count += 1
 
-            git_analyzer = None
-            if Path(repo_path, ".git").exists():
-                try:
-                    git_analyzer = GitAnalyzer(
-                        repo_path=Path(repo_path),
-                        lookback_months=config.git.lookback_months,
-                    )
-                except Exception:
-                    logger.warning("Failed to init GitAnalyzer for project %d", project.id)
-
-            tool_registry = ToolRegistry()
-            repo_path_str = repo_path
-
-            if code_graph:
-                tool_registry.register(SearchCodeTool(code_graph=code_graph, repo_path=repo_path_str))
-                tool_registry.register(GetDependenciesTool(code_graph=code_graph, memory_data=memory_data))
-
-            tool_registry.register(ReadFileTool(repo_path=repo_path_str))
-            tool_registry.register(ReadModuleSummaryTool(memory_data=memory_data))
-            tool_registry.register(ListModulesTool(memory_data=memory_data))
-            tool_registry.register(GetProjectProfileTool(memory_data=memory_data))
-            tool_registry.register(GetTerminologyTool(memory_data=memory_data))
-
-            if vector_store:
-                tool_registry.register(SearchRequirementsTool(vector_store=vector_store))
-
-            if git_analyzer:
-                tool_registry.register(GetContributorsTool(git_analyzer=git_analyzer))
-
-            async def wrapped_extract(ctx):
-                return await step_extract(ctx, llm_client, tool_registry=tool_registry, analysis_config=config.analysis)
-
-            async def wrapped_map_keywords(ctx):
-                return await step_map_keywords(ctx, llm_client, tool_registry=tool_registry, analysis_config=config.analysis)
-
-            async def wrapped_retrieve(ctx):
-                result = await step_retrieve(ctx, vector_store, llm_client, tool_registry=tool_registry, analysis_config=config.analysis)
-                ctx.retrieved_context = result
-                return result
-
-            async def wrapped_analyze(ctx):
-                result = await step_analyze(ctx, code_graph, git_analyzer, llm_client, tool_registry=tool_registry, analysis_config=config.analysis)
-                ctx.deep_analysis = result
-                return result
-
-            async def wrapped_generate(ctx):
-                return await step_generate(ctx, llm_client, tool_registry=tool_registry, analysis_config=config.analysis)
-
-            async def on_step_start(step_name: str, step_desc: str):
                 await ws_manager.broadcast(task_id, {
-                    "type": "step_start",
+                    "type": "dimension_progress",
                     "task_id": task_id,
-                    "step": step_name,
-                    "description": step_desc,
+                    "step": agent.step_count,
+                    "max_steps": agent.max_steps,
+                    "dimensions": agent.dimension_tracker.status_summary(),
+                    "evidence_count": len(agent.evidence_collector.evidences),
                 })
 
-            async def on_step_complete(step_name: str, step_result: StepResult):
-                await ws_manager.broadcast(task_id, {
-                    "type": "step_complete",
-                    "task_id": task_id,
-                    "step": step_name,
-                    "success": step_result.success,
-                    "confidence": step_result.confidence,
-                })
+                await asyncio.sleep(0)
 
-            scheduler = Scheduler(
-                read_handler=step_read,
-                extract_handler=wrapped_extract,
-                map_keywords_handler=wrapped_map_keywords,
-                retrieve_handler=wrapped_retrieve,
-                analyze_handler=wrapped_analyze,
-                generate_handler=wrapped_generate,
-            )
-
-            result_context = await scheduler.run(
-                context,
-                on_step_start=on_step_start,
-                on_step_complete=on_step_complete,
-            )
+            agent.state = AgentState.GENERATING
+            report_data = await self._generate_report(agent, llm_client, system_prompt, section_descriptions, config)
+            agent.final_report_data = report_data
+            agent.state = AgentState.COMPLETED
 
             renderer = ReportRenderer(config, template_definition=template_def)
-            generate_result = result_context.get_result("generate")
-            generated_content = (
-                generate_result.data if generate_result and generate_result.success else None
-            )
-            report_markdown = renderer.render(result_context, generated_content)
-            report_html = markdown.markdown(
-                report_markdown,
-                extensions=["extra", "codehilite", "toc", "tables"],
-            )
+            report_data.setdefault("timestamp", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+            report_data.setdefault("requirement_path", agent.requirement_text[:50])
+            report_data.setdefault("impact_scope", "")
 
-            risk_level = "unknown"
-            if result_context.deep_analysis and result_context.deep_analysis.risk_level:
-                risk_level = result_context.deep_analysis.risk_level
+            try:
+                report_markdown = renderer.render_from_data(report_data)
+            except Exception:
+                try:
+                    from jinja2 import Template as JinjaTemplate
+                    from reqradar.core.report import _INLINE_FALLBACK_TEMPLATE
+                    fallback_tmpl = JinjaTemplate(_INLINE_FALLBACK_TEMPLATE)
+                    report_markdown = fallback_tmpl.render(**report_data)
+                except Exception:
+                    report_markdown = json.dumps(report_data, ensure_ascii=False, indent=2, default=str)
 
-            task.context_json = result_context.model_dump()
-            task.status = TaskStatus.COMPLETED
-            task.completed_at = datetime.now(timezone.utc)
+            report_html = markdown.markdown(report_markdown, extensions=["extra", "codehilite", "toc", "tables"])
+            risk_level = report_data.get("risk_level", "unknown")
 
-            db.add(Report(
-            task_id=task_id,
-            content_markdown=report_markdown,
-            content_html=report_html,
-            ))
-
-            from reqradar.web.services.version_service import VersionService
-
-            version_service = VersionService(db)
-            await version_service.create_version(
-            task_id=task_id,
-            report_data=result_context.model_dump() if hasattr(result_context, "model_dump") else {},
-            context_snapshot={},
-            content_markdown=report_markdown,
-            content_html=report_html,
-            trigger_type="initial",
-            created_by=task.user_id,
-            )
-
-            await db.commit()
+            await self._save_report(task, agent, report_data, report_markdown, report_html, db)
 
             await ws_manager.broadcast(task_id, {
                 "type": "analysis_complete",
@@ -308,12 +372,77 @@ class AnalysisRunner:
             task.error_message = str(e)[:2000]
             task.completed_at = datetime.now(timezone.utc)
             await db.commit()
-
             await ws_manager.broadcast(task_id, {
                 "type": "analysis_failed",
                 "task_id": task_id,
                 "error": str(e)[:500],
             })
+
+    def _update_agent_from_tool_result(self, agent: AnalysisAgent, data: dict) -> None:
+        if data.get("terms"):
+            for t in data.get("terms", []):
+                if isinstance(t, dict) and t.get("term"):
+                    dimensions = ["understanding"]
+                    agent.record_evidence(
+                        type="term",
+                        source=f"llm_extract:{t['term']}",
+                        content=f"{t['term']}: {t.get('definition', '')}",
+                        confidence="medium",
+                        dimensions=dimensions,
+                    )
+
+        if data.get("impact_modules"):
+            for m in data.get("impact_modules", []):
+                if isinstance(m, dict):
+                    agent.record_evidence(
+                        type="code",
+                        source=m.get("path", "unknown"),
+                        content=m.get("relevance_reason", "Unknown relevance"),
+                        confidence=m.get("relevance", "low"),
+                        dimensions=["impact", "change"],
+                    )
+                    agent.dimension_tracker.mark_in_progress("impact")
+
+        if data.get("risks"):
+            for r in data.get("risks", []):
+                if isinstance(r, dict):
+                    confidence_map = {"high": "high", "medium": "medium", "low": "low"}
+                    agent.record_evidence(
+                        type="history",
+                        source=f"risk:{r.get('description', '')[:50]}",
+                        content=r.get("description", ""),
+                        confidence=confidence_map.get(r.get("severity", ""), "medium"),
+                        dimensions=["risk"],
+                    )
+                    agent.dimension_tracker.mark_in_progress("risk")
+
+    async def _generate_report(self, agent: AnalysisAgent, llm_client, system_prompt: str, section_descriptions, config: Config) -> dict:
+        termination_prompt = build_termination_prompt()
+        evidence_text = agent.evidence_collector.get_all_evidence_text()
+
+        report_prompt = build_report_generation_prompt(
+            requirement_text=agent.requirement_text,
+            evidence_text=evidence_text,
+            dimension_status=agent.dimension_tracker.status_summary(),
+            template_sections=section_descriptions,
+        )
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": report_prompt},
+            {"role": "assistant", "content": termination_prompt},
+        ]
+
+        try:
+            result = await _call_llm_structured(llm_client, messages, REPORT_DATA_SCHEMA)
+            if result:
+                result.setdefault("requirement_title", agent.requirement_text[:100])
+                result.setdefault("warnings", [])
+                return result
+        except Exception as e:
+            logger.warning("Report generation failed, using fallback: %s", e)
+
+        return _build_fallback_report_data(agent)
 
     def cancel(self, task_id: int):
         task = self._active_tasks.get(task_id)
@@ -321,11 +450,46 @@ class AnalysisRunner:
             task.cancel()
 
 
+def _build_fallback_report_data(agent: AnalysisAgent) -> dict:
+    return {
+        "requirement_title": agent.requirement_text[:100],
+        "requirement_understanding": f"需求理解: {agent.requirement_text[:200]}",
+        "executive_summary": "分析完成，但有部分信息不完整。",
+        "technical_summary": "",
+        "impact_narrative": "",
+        "risk_narrative": "",
+        "risk_level": "unknown",
+        "decision_highlights": [],
+        "impact_domains": [],
+        "impact_modules": [],
+        "change_assessment": [],
+        "risks": [],
+        "decision_summary": {"summary": "", "decisions": [], "open_questions": [], "follow_ups": []},
+        "evidence_items": [{"kind": ev.type, "source": ev.source, "summary": ev.content, "confidence": ev.confidence} for ev in agent.evidence_collector.evidences],
+        "verification_points": [],
+        "implementation_suggestion": "",
+        "priority": "medium",
+        "priority_reason": "",
+        "terms": [],
+        "keywords": [],
+        "constraints": [],
+        "structured_constraints": [],
+        "contributors": [],
+        "warnings": ["Agent analysis completed with partial data due to insufficient evidence."],
+    }
+
+
+def build_report_data_from_agent(agent: AnalysisAgent, llm_result: dict) -> dict:
+    report_data = llm_result.copy() if llm_result else {}
+    report_data.setdefault("requirement_title", agent.requirement_text[:100])
+    report_data.setdefault("risk_level", "unknown")
+    report_data.setdefault("warnings", [])
+    evidence_items = [
+        {"kind": ev.type, "source": ev.source, "summary": ev.content, "confidence": ev.confidence}
+        for ev in agent.evidence_collector.evidences
+    ]
+    report_data.setdefault("evidence_items", evidence_items)
+    return report_data
+
+
 runner = AnalysisRunner()
-
-
-def get_runner(config: Config):
-    if hasattr(config, "agent") and config.agent.mode == "react":
-        from reqradar.web.services.analysis_runner_v2 import runner_v2
-        return runner_v2
-    return runner

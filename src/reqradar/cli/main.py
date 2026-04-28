@@ -11,23 +11,11 @@ import yaml
 
 
 from reqradar import __version__
-from reqradar.core.exceptions import LoaderException, ReqRadarException
+from reqradar.core.exceptions import LoaderException
 from reqradar.infrastructure.config import load_config
 from reqradar.infrastructure.logging import setup_logging
 
 console = Console()
-
-
-def _build_quality_overview_rows(result_context):
-    return [
-        ("流程完成度", result_context.process_completion),
-        ("内容完整度", result_context.content_completeness),
-        ("证据支撑度", result_context.evidence_support),
-        (
-            "步骤完成",
-            f"{sum(1 for r in result_context.step_results.values() if r.success)}/{len(result_context.step_results)}",
-        ),
-    ]
 
 
 @click.group()
@@ -156,7 +144,7 @@ def index(ctx, repo_path, docs_path, output, do_build_profile):
             console.print("[yellow]构建项目画像...[/yellow]")
 
             async def build_profile():
-                from reqradar.agent.steps import step_build_project_profile
+                from reqradar.agent.project_profile import step_build_project_profile
                 from reqradar.modules.llm_client import create_llm_client
                 from reqradar.modules.memory import MemoryManager
 
@@ -184,8 +172,8 @@ def index(ctx, repo_path, docs_path, output, do_build_profile):
                     console.print(f"[green]✓[/green] 项目画像已构建")
                     if result.get("project_profile"):
                         profile = result["project_profile"]
-                        console.print(f"  - 描述: {profile.get('description', 'N/A')}")
-                        console.print(f"  - 架构: {profile.get('architecture_style', 'N/A')}")
+                        console.print(f" - 描述: {profile.get('description', 'N/A')}")
+                        console.print(f" - 架构: {profile.get('architecture_style', 'N/A')}")
                     console.print(f"[green]✓[/green] 已识别 {len(result.get('modules', []))} 个模块")
                 else:
                     console.print("[yellow]⚠[/yellow] 项目画像构建失败，请检查 LLM 配置")
@@ -232,20 +220,12 @@ def index(ctx, repo_path, docs_path, output, do_build_profile):
 )
 @click.pass_context
 def analyze(ctx, requirement_file, index_path, output, llm_backend, verbose):
-    """分析需求文档并生成报告"""
+    """分析需求文档并生成报告（ReAct Agent 模式）"""
     import json
 
-    from reqradar.agent.steps import (
-        step_analyze,
-        step_extract,
-        step_generate,
-        step_map_keywords,
-        step_read,
-        step_retrieve,
-    )
-    from reqradar.core.context import AnalysisContext
+    from reqradar.agent.analysis_agent import AnalysisAgent
+    from reqradar.agent.runner import run_react_analysis
     from reqradar.core.report import ReportRenderer
-    from reqradar.core.scheduler import Scheduler
     from reqradar.modules.git_analyzer import GitAnalyzer
     from reqradar.modules.llm_client import create_llm_client
     from reqradar.modules.vector_store import ChromaVectorStore
@@ -259,15 +239,33 @@ def analyze(ctx, requirement_file, index_path, output, llm_backend, verbose):
     vectorstore_path = index_path_obj / "vectorstore"
 
     async def run_analysis():
+        from datetime import datetime
         from reqradar.modules.memory import MemoryManager
+        from reqradar.modules.memory_manager import AnalysisMemoryManager
 
         memory_manager = MemoryManager(storage_path=config.memory.storage_path)
-        memory_data = memory_manager.load()
+        memory_data = memory_manager.load() if config.memory.enabled else None
 
-        context = AnalysisContext(
-            requirement_path=Path(requirement_file),
-            memory_data=memory_data if config.memory.enabled else None,
+        requirement_path = Path(requirement_file)
+        requirement_text = requirement_path.read_text(encoding="utf-8")
+
+        agent = AnalysisAgent(
+            requirement_text=requirement_text,
+            project_id=0,
+            user_id=0,
+            depth="standard",
         )
+
+        analysis_memory = AnalysisMemoryManager(
+            project_id=0,
+            user_id=0,
+            project_storage_path=config.memory.storage_path,
+            user_storage_path=config.memory.storage_path,
+            memory_enabled=config.memory.enabled,
+        )
+
+        agent.project_memory_text = analysis_memory.get_project_profile_text()
+        agent.user_memory_text = analysis_memory.get_user_memory_text()
 
         provider = llm_backend or config.llm.provider
         llm_kwargs = {
@@ -297,18 +295,18 @@ def analyze(ctx, requirement_file, index_path, output, llm_backend, verbose):
         if code_graph_path.exists():
             with open(code_graph_path, encoding="utf-8") as f:
                 graph_data = json.load(f)
-                from reqradar.modules.code_parser import CodeFile, CodeGraph, CodeSymbol
+            from reqradar.modules.code_parser import CodeFile, CodeGraph, CodeSymbol
 
-                code_graph = CodeGraph(
-                    files=[
-                        CodeFile(
-                            path=f["path"],
-                            symbols=[CodeSymbol(**s) for s in f.get("symbols", [])],
-                            imports=f.get("imports", []),
-                        )
-                        for f in graph_data.get("files", [])
-                    ]
-                )
+            code_graph = CodeGraph(
+                files=[
+                    CodeFile(
+                        path=f["path"],
+                        symbols=[CodeSymbol(**s) for s in f.get("symbols", [])],
+                        imports=f.get("imports", []),
+                    )
+                    for f in graph_data.get("files", [])
+                ]
+            )
 
         git_analyzer = None
         repo_path = Path.cwd()
@@ -345,80 +343,31 @@ def analyze(ctx, requirement_file, index_path, output, llm_backend, verbose):
         if git_analyzer:
             tool_registry.register(GetContributorsTool(git_analyzer=git_analyzer))
 
-        async def wrapped_extract(ctx):
-            return await step_extract(ctx, llm_client, tool_registry=tool_registry, analysis_config=config.analysis)
+        console.print("[cyan]开始 ReAct Agent 分析...[/cyan]")
 
-        async def wrapped_map_keywords(ctx):
-            return await step_map_keywords(ctx, llm_client, tool_registry=tool_registry, analysis_config=config.analysis)
-
-        async def wrapped_retrieve(ctx):
-            result = await step_retrieve(ctx, vector_store, llm_client, tool_registry=tool_registry, analysis_config=config.analysis)
-            ctx.retrieved_context = result
-            return result
-
-        async def wrapped_analyze(ctx):
-            result = await step_analyze(ctx, code_graph, git_analyzer, llm_client, tool_registry=tool_registry, analysis_config=config.analysis)
-            ctx.deep_analysis = result
-            return result
-
-        async def wrapped_generate(ctx):
-            return await step_generate(ctx, llm_client, tool_registry=tool_registry, analysis_config=config.analysis)
-
-        async def memory_update_hook(ctx):
-            if config.memory.enabled:
-                try:
-                    await memory_manager.update_from_analysis(ctx)
-                    logger.info("Memory updated from analysis")
-                except (ReqRadarException, OSError, yaml.YAMLError, AttributeError, KeyError) as e:
-                    logger.warning("Failed to update memory: %s", e)
-
-        async def persist_module_history_hook(ctx):
-            """持久化模块关联历史"""
-            if not ctx.deep_analysis or not ctx.deep_analysis.impact_modules:
-                return
-            try:
-                for module in ctx.deep_analysis.impact_modules:
-                    module_path = module.get("path", "")
-                    if module_path:
-                        memory_manager.add_module_requirement_history(
-                            module_name=module_path,
-                            requirement_id=ctx.requirement_path.stem,
-                            relevance=module.get("relevance", "unknown"),
-                            suggested_changes=module.get("suggested_changes", ""),
-                        )
-                logger.info("Module requirement history persisted")
-            except (ReqRadarException, OSError, yaml.YAMLError, AttributeError, KeyError) as e:
-                logger.warning("Failed to persist module history: %s", e)
-
-        scheduler = Scheduler(
-            read_handler=step_read,
-            extract_handler=wrapped_extract,
-            map_keywords_handler=wrapped_map_keywords,
-            retrieve_handler=wrapped_retrieve,
-            analyze_handler=wrapped_analyze,
-            generate_handler=wrapped_generate,
+        report_data = await run_react_analysis(
+            agent=agent,
+            llm_client=llm_client,
+            tool_registry=tool_registry,
+            config=config,
         )
-
-        scheduler.register_after_hook("analyze", persist_module_history_hook)
-        scheduler.register_after_hook("generate", memory_update_hook)
-
-        result_context = await scheduler.run(context)
 
         renderer = ReportRenderer(config)
 
-        # generate handler already ran inside the scheduler,
-        # use its result from step_results
-        generate_result = result_context.get_result("generate")
-        generated_content = (
-            generate_result.data if generate_result and generate_result.success else None
-        )
+        report_data.setdefault("timestamp", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+        report_data.setdefault("requirement_path", str(requirement_path))
+        report_data.setdefault("impact_scope", "")
+        report_data.setdefault("content_confidence", "N/A")
+        report_data.setdefault("process_completion", "N/A")
+        report_data.setdefault("content_completeness", "N/A")
+        report_data.setdefault("evidence_support", "N/A")
 
-        report_content = renderer.render(result_context, generated_content)
+        report_content = renderer.render_from_data(report_data)
 
         output_path = Path(output)
         output_path.mkdir(parents=True, exist_ok=True)
 
-        report_filename = f"report_{Path(requirement_file).stem}_{result_context.started_at.strftime('%Y%m%d_%H%M%S')}.md"
+        report_filename = f"report_{requirement_path.stem}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
         report_path = output_path / report_filename
 
         renderer.save(report_content, report_path)
@@ -429,12 +378,21 @@ def analyze(ctx, requirement_file, index_path, output, llm_backend, verbose):
         table.add_column("指标", style="cyan")
         table.add_column("值", style="green")
 
-        for label, value in _build_quality_overview_rows(result_context):
-            table.add_row(label, value)
+        risk_level = report_data.get("risk_level", "unknown")
+        table.add_row("风险等级", risk_level)
+        table.add_row("分析步骤", f"{agent.step_count}/{agent.max_steps}")
+        table.add_row("证据数量", str(len(agent.evidence_collector.evidences)))
+        table.add_row("维度完成", str(agent.dimension_tracker.status_summary()))
 
         console.print(table)
 
-        return result_context
+        if config.memory.enabled:
+            try:
+                memory_manager.save()
+            except (OSError, yaml.YAMLError):
+                pass
+
+        return report_data
 
     try:
         asyncio.run(run_analysis())
