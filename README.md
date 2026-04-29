@@ -4,16 +4,40 @@
 <p align="left">业务即产品</p>
 </p>
 
-需求分析 Agent——在写代码前把需求想清楚。提取术语、检索历史、匹配代码、定位风险，生成决策导向的双层分析报告。
+ReqRadar——需求分析 Agent，在写代码前把需求想清楚。提取术语、检索历史、匹配代码、定位风险，生成决策导向的双层分析报告。
 
 ## 架构
 
 - **后端**：Python / FastAPI / SQLAlchemy 2 (async) / JWT / WebSocket
 - **前端**：React / TypeScript / Ant Design
-- **AI**：OpenAI 或 Ollama，6 步固定流程 + ReAct Agent 双引擎
+- **AI**：OpenAI 或 Ollama，ReAct Agent 9工具 + 7维度追踪
 - **存储**：SQLite (WAL) / Chroma 向量库
 
-## 使用
+## CLI
+
+```bash
+# 项目管理
+reqradar project create -n myproj --local-path ./src
+reqradar project list
+reqradar project show 1
+reqradar project delete 1 --force
+reqradar project index 1                     # 构建 Web 模式索引
+
+# 分析任务
+reqradar analyze submit -p 1 -t "需求描述" -n 需求名
+reqradar analyze file ./req.md -i .reqradar/index   # 本地文件分析
+reqradar analyze list
+reqradar analyze status 1
+reqradar analyze cancel 1
+
+# 报告
+reqradar report get 1                         # 输出 markdown
+reqradar report get 1 -f html -o report.html
+reqradar report versions 1
+reqradar report evidence 1
+```
+
+## 快速开始
 
 ```bash
 git clone https://github.com/your-org/reqradar.git
@@ -22,9 +46,9 @@ poetry install
 cp .reqradar.yaml.example .reqradar.yaml
 export OPENAI_API_KEY=sk-xxx
 
-# CLI 分析
+# CLI 本地分析
 reqradar index -r ./src -o .reqradar/index
-reqradar analyze ./docs/requirements/new-feature.md -i .reqradar/index
+reqradar analyze file ./docs/requirements/new-feature.md -i .reqradar/index
 
 # Web 界面
 reqradar createsuperuser

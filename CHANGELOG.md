@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-04-29
+
+### Added
+
+- CLI 项目管理命令组 `reqradar project`：create / list / show / delete / index
+- CLI 分析任务命令组 `reqradar analyze`：submit / list / status / cancel / file
+- CLI 报告命令组 `reqradar report`：get / versions / evidence
+- 项目支持从本地路径、Git 仓库、ZIP 文件三种来源创建
+- 报告导出支持 markdown / html / json 三种格式，可输出到文件
+- CLI 共享工具模块 `cli/utils.py`，统一数据库初始化逻辑
+
+### Changed
+
+- 原 `reqradar analyze <file>` 迁移为 `reqradar analyze file <file>`，参数不变
+- `reqradar analyze` 从顶级命令变为命令组，新增 submit/list/status/cancel 子命令
+- 移除 Legacy 六步固定分析模式，ReAct Agent 为唯一执行引擎
+- 文档同步更新，去除对六步流程的描述
+
 ## [0.5.0] - 2026-04-24
 
 ### Added
@@ -140,7 +158,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Vector search with Chroma + BGE-large-zh embedding model
 - Git contributor analysis with weighted scoring algorithm
 - LLM client supporting OpenAI and Ollama backends
-- Fixed 5-step analysis pipeline (Read → Extract → Retrieve → Analyze → Generate)
+- ReAct Agent 分析管线，支持迭代工具调用与维度追踪
 - Jinja2-based Markdown report generation with fixed template
 - Configuration system with YAML + Pydantic + environment variable support
 - Structured logging with structlog
