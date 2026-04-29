@@ -243,3 +243,138 @@ class TestFullWorkflow:
         result = runner.invoke(cli, ["report", "get", "1"])
         assert result.exit_code != 0
         assert "尚未生成报告" in result.output
+
+
+class TestConfigList:
+    def test_list_empty(self, runner):
+        result = runner.invoke(cli, ["config", "list"])
+        assert result.exit_code == 0
+        assert "暂无配置项" in result.output
+
+    def test_list_user_scope(self, runner):
+        runner.invoke(cli, ["config", "set", "llm.model", "gpt-4o", "--scope", "user"])
+        result = runner.invoke(cli, ["config", "list", "--scope", "user"])
+        assert result.exit_code == 0
+        assert "llm.model" in result.output
+
+    def test_list_system_scope(self, runner):
+        runner.invoke(cli, ["config", "set", "log.level", "DEBUG", "--scope", "system"])
+        result = runner.invoke(cli, ["config", "list", "--scope", "system"])
+        assert result.exit_code == 0
+        assert "log.level" in result.output
+
+
+class TestConfigSet:
+    def test_set_user_config(self, runner):
+        result = runner.invoke(cli, ["config", "set", "llm.model", "gpt-4o"])
+        assert result.exit_code == 0
+        assert "已设置" in result.output
+        assert "llm.model" in result.output
+
+    def test_set_system_config(self, runner):
+        result = runner.invoke(cli, ["config", "set", "log.level", "DEBUG", "--scope", "system"])
+        assert result.exit_code == 0
+        assert "已设置" in result.output
+        assert "系统级" in result.output
+
+    def test_set_with_type(self, runner):
+        result = runner.invoke(
+            cli, ["config", "set", "agent.max_steps_standard", "20", "--type", "integer"]
+        )
+        assert result.exit_code == 0
+        assert "已设置" in result.output
+
+    def test_set_sensitive(self, runner):
+        result = runner.invoke(cli, ["config", "set", "llm.api_key", "sk-test-key", "--sensitive"])
+        assert result.exit_code == 0
+        assert "已设置" in result.output
+
+
+class TestConfigGet:
+    def test_get_unset_key(self, runner):
+        result = runner.invoke(cli, ["config", "get", "nonexistent.key"])
+        assert result.exit_code == 0
+        assert "未设置" in result.output
+
+    def test_get_user_config(self, runner):
+        runner.invoke(cli, ["config", "set", "llm.model", "gpt-4o"])
+        result = runner.invoke(cli, ["config", "get", "llm.model"])
+        assert result.exit_code == 0
+        assert "gpt-4o" in result.output
+        assert "user" in result.output
+
+    def test_get_resolves_priority(self, runner):
+        runner.invoke(cli, ["config", "set", "llm.model", "gpt-4o", "--scope", "system"])
+        runner.invoke(cli, ["config", "set", "llm.model", "claude-3", "--scope", "user"])
+        result = runner.invoke(cli, ["config", "get", "llm.model"])
+        assert result.exit_code == 0
+        assert "claude-3" in result.output
+        assert "user" in result.output
+
+    def test_get_file_config(self, runner):
+        result = runner.invoke(cli, ["config", "get", "llm.provider"])
+        assert result.exit_code == 0
+        assert "openai" in result.output
+
+
+class TestConfigDelete:
+    def test_delete_nonexistent(self, runner):
+        result = runner.invoke(cli, ["config", "delete", "nonexistent.key"])
+        assert result.exit_code != 0
+
+    def test_delete_user_config(self, runner):
+        runner.invoke(cli, ["config", "set", "llm.model", "gpt-4o"])
+        result = runner.invoke(cli, ["config", "delete", "llm.model"])
+        assert result.exit_code == 0
+        assert "已删除" in result.output
+
+    def test_delete_system_config(self, runner):
+        runner.invoke(cli, ["config", "set", "log.level", "DEBUG", "--scope", "system"])
+        result = runner.invoke(cli, ["config", "delete", "log.level", "--scope", "system"])
+        assert result.exit_code == 0
+        assert "已删除" in result.output
+
+
+class TestConfigInit:
+    def test_init_creates_file(self, runner, tmp_path, monkeypatch):
+        import reqradar.cli.config as config_mod
+
+        example_src = tmp_path / ".reqradar.yaml.example"
+        example_src.write_text("llm:\n  provider: openai\n")
+        monkeypatch.setattr(config_mod, "YAML_EXAMPLE", example_src)
+        monkeypatch.setattr(config_mod, "YAML_TARGET", tmp_path / ".reqradar.yaml")
+
+        result = runner.invoke(cli, ["config", "init"])
+        assert result.exit_code == 0
+        assert "已生成" in result.output
+        assert (tmp_path / ".reqradar.yaml").exists()
+
+    def test_init_no_overwrite(self, runner, tmp_path, monkeypatch):
+        import reqradar.cli.config as config_mod
+
+        example_src = tmp_path / ".reqradar.yaml.example"
+        example_src.write_text("llm:\n  provider: openai\n")
+        target = tmp_path / ".reqradar.yaml"
+        target.write_text("existing: config\n")
+        monkeypatch.setattr(config_mod, "YAML_EXAMPLE", example_src)
+        monkeypatch.setattr(config_mod, "YAML_TARGET", target)
+
+        result = runner.invoke(cli, ["config", "init"])
+        assert result.exit_code == 0
+        assert "已存在" in result.output
+        assert target.read_text() == "existing: config\n"
+
+    def test_init_force_overwrite(self, runner, tmp_path, monkeypatch):
+        import reqradar.cli.config as config_mod
+
+        example_src = tmp_path / ".reqradar.yaml.example"
+        example_src.write_text("llm:\n  provider: openai\n")
+        target = tmp_path / ".reqradar.yaml"
+        target.write_text("existing: config\n")
+        monkeypatch.setattr(config_mod, "YAML_EXAMPLE", example_src)
+        monkeypatch.setattr(config_mod, "YAML_TARGET", target)
+
+        result = runner.invoke(cli, ["config", "init", "--force"])
+        assert result.exit_code == 0
+        assert "已生成" in result.output
+        assert "openai" in target.read_text()

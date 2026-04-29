@@ -1,11 +1,12 @@
 [tool.poetry]
 name = "reqradar"
-version = "0.6.0"
+version = "0.6.1"
 description = "需求透视 - 垂直领域需求分析 Agent"
 readme = "README.md"
 license = "MIT"
 authors = ["easy <easy@example.com>"]
 packages = [{ include = "reqradar", from = "src" }]
+include = [{ path = "src/reqradar/web/static", format = ["sdist", "wheel"] }]
 
 [tool.poetry.dependencies]
 python = "^3.12"

@@ -195,11 +195,13 @@ from reqradar.web.cli import serve
 from reqradar.cli.projects import project
 from reqradar.cli.analyses import analyze
 from reqradar.cli.reports import report
+from reqradar.cli.config import config
 
 cli.add_command(serve)
 cli.add_command(project)
 cli.add_command(analyze)
 cli.add_command(report)
+cli.add_command(config)
 
 
 if __name__ == "__main__":

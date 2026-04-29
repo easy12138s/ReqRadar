@@ -5,7 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.6.0] - 2026-04-29
+## [0.6.1] - 2026-04-29
+
+### Added
+
+- CLI 配置管理命令组 `reqradar config`：init / list / get / set / delete
+- `config get` 支持三级优先级解析（User > Project > System > File > Default）并显示来源
+- `config set` 支持 user/system 层级、值类型声明、敏感值标记
+- `config init` 从 `.reqradar.yaml.example` 生成默认配置文件（支持 `--force` 覆盖）
+- 前端构建产物打入 wheel/sdist，`reqradar serve` 开箱即可提供 Web UI
+- `scripts/build-package.sh` 一键构建脚本（前端 + 后端打包）
+
+### Changed
+
+- `pyproject.toml` 添加 `include` 规则，将 `src/reqradar/web/static/` 纳入打包
 
 ### Added
 
