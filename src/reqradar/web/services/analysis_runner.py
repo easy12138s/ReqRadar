@@ -179,13 +179,10 @@ class AnalysisRunner:
                 "base_url": llm_base_url,
                 "timeout": config.llm.timeout,
                 "max_retries": config.llm.max_retries,
-                "embedding_model": config.llm.embedding_model,
-                "embedding_dim": config.llm.embedding_dim,
             },
             "ollama": {
                 "model": llm_model,
                 "host": config.llm.host or "http://localhost:11434",
-                "embedding_dim": config.llm.embedding_dim,
             },
         }
         llm_client = create_llm_client(provider, **llm_kwargs.get(provider, {}))

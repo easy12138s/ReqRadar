@@ -156,8 +156,6 @@ def index(ctx, repo_path, docs_path, output, do_build_profile):
                     base_url=config.llm.base_url or "https://api.openai.com/v1",
                     timeout=config.llm.timeout,
                     max_retries=config.llm.max_retries,
-                    embedding_model=config.llm.embedding_model,
-                    embedding_dim=config.llm.embedding_dim,
                 )
 
                 result = await step_build_project_profile(
