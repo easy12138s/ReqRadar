@@ -1,6 +1,5 @@
-version: "3.8"
 services:
-  reqradar-api:
+  reqradar:
     build:
       context: ..
       dockerfile: docker/Dockerfile
@@ -8,11 +7,23 @@ services:
       - "8000:8000"
     volumes:
       - reqradar_data:/app/.reqradar
-      - reqradar_db:/app/reqradar.db
+      - reqradar_db:/app/data
+      - model_cache:/app/.cache
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - REQRADAR_SECRET_KEY=${SECRET_KEY:-change-me-in-production}
+      - REQRADAR_SECRET_KEY=${REQRADAR_SECRET_KEY:-please-change-me}
+      - LLM_PROVIDER=${LLM_PROVIDER:-openai}
+      - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-}
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 4g
+        reservations:
+          memory: 1g
 
 volumes:
   reqradar_data:
   reqradar_db:
+  model_cache:
