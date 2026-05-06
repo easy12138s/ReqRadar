@@ -30,6 +30,8 @@ class ProjectIndexService:
 
             await self._build_vector_store(project, config, svc, index_path)
 
+            await self._build_git_index(project, config, svc, index_path)
+
             await self._load_memory(project, project_id, cm, svc, config)
 
             await project_store.invalidate(project_id)
@@ -52,7 +54,9 @@ class ProjectIndexService:
 
         await asyncio.to_thread(_write_graph)
 
-    async def _build_vector_store(self, project: Project, config: Config, svc: ProjectFileService, index_path) -> None:
+    async def _build_vector_store(
+        self, project: Project, config: Config, svc: ProjectFileService, index_path
+    ) -> None:
         try:
             from reqradar.modules.vector_store import ChromaVectorStore, CHROMA_AVAILABLE
 
@@ -98,8 +102,79 @@ class ProjectIndexService:
         except Exception:
             logger.warning("Vector store build failed for project %d", project.id, exc_info=True)
 
-    async def _load_memory(self, project: Project, project_id: int, cm: ConfigManager, svc: ProjectFileService, config: Config) -> None:
-        memory_enabled = await cm.get_bool("memory.enabled", project_id=project_id, default=config.memory.enabled)
+    async def _build_git_index(self, project, config, svc, index_path) -> None:
+        from reqradar.modules.git_analyzer import GitAnalyzer
+        from reqradar.modules.vector_store import ChromaVectorStore, Document
+
+        repo_path = svc.detect_code_root(project.name)
+        if not repo_path or not (repo_path / ".git").exists():
+            logger.info("No git repo found for project %s, skipping commit indexing", project.id)
+            return
+
+        logger.info("Building git commit index for project %s", project.id)
+        try:
+            ga = GitAnalyzer(
+                str(repo_path),
+                lookback_months=config.git.lookback_months if hasattr(config, "git") else 6,
+            )
+            commits = await asyncio.to_thread(ga.get_all_commits)
+        except Exception as e:
+            logger.warning("Failed to read git history for project %s: %s", project.id, e)
+            return
+
+        if not commits:
+            return
+
+        vectorstore_path = index_path / "vectorstore"
+        vs = ChromaVectorStore(
+            persist_directory=str(vectorstore_path),
+            embedding_model=config.index.embedding_model,
+            collection_name="commits",
+        )
+
+        documents = []
+        for c in commits:
+            content = (
+                f"Commit {c['hash']}: {c['summary']}\n"
+                f"Author: {c['author_name']}\n"
+                f"Date: {c['committed_date']}\n"
+                f"Files: {', '.join(c['files_changed'][:10])}"
+                + (
+                    f" (+{len(c['files_changed']) - 10} more)"
+                    if len(c["files_changed"]) > 10
+                    else ""
+                )
+                + f"\n\n{c['message']}"
+            )
+            documents.append(
+                Document(
+                    id=f"commit-{c['hash']}",
+                    content=content,
+                    metadata={
+                        "type": "commit",
+                        "hash": c["hash"],
+                        "author": c["author_name"],
+                        "date": c["committed_date"],
+                        "files_count": len(c["files_changed"]),
+                    },
+                )
+            )
+
+        vs.add_documents(documents)
+        vs.persist()
+        logger.info("Indexed %d commits for project %s", len(commits), project.id)
+
+    async def _load_memory(
+        self,
+        project: Project,
+        project_id: int,
+        cm: ConfigManager,
+        svc: ProjectFileService,
+        config: Config,
+    ) -> None:
+        memory_enabled = await cm.get_bool(
+            "memory.enabled", project_id=project_id, default=config.memory.enabled
+        )
         if memory_enabled:
             from reqradar.modules.memory import MemoryManager
 

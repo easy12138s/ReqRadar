@@ -139,6 +139,57 @@ def index(ctx, repo_path, docs_path, output, do_build_profile):
                 f"[green]✓[/green] 已索引 {indexed_count} 个文件，跳过 {skipped_count} 个"
             )
 
+        if not docs_path:
+            from reqradar.modules.vector_store import ChromaVectorStore
+
+        if repo_path and Path(repo_path).exists():
+            git_dir = Path(repo_path) / ".git"
+            if git_dir.exists():
+                try:
+                    from reqradar.modules.git_analyzer import GitAnalyzer
+
+                    ga = GitAnalyzer(repo_path, lookback_months=config.git.lookback_months)
+                    commits = ga.get_all_commits()
+                    if commits:
+                        vs_commits = ChromaVectorStore(
+                            persist_directory=str(output_path / "vectorstore"),
+                            embedding_model=config.index.embedding_model,
+                            collection_name="commits",
+                        )
+                        from reqradar.modules.vector_store import Document
+
+                        docs = []
+                        for c in commits:
+                            content = (
+                                f"Commit {c['hash']}: {c['summary']}\n"
+                                f"Author: {c['author_name']}\n"
+                                f"Date: {c['committed_date']}\n"
+                                f"Files: {', '.join(c['files_changed'][:10])}"
+                                + (
+                                    f" (+{len(c['files_changed']) - 10} more)"
+                                    if len(c["files_changed"]) > 10
+                                    else ""
+                                )
+                                + f"\n\n{c['message']}"
+                            )
+                            docs.append(
+                                Document(
+                                    id=f"commit-{c['hash']}",
+                                    content=content,
+                                    metadata={
+                                        "type": "commit",
+                                        "hash": c["hash"],
+                                        "author": c["author_name"],
+                                        "date": c["committed_date"],
+                                    },
+                                )
+                            )
+                        vs_commits.add_documents(docs)
+                        vs_commits.persist()
+                        console.print(f"[green]✓[/green] 已索引 {len(commits)} 条 Git 提交记录")
+                except Exception as e:
+                    console.print(f"[yellow]⚠  Git 索引跳过: {e}[/yellow]")
+
         if do_build_profile and config.llm.api_key:
             console.print("[yellow]构建项目画像...[/yellow]")
 
