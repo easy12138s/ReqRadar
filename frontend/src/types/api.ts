@@ -116,6 +116,7 @@ export interface AnalysisCreate {
   depth?: AnalysisDepth;
   template_id?: string;
   focus_areas?: string[];
+  requirement_document_id?: number;
 }
 
 export interface AnalysisProgress {

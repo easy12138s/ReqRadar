@@ -11,8 +11,10 @@ import {
   message,
   Empty,
   Spin,
+  Upload,
+  Space,
 } from 'antd';
-import { SendOutlined } from '@ant-design/icons';
+import { SendOutlined, InboxOutlined } from '@ant-design/icons';
 import type { Project, AnalysisDepth } from '@/types/api';
 import { getProjects } from '@/api/projects';
 import { createAnalysis, uploadAnalysis } from '@/api/analyses';
@@ -20,6 +22,7 @@ import { FileUploader } from '@/components/FileUploader';
 import { DepthSelector } from '@/components/DepthSelector';
 import { TemplateSelector } from '@/components/TemplateSelector';
 import { FocusAreaSelector } from '@/components/FocusAreaSelector';
+import { preprocessRequirements } from '../api/requirements';
 
 const { Title } = Typography;
 const { TextArea } = Input;
@@ -33,6 +36,9 @@ export function AnalysisSubmit() {
   const [templateId, setTemplateId] = useState<string | undefined>(undefined);
   const [focusAreas, setFocusAreas] = useState<string[]>([]);
   const [textForm] = Form.useForm();
+  const [preprocessFiles, setPreprocessFiles] = useState<File[]>([]);
+  const [preprocessing, setPreprocessing] = useState(false);
+  const [preprocessTitle, setPreprocessTitle] = useState('');
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -190,6 +196,85 @@ export function AnalysisSubmit() {
             accept=".txt,.md,.doc,.docx,.pdf"
           />
         </div>
+      ),
+    },
+    {
+      key: 'preprocess',
+      label: '多文件预处理',
+      children: (
+        <Space direction="vertical" style={{ width: '100%' }} size="middle">
+          <Form form={textForm} layout="vertical">
+            <Form.Item
+              label="项目"
+              name="project_id"
+              rules={[{ required: true, message: '请选择项目' }]}
+            >
+              <Select placeholder="请选择项目">
+                {projects.map((p) => (
+                  <Option key={p.id} value={p.id}>
+                    {p.name}
+                  </Option>
+                ))}
+              </Select>
+            </Form.Item>
+          </Form>
+
+          <Upload.Dragger
+            multiple
+            accept=".pdf,.docx,.txt,.md,.png,.jpg,.jpeg"
+            beforeUpload={(file) => {
+              setPreprocessFiles(prev => [...prev, file]);
+              return false;
+            }}
+            onRemove={(file) => {
+              setPreprocessFiles(prev => prev.filter(f => f.name !== file.name));
+            }}
+            fileList={preprocessFiles.map((f, i) => ({
+              uid: `${i}`,
+              name: f.name,
+              status: 'done' as const,
+            }))}
+          >
+            <p><InboxOutlined style={{ fontSize: 48, color: '#00d4ff' }} /></p>
+            <p>拖拽或点击选择文件（支持多选）</p>
+            <p style={{ color: '#64748b', fontSize: 12 }}>
+              支持: PDF, DOCX, MD, TXT, PNG, JPG
+            </p>
+          </Upload.Dragger>
+
+          <Input
+            placeholder="需求文档标题（可选，默认取第一个文件名）"
+            value={preprocessTitle}
+            onChange={e => setPreprocessTitle(e.target.value)}
+          />
+
+          <Button
+            type="primary"
+            block
+            size="large"
+            loading={preprocessing}
+            disabled={preprocessFiles.length === 0}
+            onClick={async () => {
+              const projectId = textForm.getFieldValue('project_id');
+              if (!projectId) {
+                message.error('请先选择项目');
+                return;
+              }
+              setPreprocessing(true);
+              try {
+                const result = await preprocessRequirements(projectId, preprocessFiles, preprocessTitle);
+                message.success('需求文档已生成');
+                navigate(`/requirements/${result.id}`);
+              } catch (e: any) {
+                message.error(e.response?.data?.detail || '预处理失败');
+              } finally {
+                setPreprocessing(false);
+              }
+            }}
+          >
+            预处理需求文档
+          </Button>
+        </Space>
       ),
     },
   ];
