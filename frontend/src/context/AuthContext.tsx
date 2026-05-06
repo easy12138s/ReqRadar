@@ -44,13 +44,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     fetchUser();
   }, [fetchUser]);
 
-  const login = useCallback((token: string) => {
+  const login = useCallback(async (token: string) => {
     localStorage.setItem('access_token', token);
-    fetchUser();
-  }, [fetchUser]);
+    try {
+      const userData = await getMe();
+      setUser(userData);
+      localStorage.setItem('user', JSON.stringify(userData));
+    } catch {
+      localStorage.removeItem('access_token');
+      setUser(null);
+    }
+  }, []);
 
   const logout = useCallback(() => {
     localStorage.removeItem('access_token');
+    localStorage.removeItem('user');
     setUser(null);
     window.location.href = '/app/login';
   }, []);
