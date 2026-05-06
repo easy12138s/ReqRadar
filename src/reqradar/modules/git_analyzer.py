@@ -50,6 +50,36 @@ class FileContributor:
 class GitAnalyzer:
     """Git 贡献者分析器"""
 
+    def get_all_commits(self, since=None, max_commits: int = 500) -> list[dict]:
+        if since is None:
+            since = self.lookback_date
+        commits = list(self.repo.iter_commits(since=since, max_count=max_commits))
+        result = []
+        for c in commits:
+            files = {}
+            for fpath, stats in c.stats.files.items():
+                files[fpath] = {
+                    "insertions": stats.get("insertions", 0),
+                    "deletions": stats.get("deletions", 0),
+                    "lines": stats.get("lines", 0),
+                }
+            result.append(
+                {
+                    "hash": c.hexsha[:8],
+                    "full_hash": c.hexsha,
+                    "message": c.message.strip() if c.message else "",
+                    "summary": c.summary.strip() if c.summary else "",
+                    "author_name": c.author.name if c.author else "unknown",
+                    "author_email": c.author.email if c.author else "",
+                    "committed_date": datetime.fromtimestamp(c.committed_date).isoformat(),
+                    "files_changed": list(files.keys()),
+                    "files_stats": files,
+                    "total_insertions": c.stats.total.get("insertions", 0),
+                    "total_deletions": c.stats.total.get("deletions", 0),
+                }
+            )
+        return result
+
     def __init__(self, repo_path: Path, lookback_months: int = 6):
         if not GIT_AVAILABLE:
             raise ImportError("gitpython is not installed. Run: pip install gitpython")

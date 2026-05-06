@@ -49,7 +49,9 @@ def _check_index_compatibility(persist_directory: Path) -> bool:
             logger.warning(
                 "ChromaDB version mismatch: index created with %s, current is %s. "
                 "Consider rebuilding the index: rm -rf %s && reqradar index",
-                indexed_version, current_version, persist_directory,
+                indexed_version,
+                current_version,
+                persist_directory,
             )
             return False
     except Exception:
@@ -99,6 +101,7 @@ class ChromaVectorStore(VectorStore):
         self,
         persist_directory: str = ".reqradar/vectorstore",
         embedding_model: str = "BAAI/bge-large-zh",
+        collection_name: str = "requirements",
     ):
         if not CHROMA_AVAILABLE:
             raise ImportError(
@@ -128,7 +131,7 @@ class ChromaVectorStore(VectorStore):
         self.embedding_model = sentence_transformers.SentenceTransformer(embedding_model)
 
         self.collection = self.client.get_or_create_collection(
-            name="requirements", metadata={"hnsw:space": "cosine"}
+            name=collection_name, metadata={"hnsw:space": "cosine"}
         )
 
     def add_documents(self, docs: list[Document]):
