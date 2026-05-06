@@ -147,7 +147,14 @@ export function ReportView() {
 
       <div style={{ display: 'flex', gap: 24 }}>
         <div style={{ width: 200, flexShrink: 0 }}>
-          <Anchor items={tocItems} />
+          <Anchor
+            items={tocItems}
+            onClick={(e, link) => {
+              e.preventDefault();
+              const el = document.getElementById(link.href.split('#')[1]);
+              if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }}
+          />
         </div>
         <div style={{ flex: 1 }} ref={contentRef}>
           {versionedReport ? (

@@ -75,6 +75,7 @@ export function LLMConfig() {
   const [form] = Form.useForm<LLMFormValues>();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [testLoading, setTestLoading] = useState(false);
   const [apiKeyHidden, setApiKeyHidden] = useState(true);
   const [visionApiKeyHidden, setVisionApiKeyHidden] = useState(true);
 
@@ -143,7 +144,30 @@ export function LLMConfig() {
 
   return (
     <div>
-      <Title level={3}>大模型配置</Title>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+        <Title level={3} style={{ margin: 0 }}>大模型配置</Title>
+        <Button
+          size="small"
+          loading={testLoading}
+          onClick={async () => {
+            setTestLoading(true);
+            try {
+              const resp = await fetch('/api/auth/me', { headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` } });
+              if (resp.ok) {
+                message.success('API 连接正常');
+              } else {
+                message.error(`连接失败: ${resp.status}`);
+              }
+            } catch {
+              message.error('无法连接到服务器');
+            } finally {
+              setTestLoading(false);
+            }
+          }}
+        >
+          测试连接
+        </Button>
+      </div>
       <Alert
         message="提示"
         description="此处配置的用户级配置优先级高于系统配置文件 (.reqradar.yaml)。API Key 等敏感信息将以掩码形式显示。"

@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Card,
@@ -23,6 +23,7 @@ import { getAnalysis, retryAnalysis, cancelAnalysis } from '@/api/analyses';
 import { StepProgress } from '@/components/StepProgress';
 import { DimensionProgress } from '@/components/DimensionProgress';
 import { RiskBadge } from '@/components/RiskBadge';
+import { useWebSocket } from '../hooks/useWebSocket';
 
 const { Title } = Typography;
 
@@ -37,7 +38,6 @@ export function AnalysisProgress() {
   const [currentStep, setCurrentStep] = useState(0);
   const [stepProgressMessage, setStepProgressMessage] = useState('连接中...');
   const [maxSteps, setMaxSteps] = useState(15);
-  const wsRef = useRef<WebSocket | null>(null);
 
   const fetchTask = async () => {
     if (!id) return;
@@ -58,17 +58,15 @@ export function AnalysisProgress() {
     fetchTask();
   }, [id]);
 
-  const connectWebSocket = useCallback(() => {
-    const token = localStorage.getItem('access_token');
-    if (!token || !id) return;
+  const token = localStorage.getItem('access_token');
+  const wsUrl = id && token
+    ? `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/api/analyses/${id}/ws?token=${token}`
+    : '';
 
-    const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/api/analyses/${id}/ws?token=${token}`;
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
-
-  ws.onmessage = (event) => {
-    try {
-      const msg = JSON.parse(event.data);
+  const { status: wsStatus } = useWebSocket({
+    url: wsUrl,
+    enabled: !!wsUrl,
+    onMessage: (msg: any) => {
       if (msg.type === 'dimension_progress') {
         setDimensions(msg.dimensions || {});
         setEvidenceCount(msg.evidence_count || 0);
@@ -98,26 +96,8 @@ export function AnalysisProgress() {
         const data = msg.data as { message: string };
         setStepProgressMessage(`错误: ${data.message}`);
       }
-    } catch {
-      // ignore invalid messages
-    }
-  };
-
-    ws.onerror = () => {
-      // ignore ws errors
-    };
-
-    ws.onclose = () => {
-      // connection closed
-    };
-  }, [id]);
-
-  useEffect(() => {
-    connectWebSocket();
-    return () => {
-      wsRef.current?.close();
-    };
-  }, [connectWebSocket]);
+    },
+  });
 
   const handleRetry = async () => {
     if (!id) return;
@@ -216,6 +196,14 @@ export function AnalysisProgress() {
 
       {!isComplete && !isFailed && id && (
         <>
+          <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+            {wsStatus === 'open'
+              ? <span style={{ color: '#22c55e', fontSize: 13 }}>&#9679; 已连接</span>
+              : wsStatus === 'reconnecting'
+              ? <span style={{ color: '#eab308', fontSize: 13 }}>&#9679; 重连中</span>
+              : <span style={{ color: '#ef4444', fontSize: 13 }}>&#9679; 断开</span>
+            }
+          </div>
           <Card style={{ marginBottom: 24 }}>
             <DimensionProgress
               dimensions={dimensions}

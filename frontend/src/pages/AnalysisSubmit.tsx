@@ -76,7 +76,13 @@ export function AnalysisSubmit() {
       message.error('请先选择项目');
       throw new Error('No project selected');
     }
-    const task = await uploadAnalysis(projectId, file);
+    const task = await uploadAnalysis(
+      projectId,
+      file,
+      depth,
+      templateId,
+      focusAreas.length > 0 ? focusAreas : undefined,
+    );
     message.success('文件上传成功，分析已开始');
     navigate(`/analyses/${task.id}`);
   };

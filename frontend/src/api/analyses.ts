@@ -21,11 +21,17 @@ export async function createAnalysis(data: AnalysisCreate): Promise<AnalysisTask
 
 export async function uploadAnalysis(
   projectId: string,
-  file: File
+  file: File,
+  depth?: string,
+  templateId?: string,
+  focusAreas?: string[]
 ): Promise<AnalysisTask> {
   const formData = new FormData();
   formData.append('project_id', projectId);
   formData.append('file', file);
+  if (depth) formData.append('depth', depth);
+  if (templateId) formData.append('template_id', templateId);
+  if (focusAreas && focusAreas.length > 0) formData.append('focus_areas', JSON.stringify(focusAreas));
 
   const response = await apiClient.post<AnalysisTask>('/analyses/upload', formData, {
     headers: {
