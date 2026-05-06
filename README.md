@@ -1,11 +1,10 @@
 <p align="left">
-<h1>ReqRadar</h1>
-<p><strong>需求透镜 —— 在写代码前把需求想清楚</strong></p>
+<h1 align="left">ReqRadar</h1>
+<p align="left"><strong>需求透镜</strong></p>
+<p align="left">业务即产品</p>
 </p>
 
----
-
-ReqRadar 是一个垂直领域需求分析 Agent。输入需求描述或多份需求文件，系统调用多种分析工具生成决策导向的分析报告，并在分析后自动更新项目知识库。
+ReqRadar——需求分析 Agent，在写代码前把需求想清楚。提取术语、检索历史、匹配代码、定位风险，生成决策导向的双层分析报告。
 
 ## 架构
 
