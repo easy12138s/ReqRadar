@@ -37,6 +37,7 @@ def _log_llm_call(
 
         async def _write():
             import reqradar.web.dependencies as dep_module
+
             if dep_module.async_session_factory is None:
                 return
             async with dep_module.async_session_factory() as session:
@@ -79,11 +80,6 @@ class LLMClient(ABC):
         """发送对话请求"""
         pass
 
-    @abstractmethod
-    async def embed(self, texts: list[str]) -> list[list[float]]:
-        """获取文本嵌入"""
-        pass
-
     async def complete_vision(self, image_data: bytes, prompt: str, **kwargs) -> str:
         """发送视觉请求（图片+文本）- 默认抛出 NotImplementedError"""
         raise NotImplementedError(f"{self.__class__.__name__} does not support vision")
@@ -97,8 +93,15 @@ class LLMClient(ABC):
 
         # Known models that support function calling
         KNOWN_TOOL_MODELS = (
-            "minimax", "gpt-4", "gpt-3.5", "claude", "qwen", "deepseek",
-            "gemini", "llama-3", "mixtral",
+            "minimax",
+            "gpt-4",
+            "gpt-3.5",
+            "claude",
+            "qwen",
+            "deepseek",
+            "gemini",
+            "llama-3",
+            "mixtral",
         )
         if any(m in model for m in KNOWN_TOOL_MODELS):
             self._tool_calling_supported = True
@@ -127,9 +130,9 @@ class LLMClient(ABC):
             pass
 
         logger.warning(
-            "Tool calling not detected for %s (model=%s). "
-            "Falling back to structured text output.",
-            self.__class__.__name__, model,
+            "Tool calling not detected for %s (model=%s). Falling back to structured text output.",
+            self.__class__.__name__,
+            model,
         )
         return False
 
@@ -178,8 +181,6 @@ class OpenAIClient(LLMClient):
         base_url: str = "https://api.openai.com/v1",
         timeout: int = 60,
         max_retries: int = 2,
-        embedding_model: str = "text-embedding-3-small",
-        embedding_dim: int = 1024,
     ):
         super().__init__()
         self.api_key = api_key
@@ -187,8 +188,6 @@ class OpenAIClient(LLMClient):
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.max_retries = max_retries
-        self.embedding_model = embedding_model
-        self.embedding_dim = embedding_dim
         self._current_task_id: int | None = None
 
     def _build_headers(self) -> dict[str, str]:
@@ -202,6 +201,7 @@ class OpenAIClient(LLMClient):
     async def complete(self, messages: list[dict], **kwargs) -> str:
         """发送 OpenAI API 请求"""
         import time
+
         headers = self._build_headers()
         prompt_chars = sum(len(m.get("content", "")) for m in messages)
         model_name = kwargs.get("model", self.model)
@@ -229,9 +229,13 @@ class OpenAIClient(LLMClient):
                     usage = result.get("usage", {})
                     duration_ms = int((time.monotonic() - t0) * 1000)
                     _log_llm_call(
-                        caller="complete", model=model_name, method="complete",
-                        prompt_chars=prompt_chars, completion_chars=len(content),
-                        duration_ms=duration_ms, success=True,
+                        caller="complete",
+                        model=model_name,
+                        method="complete",
+                        prompt_chars=prompt_chars,
+                        completion_chars=len(content),
+                        duration_ms=duration_ms,
+                        success=True,
                         prompt_tokens=usage.get("prompt_tokens"),
                         completion_tokens=usage.get("completion_tokens"),
                         total_tokens=usage.get("total_tokens"),
@@ -299,6 +303,7 @@ class OpenAIClient(LLMClient):
             payload["tool_choice"] = {"type": "function", "function": {"name": function_name}}
 
         import time
+
         prompt_chars = sum(len(m.get("content", "") or "") for m in messages)
         model_name = kwargs.get("model", self.model)
         t0 = time.monotonic()
@@ -327,9 +332,13 @@ class OpenAIClient(LLMClient):
                             usage = result.get("usage", {})
                             duration_ms = int((time.monotonic() - t0) * 1000)
                             _log_llm_call(
-                                caller="complete_structured", model=model_name, method="complete_structured",
-                                prompt_chars=prompt_chars, completion_chars=len(content),
-                                duration_ms=duration_ms, success=True,
+                                caller="complete_structured",
+                                model=model_name,
+                                method="complete_structured",
+                                prompt_chars=prompt_chars,
+                                completion_chars=len(content),
+                                duration_ms=duration_ms,
+                                success=True,
                                 prompt_tokens=usage.get("prompt_tokens"),
                                 completion_tokens=usage.get("completion_tokens"),
                                 total_tokens=usage.get("total_tokens"),
@@ -343,9 +352,13 @@ class OpenAIClient(LLMClient):
                     logger.debug("No tool_calls in function calling response, returning None")
                     duration_ms = int((time.monotonic() - t0) * 1000)
                     _log_llm_call(
-                        caller="complete_structured", model=model_name, method="complete_structured",
-                        prompt_chars=prompt_chars, completion_chars=0,
-                        duration_ms=duration_ms, success=False,
+                        caller="complete_structured",
+                        model=model_name,
+                        method="complete_structured",
+                        prompt_chars=prompt_chars,
+                        completion_chars=0,
+                        duration_ms=duration_ms,
+                        success=False,
                         error_message="no_tool_calls_no_content",
                         task_id=self._current_task_id,
                     )
@@ -359,9 +372,13 @@ class OpenAIClient(LLMClient):
                     usage = result.get("usage", {})
                     duration_ms = int((time.monotonic() - t0) * 1000)
                     _log_llm_call(
-                        caller="complete_structured", model=model_name, method="complete_structured",
-                        prompt_chars=prompt_chars, completion_chars=len(arguments_str),
-                        duration_ms=duration_ms, success=True,
+                        caller="complete_structured",
+                        model=model_name,
+                        method="complete_structured",
+                        prompt_chars=prompt_chars,
+                        completion_chars=len(arguments_str),
+                        duration_ms=duration_ms,
+                        success=True,
                         prompt_tokens=usage.get("prompt_tokens"),
                         completion_tokens=usage.get("completion_tokens"),
                         total_tokens=usage.get("total_tokens"),
@@ -373,9 +390,13 @@ class OpenAIClient(LLMClient):
                     logger.warning("Failed to parse function calling arguments: %s", e)
                     duration_ms = int((time.monotonic() - t0) * 1000)
                     _log_llm_call(
-                        caller="complete_structured", model=model_name, method="complete_structured",
-                        prompt_chars=prompt_chars, completion_chars=len(arguments_str),
-                        duration_ms=duration_ms, success=False,
+                        caller="complete_structured",
+                        model=model_name,
+                        method="complete_structured",
+                        prompt_chars=prompt_chars,
+                        completion_chars=len(arguments_str),
+                        duration_ms=duration_ms,
+                        success=False,
                         error_message=f"json_parse_error: {e}",
                         tool_calls_count=len(tool_calls),
                         task_id=self._current_task_id,
@@ -392,8 +413,10 @@ class OpenAIClient(LLMClient):
                     tool_names = [t.get("function", {}).get("name", "?") for t in tools]
                     logger.warning(
                         "complete_structured 400 error for model=%s function=%s tool_choice=%s\nPayload keys: %s\nError body: %s",
-                        payload.get("model"), function_name,
-                        payload.get("tool_choice"), list(payload.keys()),
+                        payload.get("model"),
+                        function_name,
+                        payload.get("tool_choice"),
+                        list(payload.keys()),
                         error_body,
                     )
                     return None
@@ -433,6 +456,7 @@ class OpenAIClient(LLMClient):
             payload["tool_choice"] = kwargs["tool_choice"]
 
         import time as _time
+
         _prompt_chars = sum(len(m.get("content", "") or "") for m in messages)
         _model_name = kwargs.get("model", self.model)
         _t0 = _time.monotonic()
@@ -470,13 +494,20 @@ class OpenAIClient(LLMClient):
                         duration_ms = int((_time.monotonic() - _t0) * 1000)
                         logger.info(
                             "LLM complete_with_tools: model=%s tools=%s tool_calls=%d duration=%dms tokens=%s",
-                            _model_name, tool_name_list, len(tool_calls), duration_ms,
+                            _model_name,
+                            tool_name_list,
+                            len(tool_calls),
+                            duration_ms,
                             usage.get("total_tokens", "?"),
                         )
                         _log_llm_call(
-                            caller="complete_with_tools", model=_model_name, method="complete_with_tools",
-                            prompt_chars=_prompt_chars, completion_chars=len(str(message)),
-                            duration_ms=duration_ms, success=True,
+                            caller="complete_with_tools",
+                            model=_model_name,
+                            method="complete_with_tools",
+                            prompt_chars=_prompt_chars,
+                            completion_chars=len(str(message)),
+                            duration_ms=duration_ms,
+                            success=True,
                             prompt_tokens=usage.get("prompt_tokens"),
                             completion_tokens=usage.get("completion_tokens"),
                             total_tokens=usage.get("total_tokens"),
@@ -494,9 +525,13 @@ class OpenAIClient(LLMClient):
                             usage = result.get("usage", {})
                             duration_ms = int((_time.monotonic() - _t0) * 1000)
                             _log_llm_call(
-                                caller="complete_with_tools", model=_model_name, method="complete_with_tools",
-                                prompt_chars=_prompt_chars, completion_chars=len(cleaned),
-                                duration_ms=duration_ms, success=True,
+                                caller="complete_with_tools",
+                                model=_model_name,
+                                method="complete_with_tools",
+                                prompt_chars=_prompt_chars,
+                                completion_chars=len(cleaned),
+                                duration_ms=duration_ms,
+                                success=True,
                                 prompt_tokens=usage.get("prompt_tokens"),
                                 completion_tokens=usage.get("completion_tokens"),
                                 total_tokens=usage.get("total_tokens"),
@@ -511,9 +546,13 @@ class OpenAIClient(LLMClient):
                     else:
                         duration_ms = int((_time.monotonic() - _t0) * 1000)
                         _log_llm_call(
-                            caller="complete_with_tools", model=_model_name, method="complete_with_tools",
-                            prompt_chars=_prompt_chars, completion_chars=0,
-                            duration_ms=duration_ms, success=False,
+                            caller="complete_with_tools",
+                            model=_model_name,
+                            method="complete_with_tools",
+                            prompt_chars=_prompt_chars,
+                            completion_chars=0,
+                            duration_ms=duration_ms,
+                            success=False,
                             error_message="empty_response",
                             task_id=self._current_task_id,
                         )
@@ -529,20 +568,22 @@ class OpenAIClient(LLMClient):
                     tool_names = [t.get("function", {}).get("name", "?") for t in tools]
                     logger.warning(
                         "complete_with_tools 400 error for model=%s tools=%s tool_choice=%s\nPayload keys: %s\nError body: %s",
-                        payload.get("model"), tool_names,
-                        payload.get("tool_choice"), list(payload.keys()),
+                        payload.get("model"),
+                        tool_names,
+                        payload.get("tool_choice"),
+                        list(payload.keys()),
                         error_body,
                     )
                     # Don't retry 400s — the request format is wrong
                     return None
                 last_error = e
                 if attempt < self.max_retries:
-                    await asyncio.sleep(2 ** attempt)
+                    await asyncio.sleep(2**attempt)
                     continue
             except httpx.TimeoutException as e:
                 last_error = e
                 if attempt < self.max_retries:
-                    await asyncio.sleep(2 ** attempt)
+                    await asyncio.sleep(2**attempt)
                     continue
             except (httpx.RequestError, json.JSONDecodeError, KeyError) as e:
                 logger.warning("complete_with_tools failed: %s", e)
@@ -606,25 +647,6 @@ class OpenAIClient(LLMClient):
             f"OpenAI Vision API timeout after {self.max_retries + 1} attempts", cause=last_error
         )
 
-    async def embed(self, texts: list[str]) -> list[list[float]]:
-        """获取 OpenAI embeddings"""
-        headers = self._build_headers()
-
-        payload = {
-            "model": self.embedding_model,
-            "input": texts,
-        }
-
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            response = await client.post(
-                f"{self.base_url}/embeddings",
-                headers=headers,
-                json=payload,
-            )
-            response.raise_for_status()
-            result = response.json()
-            return [item["embedding"] for item in result["data"]]
-
 
 class OllamaClient(LLMClient):
     """Ollama 本地模型客户端"""
@@ -634,14 +656,12 @@ class OllamaClient(LLMClient):
         model: str = "qwen2.5:14b",
         host: str = "http://localhost:11434",
         timeout: int = 120,
-        embedding_dim: int = 1024,
     ):
         super().__init__()
         self._tool_calling_supported = False
         self.model = model
         self.host = host.rstrip("/")
         self.timeout = timeout
-        self.embedding_dim = embedding_dim
 
     async def complete(self, messages: list[dict], **kwargs) -> str:
         """发送 Ollama 请求"""
@@ -672,30 +692,6 @@ class OllamaClient(LLMClient):
     ) -> dict | None:
         """Ollama暂不支持tool_use协议，返回None触发降级"""
         return None
-
-    async def embed(self, texts: list[str]) -> list[list[float]]:
-        """获取 Ollama embeddings"""
-        embeddings = []
-
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            for text in texts:
-                payload = {
-                    "model": self.model,
-                    "prompt": text,
-                }
-                try:
-                    response = await client.post(
-                        f"{self.host}/api/embeddings",
-                        json=payload,
-                    )
-                    response.raise_for_status()
-                    result = response.json()
-                    embeddings.append(result["embedding"])
-                except (httpx.RequestError, json.JSONDecodeError, KeyError) as e:
-                    logger.warning("Ollama embedding failed for text, using zero vector: %s", e)
-                    embeddings.append([0.0] * self.embedding_dim)
-
-        return embeddings
 
 
 def create_llm_client(provider: str, **kwargs) -> LLMClient:

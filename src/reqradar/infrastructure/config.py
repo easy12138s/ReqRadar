@@ -17,10 +17,6 @@ class LLMConfig(BaseModel):
     timeout: int = Field(default=60, description="Request timeout in seconds")
     max_retries: int = Field(default=2, description="Max retry attempts")
     host: Optional[str] = Field(default=None, description="Ollama host")
-    embedding_model: str = Field(
-        default="text-embedding-3-small", description="OpenAI embedding model name"
-    )
-    embedding_dim: int = Field(default=1024, description="Embedding vector dimension")
 
     @field_validator("api_key", mode="before")
     @classmethod
