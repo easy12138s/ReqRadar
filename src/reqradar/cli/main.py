@@ -196,12 +196,14 @@ from reqradar.cli.projects import project
 from reqradar.cli.analyses import analyze
 from reqradar.cli.reports import report
 from reqradar.cli.config import config
+from reqradar.cli.requirements import requirement_group
 
 cli.add_command(serve)
 cli.add_command(project)
 cli.add_command(analyze)
 cli.add_command(report)
 cli.add_command(config)
+cli.add_command(requirement_group)
 
 
 if __name__ == "__main__":

@@ -30,8 +30,9 @@ def analyze():
 @click.option(
     "--depth", type=click.Choice(["quick", "standard", "deep"]), default="standard", help="分析深度"
 )
+@click.option("-r", "--req-doc-id", type=int, help="预处理需求文档 ID")
 @click.pass_context
-def analyze_submit(ctx, project_id, text, req_file, name, depth):
+def analyze_submit(ctx, project_id, text, req_file, name, depth, req_doc_id):
     """提交分析任务"""
     config = ctx.obj["config"]
     engine, session_factory = get_db_session(config)
@@ -52,6 +53,26 @@ def analyze_submit(ctx, project_id, text, req_file, name, depth):
     if not name:
         name = f"Analysis-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
 
+    if req_doc_id:
+        from reqradar.web.models import RequirementDocument
+
+        async def _lookup_doc():
+            async with session_factory() as db:
+                return (
+                    await db.execute(
+                        select(RequirementDocument).where(RequirementDocument.id == req_doc_id)
+                    )
+                ).scalar_one_or_none()
+
+        doc = asyncio.run(_lookup_doc())
+        if doc:
+            text = doc.consolidated_text or text
+            if not name:
+                name = doc.title or name
+        else:
+            console.print(f"[red]错误: 预处理文档 {req_doc_id} 不存在[/red]")
+            return
+
     async def _submit():
         async with session_factory() as session:
             result = await session.execute(select(Project).where(Project.id == project_id))
@@ -68,6 +89,7 @@ def analyze_submit(ctx, project_id, text, req_file, name, depth):
                 requirement_text=text,
                 depth=depth,
                 status=TaskStatus.PENDING,
+                requirement_document_id=req_doc_id,
             )
             session.add(task)
             await session.commit()
