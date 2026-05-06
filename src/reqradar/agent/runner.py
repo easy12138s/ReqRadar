@@ -281,7 +281,11 @@ async def run_react_analysis(
     config=None,
     section_descriptions=None,
     project_memory=None,
+    requirement_text: str | None = None,
 ) -> dict:
+    if requirement_text:
+        agent.requirement_text = requirement_text
+
     tool_schemas = tool_registry.get_schemas(tool_registry.list_names())
     tracker = ToolCallTracker()
     conversation_history: list[dict] = []
