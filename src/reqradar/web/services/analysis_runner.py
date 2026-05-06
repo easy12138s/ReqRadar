@@ -222,6 +222,12 @@ class AnalysisRunner:
         if vector_store:
             tool_registry.register(SearchRequirementsTool(vector_store=vector_store))
 
+        git_vector_store = await project_store.get_commits_vector_store(project.id, index_path)
+        if git_vector_store:
+            from reqradar.agent.tools.search_git_history import SearchGitHistoryTool
+
+            tool_registry.register(SearchGitHistoryTool(vector_store=git_vector_store))
+
         try:
             git_analyzer = None
             if Path(repo_path, ".git").exists():

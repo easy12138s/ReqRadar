@@ -13,6 +13,7 @@ class ProjectStore:
     def __init__(self):
         self._code_graphs: dict[int, object] = {}
         self._vector_stores: dict[int, object] = {}
+        self._git_vector_stores: dict[int, object] = {}
         self._lock = asyncio.Lock()
 
     async def get_code_graph(self, project_id: int, index_path: str) -> Optional[object]:
@@ -65,7 +66,9 @@ class ProjectStore:
             from reqradar.modules.vector_store import ChromaVectorStore, CHROMA_AVAILABLE
 
             if not CHROMA_AVAILABLE:
-                logger.warning("chromadb not available, skipping vector store for project %d", project_id)
+                logger.warning(
+                    "chromadb not available, skipping vector store for project %d", project_id
+                )
                 return None
 
             vector_store = ChromaVectorStore(persist_directory=str(vectorstore_path))
@@ -85,7 +88,39 @@ class ProjectStore:
         async with self._lock:
             self._code_graphs.pop(project_id, None)
             self._vector_stores.pop(project_id, None)
+            self._git_vector_stores.pop(project_id, None)
         logger.info("Project store cache invalidated for project %d", project_id)
+
+    async def get_commits_vector_store(self, project_id: int, index_path: str) -> Optional[object]:
+        async with self._lock:
+            if project_id in self._git_vector_stores:
+                return self._git_vector_stores[project_id]
+
+        vectorstore_path = Path(index_path) / "vectorstore"
+        if not vectorstore_path.exists():
+            return None
+
+        try:
+            from reqradar.modules.vector_store import ChromaVectorStore, CHROMA_AVAILABLE
+
+            if not CHROMA_AVAILABLE:
+                return None
+
+            store = ChromaVectorStore(
+                persist_directory=str(vectorstore_path),
+                collection_name="commits",
+            )
+
+            async with self._lock:
+                self._git_vector_stores[project_id] = store
+                while len(self._git_vector_stores) > self.MAX_CACHED_PROJECTS:
+                    oldest_key = next(iter(self._git_vector_stores))
+                    del self._git_vector_stores[oldest_key]
+
+            return store
+        except Exception:
+            logger.exception("Failed to load commits vector store for project %d", project_id)
+            return None
 
 
 project_store = ProjectStore()

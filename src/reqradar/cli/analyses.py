@@ -465,6 +465,23 @@ def analyze_file(ctx, requirement_file, index_path, output, llm_backend, verbose
         if vector_store:
             tool_registry.register(SearchRequirementsTool(vector_store=vector_store))
 
+        git_vector_store = None
+        commits_path = vectorstore_path / "chroma.sqlite3" if vectorstore_path.exists() else None
+        # The commits collection uses same PersistentClient, check if it has data
+        if vectorstore_path.exists():
+            try:
+                from reqradar.modules.vector_store import ChromaVectorStore
+
+                git_vector_store = ChromaVectorStore(
+                    persist_directory=str(vectorstore_path),
+                    collection_name="commits",
+                )
+                from reqradar.agent.tools.search_git_history import SearchGitHistoryTool
+
+                tool_registry.register(SearchGitHistoryTool(vector_store=git_vector_store))
+            except Exception:
+                pass
+
         if git_analyzer:
             tool_registry.register(GetContributorsTool(git_analyzer=git_analyzer))
 
