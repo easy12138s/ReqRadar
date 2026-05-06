@@ -17,21 +17,23 @@ const { Title } = Typography;
 
 export function Login() {
   const [activeTab, setActiveTab] = useState('login');
-  const [loading, setLoading] = useState(false);
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [registerLoading, setRegisterLoading] = useState(false);
   const navigate = useNavigate();
   const { login: authLogin } = useAuth();
 
   const handleLogin = async (values: { email: string; password: string }) => {
-    setLoading(true);
+    setLoginLoading(true);
     try {
       const response = await login(values);
       authLogin(response.access_token);
       message.success('登录成功');
       navigate('/');
-    } catch {
-      message.error('登录失败，请检查邮箱和密码');
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { detail?: string; message?: string } }; message?: string };
+      message.error(err.response?.data?.detail || err.response?.data?.message || err.message || '登录失败');
     } finally {
-      setLoading(false);
+      setLoginLoading(false);
     }
   };
 
@@ -45,7 +47,7 @@ export function Login() {
       message.error('两次输入的密码不一致');
       return;
     }
-    setLoading(true);
+    setRegisterLoading(true);
     try {
       const response = await register({
         email: values.email,
@@ -55,10 +57,11 @@ export function Login() {
       authLogin(response.access_token);
       message.success('注册成功');
       navigate('/');
-    } catch {
-      message.error('注册失败，请稍后重试');
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { detail?: string; message?: string } }; message?: string };
+      message.error(err.response?.data?.detail || err.response?.data?.message || err.message || '注册失败');
     } finally {
-      setLoading(false);
+      setRegisterLoading(false);
     }
   };
 
@@ -95,7 +98,7 @@ export function Login() {
             <Input.Password placeholder="请输入密码" />
           </Form.Item>
           <Form.Item>
-            <Button type="primary" htmlType="submit" loading={loading} block>
+            <Button type="primary" htmlType="submit" loading={loginLoading} block>
               登录
             </Button>
           </Form.Item>
@@ -150,7 +153,7 @@ export function Login() {
             <Input.Password placeholder="请再次输入密码" />
           </Form.Item>
           <Form.Item>
-            <Button type="primary" htmlType="submit" loading={loading} block>
+            <Button type="primary" htmlType="submit" loading={registerLoading} block>
               注册
             </Button>
           </Form.Item>

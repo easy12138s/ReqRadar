@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import {
   Card,
   Tabs,
@@ -13,6 +13,7 @@ import {
   Form,
   Input,
   message,
+  Modal,
   Tree,
 } from 'antd';
 import {
@@ -21,6 +22,8 @@ import {
   CloseOutlined,
   FolderOutlined,
   FileOutlined,
+  DeleteOutlined,
+  ExperimentOutlined,
 } from '@ant-design/icons';
 import type {
   Project,
@@ -32,7 +35,7 @@ import type {
   HistoryEntry,
   FileTreeNode,
 } from '@/types/api';
-import { getProject, updateProject, getProjectMemory, getProjectFiles } from '@/api/projects';
+import { getProject, updateProject, getProjectMemory, getProjectFiles, deleteProject } from '@/api/projects';
 
 const { Title, Paragraph } = Typography;
 
@@ -53,6 +56,7 @@ function buildAntTree(nodes: FileTreeNode[]): import('antd').TreeDataNode[] {
 
 export function ProjectDetail() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const [project, setProject] = useState<Project | null>(null);
   const [memory, setMemory] = useState<ProjectMemory | null>(null);
   const [fileTree, setFileTree] = useState<FileTreeNode[]>([]);
@@ -98,6 +102,26 @@ export function ProjectDetail() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleDelete = () => {
+    if (!id) return;
+    Modal.confirm({
+      title: '确认删除',
+      content: `确定要删除项目「${project?.name}」吗？此操作不可撤销。`,
+      okText: '删除',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: async () => {
+        try {
+          await deleteProject(id);
+          message.success('项目已删除');
+          navigate('/projects');
+        } catch {
+          message.error('删除失败');
+        }
+      },
+    });
   };
 
   if (loading) {
@@ -153,6 +177,22 @@ export function ProjectDetail() {
       <div style={{ marginBottom: 16 }}>
         <Button icon={<EditOutlined />} onClick={() => setEditing(true)}>
           编辑
+        </Button>
+        <Button
+          icon={<DeleteOutlined />}
+          danger
+          onClick={handleDelete}
+          style={{ marginLeft: 8 }}
+        >
+          删除
+        </Button>
+        <Button
+          type="primary"
+          icon={<ExperimentOutlined />}
+          onClick={() => navigate(`/analyses/submit?projectId=${id}`)}
+          style={{ marginLeft: 8 }}
+        >
+          提交分析
         </Button>
       </div>
       <Descriptions bordered column={1}>

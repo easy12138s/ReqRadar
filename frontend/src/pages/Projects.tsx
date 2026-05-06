@@ -24,10 +24,11 @@ import {
   UploadOutlined,
   GithubOutlined,
   FolderOpenOutlined,
+  DeleteOutlined,
 } from '@ant-design/icons';
 import { useNavigate, Link } from 'react-router-dom';
 import type { Project, ProjectCreateFromLocal, ProjectCreateFromGit } from '@/types/api';
-import { getProjects, createFromZip, createFromGit, createFromLocal } from '@/api/projects';
+import { getProjects, createFromZip, createFromGit, createFromLocal, deleteProject } from '@/api/projects';
 import { apiClient } from '@/api/client';
 
 const { Title, Text, Paragraph } = Typography;
@@ -49,6 +50,7 @@ export function Projects() {
   const [localForm] = Form.useForm();
   const [submitting, setSubmitting] = useState(false);
   const [zipFile, setZipFile] = useState<File | null>(null);
+  const [searchText, setSearchText] = useState('');
   const navigate = useNavigate();
 
   const fetchProjects = async () => {
@@ -126,6 +128,30 @@ export function Projects() {
     }
   };
 
+  const handleDeleteProject = (projectId: string, projectName: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    Modal.confirm({
+      title: '确认删除',
+      content: `确定要删除项目「${projectName}」吗？此操作不可撤销。`,
+      okText: '删除',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: async () => {
+        try {
+          await deleteProject(projectId);
+          message.success('项目已删除');
+          fetchProjects();
+        } catch {
+          message.error('删除失败');
+        }
+      },
+    });
+  };
+
+  const filtered = projects.filter((p) =>
+    p.name.toLowerCase().includes(searchText.toLowerCase())
+  );
+
   if (loading) {
     return (
       <div style={{ textAlign: 'center', padding: 48 }}>
@@ -160,7 +186,14 @@ export function Projects() {
         </Space>
       </div>
 
-      {projects.length === 0 ? (
+      <Input.Search
+        placeholder="搜索项目..."
+        allowClear
+        style={{ marginBottom: 16, maxWidth: 400 }}
+        onChange={(e) => setSearchText(e.target.value)}
+      />
+
+      {filtered.length === 0 ? (
         <Empty
           description="暂无项目"
           image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -179,7 +212,7 @@ export function Projects() {
         </Empty>
       ) : (
         <Row gutter={[16, 16]}>
-          {projects.map((project) => (
+          {filtered.map((project) => (
             <Col xs={24} sm={12} lg={8} key={project.id}>
               <Card
                 hoverable
@@ -208,6 +241,7 @@ export function Projects() {
                       <Button icon={<BookOutlined />} size="small">同义词</Button>
                     </Link>
                     <Button icon={<SyncOutlined />} size="small" onClick={(e) => { e.stopPropagation(); handleRegenerateProfile(project.id); }}>更新画像</Button>
+                    <Button icon={<DeleteOutlined />} size="small" danger onClick={(e) => handleDeleteProject(project.id, project.name, e)}>删除</Button>
                   </Space>
                 </div>
               </Card>
