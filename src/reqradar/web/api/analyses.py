@@ -5,14 +5,25 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, WebSocket, WebSocketDisconnect, Query, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    UploadFile,
+    File,
+    Form,
+    WebSocket,
+    WebSocketDisconnect,
+    Query,
+    status,
+)
 from jose import JWTError, jwt
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from reqradar.web.dependencies import CurrentUser, DbSession, get_current_user, get_db
-from reqradar.web.models import AnalysisTask, Project, UploadedFile, User
+from reqradar.web.models import AnalysisTask, Project, RequirementDocument, UploadedFile, User
 from reqradar.web.api.auth import SECRET_KEY, ALGORITHM
 from reqradar.web.enums import TaskStatus
 from reqradar.web.websocket import manager as ws_manager
@@ -23,9 +34,21 @@ logger = logging.getLogger("reqradar.web.api.analyses")
 router = APIRouter(prefix="/api/analyses", tags=["analyses"])
 
 ALLOWED_UPLOAD_EXTENSIONS = {
-    ".txt", ".md", ".pdf", ".docx", ".xlsx", ".csv",
-    ".json", ".yaml", ".yml", ".html",
-    ".png", ".jpg", ".jpeg", ".gif", ".bmp",
+    ".txt",
+    ".md",
+    ".pdf",
+    ".docx",
+    ".xlsx",
+    ".csv",
+    ".json",
+    ".yaml",
+    ".yml",
+    ".html",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".bmp",
 }
 
 
@@ -38,9 +61,14 @@ class AnalysisSubmit(BaseModel):
     depth: str = "standard"
     template_id: Optional[int] = None
     focus_areas: Optional[list[str]] = None
+    requirement_document_id: Optional[int] = None
 
     def get_name(self) -> str:
-        return self.requirement_name or self.title or f"Analysis-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+        return (
+            self.requirement_name
+            or self.title
+            or f"Analysis-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+        )
 
     def get_text(self) -> str:
         return self.requirement_text or self.text or ""
@@ -72,11 +100,24 @@ async def submit_analysis(req: AnalysisSubmit, current_user: CurrentUser, db: Db
     if project is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
+    requirement_text = req.get_text()
+
+    if req.requirement_document_id:
+        doc = (
+            await db.execute(
+                select(RequirementDocument).where(
+                    RequirementDocument.id == req.requirement_document_id
+                )
+            )
+        ).scalar_one_or_none()
+        if doc:
+            requirement_text = doc.consolidated_text or requirement_text
+
     task = AnalysisTask(
         project_id=req.project_id,
         user_id=current_user.id,
         requirement_name=req.get_name(),
-        requirement_text=req.get_text(),
+        requirement_text=requirement_text,
         depth=req.depth,
         status=TaskStatus.PENDING,
     )
@@ -122,6 +163,7 @@ async def submit_analysis_upload(
         )
 
     from reqradar.web.services.project_file_service import ProjectFileService
+
     file_svc = ProjectFileService(config.web)
     upload_dir = str(file_svc.get_requirements_path(project.name))
     os.makedirs(upload_dir, exist_ok=True)
@@ -140,12 +182,14 @@ async def submit_analysis_upload(
     db.add(task)
     await db.flush()
 
-    db.add(UploadedFile(
-        task_id=task.id,
-        filename=file.filename or "upload",
-        file_path=file_path,
-        file_size=len(content),
-    ))
+    db.add(
+        UploadedFile(
+            task_id=task.id,
+            filename=file.filename or "upload",
+            file_path=file_path,
+            file_size=len(content),
+        )
+    )
 
     await db.commit()
     await db.refresh(task)
@@ -175,7 +219,9 @@ async def list_analyses(
 @router.get("/{task_id}", response_model=AnalysisDetailResponse)
 async def get_analysis(task_id: int, current_user: CurrentUser, db: DbSession):
     result = await db.execute(
-        select(AnalysisTask).where(AnalysisTask.id == task_id, AnalysisTask.user_id == current_user.id)
+        select(AnalysisTask).where(
+            AnalysisTask.id == task_id, AnalysisTask.user_id == current_user.id
+        )
     )
     task = result.scalar_one_or_none()
     if task is None:
@@ -187,7 +233,10 @@ async def get_analysis(task_id: int, current_user: CurrentUser, db: DbSession):
                 ctx = task.context_json
                 step_results = ctx.get("step_results", {})
                 step_summary = {
-                    name: {"success": r.get("success", False), "confidence": r.get("confidence", 0.0)}
+                    name: {
+                        "success": r.get("success", False),
+                        "confidence": r.get("confidence", 0.0),
+                    }
                     for name, r in step_results.items()
                 }
             except AttributeError:
@@ -201,7 +250,9 @@ async def get_analysis(task_id: int, current_user: CurrentUser, db: DbSession):
 @router.post("/{task_id}/retry", response_model=AnalysisResponse)
 async def retry_analysis(task_id: int, current_user: CurrentUser, db: DbSession):
     result = await db.execute(
-        select(AnalysisTask).where(AnalysisTask.id == task_id, AnalysisTask.user_id == current_user.id)
+        select(AnalysisTask).where(
+            AnalysisTask.id == task_id, AnalysisTask.user_id == current_user.id
+        )
     )
     task = result.scalar_one_or_none()
     if task is None:
@@ -234,13 +285,18 @@ async def retry_analysis(task_id: int, current_user: CurrentUser, db: DbSession)
 
 @router.post("/{task_id}/cancel")
 async def cancel_analysis(task_id: int, current_user: CurrentUser, db: DbSession):
-    result = await db.execute(select(AnalysisTask).where(AnalysisTask.id == task_id, AnalysisTask.user_id == current_user.id))
+    result = await db.execute(
+        select(AnalysisTask).where(
+            AnalysisTask.id == task_id, AnalysisTask.user_id == current_user.id
+        )
+    )
     task = result.scalar_one_or_none()
     if task is None:
         raise HTTPException(status_code=404, detail="Analysis task not found")
     if task.status not in (TaskStatus.PENDING, TaskStatus.RUNNING):
         raise HTTPException(status_code=400, detail=f"Cannot cancel task in status: {task.status}")
     from reqradar.web.services.analysis_runner import runner
+
     runner.cancel(task_id)
     task.status = TaskStatus.CANCELLED
     task.completed_at = datetime.now(timezone.utc)
@@ -288,4 +344,5 @@ async def analysis_websocket(websocket: WebSocket, task_id: int, token: str = Qu
 
 async def _run_analysis_background(task_id: int, project: Project, config):
     from reqradar.web.services.analysis_runner import runner
+
     runner.submit(task_id, project, config)

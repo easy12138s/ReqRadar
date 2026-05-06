@@ -25,6 +25,7 @@ from reqradar.web.api.profile import router as profile_router
 from reqradar.web.api.chatback import router as chatback_router
 from reqradar.web.api.versions import router as versions_router
 from reqradar.web.api.evidence_api import router as evidence_router
+from reqradar.web.api.requirements import router as requirements_router
 from reqradar.web.database import Base, create_engine, create_session_factory
 from reqradar.web.dependencies import async_session_factory, CurrentUser, DbSession
 from reqradar.web.exceptions import reqradar_exception_handler
@@ -87,6 +88,7 @@ async def lifespan(app: FastAPI):
     app.state.config = config
 
     from reqradar.web.services.analysis_runner import runner
+
     runner._semaphore = asyncio.Semaphore(web_config.max_concurrent_analyses)
     runner.session_factory = session_factory
 
@@ -110,6 +112,7 @@ def create_app(config_path: Optional[Path] = None):
     cors_origins = config.web.cors_origins if hasattr(config.web, "cors_origins") else None
     if cors_origins and isinstance(cors_origins, str):
         import json
+
         try:
             cors_origins = json.loads(cors_origins)
         except json.JSONDecodeError:
@@ -151,6 +154,7 @@ def create_app(config_path: Optional[Path] = None):
     app.include_router(chatback_router)
     app.include_router(versions_router)
     app.include_router(evidence_router)
+    app.include_router(requirements_router)
 
     static_path = Path(__file__).parent / "static"
     if static_path.exists():
@@ -183,7 +187,9 @@ def create_app(config_path: Optional[Path] = None):
         task_counts = {}
         for status in ("pending", "running", "completed", "failed"):
             task_counts[status] = (
-                await db.execute(select(func.count(AnalysisTask.id)).where(AnalysisTask.status == status))
+                await db.execute(
+                    select(func.count(AnalysisTask.id)).where(AnalysisTask.status == status)
+                )
             ).scalar_one()
         return {"project_count": project_count, "task_counts": task_counts}
 
