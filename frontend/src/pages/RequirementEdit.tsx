@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Card, Button, Input, Typography, Spin, message, Modal, Select, Space } from 'antd';
-import { ArrowLeftOutlined, SaveOutlined, CheckCircleOutlined, ReloadOutlined, EditOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined, SaveOutlined, CheckCircleOutlined, EditOutlined } from '@ant-design/icons';
 import { getRequirement, updateRequirement } from '../api/requirements';
 import { createAnalysis } from '../api/analyses';
 
