@@ -17,7 +17,10 @@ EXTRACT_SCHEMA = {
                     "properties": {
                         "term": {"type": "string", "description": "术语/关键词"},
                         "definition": {"type": "string", "description": "术语的定义或含义"},
-                        "domain": {"type": "string", "description": "所属领域（认证/前端/数据库/部署/...）"},
+                        "domain": {
+                            "type": "string",
+                            "description": "所属领域（认证/前端/数据库/部署/...）",
+                        },
                     },
                     "required": ["term", "definition"],
                 },
@@ -118,7 +121,10 @@ ANALYZE_SCHEMA = {
                     "type": "object",
                     "properties": {
                         "description": {"type": "string", "description": "风险描述"},
-                        "severity": {"type": "string", "description": "严重程度（low/medium/high）"},
+                        "severity": {
+                            "type": "string",
+                            "description": "严重程度（low/medium/high）",
+                        },
                         "scope": {"type": "string", "description": "影响范围"},
                         "mitigation": {"type": "string", "description": "缓解建议"},
                     },
@@ -193,10 +199,19 @@ ANALYZE_SCHEMA = {
                     "properties": {
                         "kind": {
                             "type": "string",
-                            "enum": ["code_match", "module_summary", "project_context", "requirement_text", "inference"],
+                            "enum": [
+                                "code_match",
+                                "module_summary",
+                                "project_context",
+                                "requirement_text",
+                                "inference",
+                            ],
                             "description": "证据类型",
                         },
-                        "source": {"type": "string", "description": "证据来源，如文件路径、模块名或上下文来源"},
+                        "source": {
+                            "type": "string",
+                            "description": "证据来源，如文件路径、模块名或上下文来源",
+                        },
                         "summary": {"type": "string", "description": "证据说明"},
                         "confidence": {
                             "type": "string",
@@ -222,7 +237,10 @@ ANALYZE_SCHEMA = {
                             "enum": ["low", "medium", "high"],
                             "description": "域判断置信度",
                         },
-                        "basis": {"type": "string", "description": "判断依据，可引用代码或上下文推断"},
+                        "basis": {
+                            "type": "string",
+                            "description": "判断依据，可引用代码或上下文推断",
+                        },
                         "inferred": {
                             "type": "boolean",
                             "description": "若没有直接代码匹配、而是根据上下文推断则为 true",
@@ -241,7 +259,10 @@ ANALYZE_SCHEMA = {
                 "type": "object",
                 "properties": {
                     "approach": {"type": "string", "description": "建议的实施方向"},
-                    "effort_estimate": {"type": "string", "description": "工作量评估（small/medium/large）"},
+                    "effort_estimate": {
+                        "type": "string",
+                        "description": "工作量评估（small/medium/large）",
+                    },
                     "dependencies": {
                         "type": "array",
                         "items": {"type": "string"},
@@ -486,5 +507,145 @@ GENERATE_BATCH_MODULE_SUMMARIES_SCHEMA = {
             },
         },
         "required": ["summaries"],
+    },
+}
+
+STEP_OUTPUT_SCHEMA = {
+    "name": "step_assessment",
+    "description": "每步分析评估：维度状态、新发现、后续行动、是否终止",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "reasoning": {
+                "type": "string",
+                "description": "本轮CoT推理摘要：当前阶段判断、缺口分析、行动理由（100字以内）",
+            },
+            "dimension_status": {
+                "type": "object",
+                "description": "各维度当前评估",
+                "properties": {
+                    "understanding": {
+                        "type": "string",
+                        "enum": ["insufficient", "in_progress", "sufficient"],
+                    },
+                    "impact": {
+                        "type": "string",
+                        "enum": ["insufficient", "in_progress", "sufficient"],
+                    },
+                    "risk": {
+                        "type": "string",
+                        "enum": ["insufficient", "in_progress", "sufficient"],
+                    },
+                    "change": {
+                        "type": "string",
+                        "enum": ["insufficient", "in_progress", "sufficient"],
+                    },
+                    "decision": {
+                        "type": "string",
+                        "enum": ["insufficient", "in_progress", "sufficient"],
+                    },
+                    "evidence": {
+                        "type": "string",
+                        "enum": ["insufficient", "in_progress", "sufficient"],
+                    },
+                    "verification": {
+                        "type": "string",
+                        "enum": ["insufficient", "in_progress", "sufficient"],
+                    },
+                },
+                "required": [
+                    "understanding",
+                    "impact",
+                    "risk",
+                    "change",
+                    "decision",
+                    "evidence",
+                    "verification",
+                ],
+            },
+            "key_findings": {
+                "type": "array",
+                "description": "本轮新发现（0-5条）",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "dimension": {"type": "string", "description": "所属维度"},
+                        "finding": {"type": "string", "description": "具体发现，引用证据来源"},
+                        "confidence": {"type": "string", "enum": ["low", "medium", "high"]},
+                    },
+                    "required": ["dimension", "finding", "confidence"],
+                },
+            },
+            "next_actions": {
+                "type": "array",
+                "description": "建议的后续行动（0-3条）",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "priority": {"type": "integer", "description": "1=最高"},
+                        "action": {"type": "string", "description": "建议的下一步"},
+                        "reason": {"type": "string"},
+                        "suggested_tools": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "推荐工具",
+                        },
+                    },
+                    "required": ["priority", "action", "reason"],
+                },
+            },
+            "final_step": {
+                "type": "boolean",
+                "description": "所有维度已达sufficient，无需继续分析",
+            },
+        },
+        "required": ["reasoning", "dimension_status"],
+    },
+}
+
+MEMORY_EVOLUTION_SCHEMA = {
+    "name": "evolve_memory",
+    "description": "记忆进化：比对分析发现与已有记忆，产出更新操作",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "comparisons": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "category": {
+                            "type": "string",
+                            "enum": ["term", "module", "constraint", "tech_stack", "overview"],
+                        },
+                        "candidate_key": {"type": "string"},
+                        "existing_match": {"type": "string"},
+                        "action": {"type": "string", "enum": ["add", "update", "skip", "merge"]},
+                        "reason": {"type": "string"},
+                    },
+                    "required": ["category", "candidate_key", "action"],
+                },
+            },
+            "operations": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "target": {
+                            "type": "string",
+                            "enum": ["terms", "modules", "constraints", "tech_stack", "overview"],
+                        },
+                        "action": {"type": "string", "enum": ["add", "update", "skip"]},
+                        "data": {"type": "object"},
+                    },
+                    "required": ["target", "action", "data"],
+                },
+            },
+            "changelog_entry": {
+                "type": "string",
+                "description": "本次记忆变更摘要（50字以内）",
+            },
+        },
+        "required": ["operations", "changelog_entry"],
     },
 }
