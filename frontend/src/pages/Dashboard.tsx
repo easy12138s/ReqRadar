@@ -36,7 +36,7 @@ export default function Dashboard() {
 
         for (const p of projectsData) {
           try {
-            const [memory, profile, pending] = await Promise.allSettled([
+            const [memory, , pending] = await Promise.allSettled([
               getProjectMemory(p.id),
               getProjectProfile(p.id),
               getPendingChanges(p.id),

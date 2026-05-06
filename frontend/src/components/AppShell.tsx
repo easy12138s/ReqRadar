@@ -1,5 +1,5 @@
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Layout, Button, Dropdown, Avatar, Spin, theme } from 'antd';
+import { Layout, Button, Dropdown, Avatar, theme } from 'antd';
 import { useAuth } from '../context/AuthContext';
 import {
   DashboardOutlined,

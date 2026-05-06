@@ -7,7 +7,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 import PageLoader from './components/PageLoader';
 
 const Login = lazy(() => import('./pages/Login').then(m => ({ default: m.Login })));
-const Dashboard = lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
+const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Projects = lazy(() => import('./pages/Projects').then(m => ({ default: m.Projects })));
 const ProjectDetail = lazy(() => import('./pages/ProjectDetail').then(m => ({ default: m.ProjectDetail })));
 const ProjectProfile = lazy(() => import('./pages/ProjectProfile').then(m => ({ default: m.ProjectProfile })));
