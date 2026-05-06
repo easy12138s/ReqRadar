@@ -9,6 +9,12 @@ class TaskStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
+class PreprocessStatus(str, Enum):
+    PROCESSING = "processing"
+    READY = "ready"
+    FAILED = "failed"
+
+
 class ChangeStatus(str, Enum):
     PENDING = "pending"
     ACCEPTED = "accepted"

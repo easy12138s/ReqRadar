@@ -25,20 +25,26 @@ class User(Base):
 
     projects: Mapped[list["Project"]] = relationship(back_populates="owner")
     analysis_tasks: Mapped[list["AnalysisTask"]] = relationship(back_populates="user")
-    configs: Mapped[list["UserConfig"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    configs: Mapped[list["UserConfig"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
 
 
 class UserConfig(Base):
     __tablename__ = "user_configs"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id"), nullable=False, index=True
+    )
     config_key: Mapped[str] = mapped_column(String(255), nullable=False)
     config_value: Mapped[str] = mapped_column(Text, nullable=False)
     value_type: Mapped[str] = mapped_column(String(50), default="string", nullable=False)
     is_sensitive: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utc_now, onupdate=utc_now, nullable=False
+    )
 
     user: Mapped["User"] = relationship(back_populates="configs")
 
@@ -55,7 +61,9 @@ class SystemConfig(Base):
     description: Mapped[str] = mapped_column(Text, default="", nullable=False)
     is_sensitive: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utc_now, onupdate=utc_now, nullable=False
+    )
 
 
 class Project(Base):
@@ -71,7 +79,10 @@ class Project(Base):
         DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
     )
     default_template_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("report_templates.id"), nullable=True
@@ -79,7 +90,9 @@ class Project(Base):
 
     owner: Mapped["User"] = relationship(back_populates="projects")
     analysis_tasks: Mapped[list["AnalysisTask"]] = relationship(back_populates="project")
-    configs: Mapped[list["ProjectConfig"]] = relationship(back_populates="project", cascade="all, delete-orphan")
+    configs: Mapped[list["ProjectConfig"]] = relationship(
+        back_populates="project", cascade="all, delete-orphan"
+    )
     default_template: Mapped["ReportTemplate | None"] = relationship()
 
     __table_args__ = (UniqueConstraint("name", "owner_id", name="uq_project_name_owner"),)
@@ -89,17 +102,45 @@ class ProjectConfig(Base):
     __tablename__ = "project_configs"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    project_id: Mapped[int] = mapped_column(Integer, ForeignKey("projects.id"), nullable=False, index=True)
+    project_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("projects.id"), nullable=False, index=True
+    )
     config_key: Mapped[str] = mapped_column(String(255), nullable=False)
     config_value: Mapped[str] = mapped_column(Text, nullable=False)
     value_type: Mapped[str] = mapped_column(String(50), default="string", nullable=False)
     is_sensitive: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utc_now, onupdate=utc_now, nullable=False
+    )
 
     project: Mapped["Project"] = relationship(back_populates="configs")
 
     __table_args__ = (UniqueConstraint("project_id", "config_key", name="uq_project_config_key"),)
+
+
+class RequirementDocument(Base):
+    __tablename__ = "requirement_documents"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[int] = mapped_column(Integer, ForeignKey("projects.id"), nullable=False)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
+    title: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    consolidated_text: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    source_files: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="ready")
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    project: Mapped["Project"] = relationship(backref="requirement_documents")
+    user: Mapped["User"] = relationship(backref="requirement_documents")
 
 
 class AnalysisTask(Base):
@@ -110,6 +151,12 @@ class AnalysisTask(Base):
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
     requirement_name: Mapped[str] = mapped_column(String(255), nullable=False)
     requirement_text: Mapped[str] = mapped_column(Text, nullable=False)
+    requirement_document_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("requirement_documents.id"), nullable=True
+    )
+    requirement_document: Mapped["RequirementDocument | None"] = relationship(
+        backref="analysis_tasks"
+    )
     status: Mapped[str] = mapped_column(String(50), default=TaskStatus.PENDING, nullable=False)
     context_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -125,15 +172,21 @@ class AnalysisTask(Base):
     user: Mapped["User"] = relationship(back_populates="analysis_tasks")
     report: Mapped["Report | None"] = relationship(back_populates="task", uselist=False)
     uploaded_files: Mapped[list["UploadedFile"]] = relationship(back_populates="task")
-    versions: Mapped[list["ReportVersion"]] = relationship(back_populates="task", cascade="all, delete-orphan")
-    chats: Mapped[list["ReportChat"]] = relationship(back_populates="task", cascade="all, delete-orphan")
+    versions: Mapped[list["ReportVersion"]] = relationship(
+        back_populates="task", cascade="all, delete-orphan"
+    )
+    chats: Mapped[list["ReportChat"]] = relationship(
+        back_populates="task", cascade="all, delete-orphan"
+    )
 
 
 class Report(Base):
     __tablename__ = "reports"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    task_id: Mapped[int] = mapped_column(Integer, ForeignKey("analysis_tasks.id"), unique=True, nullable=False)
+    task_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("analysis_tasks.id"), unique=True, nullable=False
+    )
     content_markdown: Mapped[str] = mapped_column(Text, nullable=False)
     content_html: Mapped[str] = mapped_column(Text, default="", nullable=False)
     created_at: Mapped[datetime] = mapped_column(
@@ -162,7 +215,9 @@ class PendingChange(Base):
     __tablename__ = "pending_changes"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    project_id: Mapped[int] = mapped_column(Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    project_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     change_type: Mapped[str] = mapped_column(String(50), nullable=False)
     target_id: Mapped[str] = mapped_column(String(200), nullable=False)
     old_value: Mapped[str] = mapped_column(Text, default="", nullable=False)
@@ -179,16 +234,22 @@ class SynonymMapping(Base):
     __tablename__ = "synonym_mappings"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    project_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("projects.id"), nullable=True, index=True)
+    project_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("projects.id"), nullable=True, index=True
+    )
     business_term: Mapped[str] = mapped_column(String(200), nullable=False)
     code_terms: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
     priority: Mapped[int] = mapped_column(Integer, default=100, nullable=False)
     source: Mapped[str] = mapped_column(String(50), default="user", nullable=False)
     created_by: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utc_now, onupdate=utc_now, nullable=False
+    )
 
-    __table_args__ = (UniqueConstraint("project_id", "business_term", name="uq_synonym_project_term"),)
+    __table_args__ = (
+        UniqueConstraint("project_id", "business_term", name="uq_synonym_project_term"),
+    )
 
 
 class ReportTemplate(Base):
@@ -202,14 +263,18 @@ class ReportTemplate(Base):
     is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_by: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
-    updated_at: Mapped[datetime | None] = mapped_column(DateTime, default=utc_now, onupdate=utc_now, nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime, default=utc_now, onupdate=utc_now, nullable=True
+    )
 
 
 class ReportVersion(Base):
     __tablename__ = "report_versions"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    task_id: Mapped[int] = mapped_column(Integer, ForeignKey("analysis_tasks.id"), nullable=False, index=True)
+    task_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("analysis_tasks.id"), nullable=False, index=True
+    )
     version_number: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     report_data: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     context_snapshot: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
@@ -228,7 +293,9 @@ class ReportChat(Base):
     __tablename__ = "report_chats"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    task_id: Mapped[int] = mapped_column(Integer, ForeignKey("analysis_tasks.id"), nullable=False, index=True)
+    task_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("analysis_tasks.id"), nullable=False, index=True
+    )
     version_number: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     role: Mapped[str] = mapped_column(String(20), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
@@ -243,7 +310,9 @@ class LLMCallLog(Base):
     __tablename__ = "llm_call_logs"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    task_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("analysis_tasks.id"), nullable=True, index=True)
+    task_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("analysis_tasks.id"), nullable=True, index=True
+    )
     caller: Mapped[str] = mapped_column(String(100), nullable=False)
     model: Mapped[str] = mapped_column(String(100), nullable=False)
     method: Mapped[str] = mapped_column(String(50), nullable=False)
