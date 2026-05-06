@@ -1,19 +1,24 @@
 """共享 ReAct 分析执行逻辑 - CLI 和 Web 共用"""
 
 import asyncio
+import json
 import logging
 
 from reqradar.agent.analysis_agent import AnalysisAgent, AgentState
-from reqradar.agent.llm_utils import _call_llm_structured
+from reqradar.agent.llm_utils import (
+    _call_llm_structured,
+    _complete_with_tools,
+    _parse_json_response,
+)
 from reqradar.agent.prompts.analysis_phase import (
-    build_analysis_system_prompt,
-    build_analysis_user_prompt,
+    build_dynamic_system_prompt,
+    build_step_user_prompt,
     build_termination_prompt,
 )
 from reqradar.agent.prompts.report_phase import build_report_generation_prompt
-from reqradar.agent.schemas import ANALYZE_SCHEMA
+from reqradar.agent.schemas import STEP_OUTPUT_SCHEMA
+from reqradar.agent.tool_call_tracker import ToolCallTracker
 from reqradar.agent.tools import ToolRegistry
-from reqradar.agent.tool_use_loop import run_tool_use_loop
 
 logger = logging.getLogger("reqradar.agent.runner")
 
@@ -47,6 +52,48 @@ REPORT_DATA_SCHEMA = {
     },
     "required": ["requirement_title", "risk_level"],
 }
+
+_RESULT_TRUNCATE_LENGTH = 4000
+
+
+def _truncate_result(text: str, max_len: int = _RESULT_TRUNCATE_LENGTH) -> str:
+    if len(text) <= max_len:
+        return text
+    return text[:max_len] + "\n...(截断)"
+
+
+def _build_messages_chain(
+    system_prompt: str,
+    user_prompt: str,
+    history: list[dict],
+    max_history_messages: int = 6,
+) -> list[dict]:
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
+    if history:
+        recent = history[-max_history_messages:]
+        messages = messages[:1] + recent + messages[1:]
+    return messages
+
+
+def update_agent_from_step_result(agent: AnalysisAgent, step_data: dict) -> None:
+    for dim, new_status in step_data.get("dimension_status", {}).items():
+        if new_status == "sufficient":
+            agent.dimension_tracker.mark_sufficient(dim)
+
+    for finding in step_data.get("key_findings", []):
+        agent.record_evidence(
+            type="analysis",
+            source=f"step:{agent.step_count}",
+            content=finding.get("finding", ""),
+            confidence=finding.get("confidence", "medium"),
+            dimensions=[finding.get("dimension", "")],
+        )
+
+    agent._pending_actions = step_data.get("next_actions", [])
+    agent._llm_declared_terminal = step_data.get("final_step", False)
 
 
 def update_agent_from_tool_result(agent: AnalysisAgent, data: dict) -> None:
@@ -135,9 +182,19 @@ def build_fallback_report_data(agent: AnalysisAgent) -> dict:
         "impact_modules": [],
         "change_assessment": [],
         "risks": [],
-        "decision_summary": {"summary": "", "decisions": [], "open_questions": [], "follow_ups": []},
+        "decision_summary": {
+            "summary": "",
+            "decisions": [],
+            "open_questions": [],
+            "follow_ups": [],
+        },
         "evidence_items": [
-            {"kind": ev.type, "source": ev.source, "summary": ev.content, "confidence": ev.confidence}
+            {
+                "kind": ev.type,
+                "source": ev.source,
+                "summary": ev.content,
+                "confidence": ev.confidence,
+            }
             for ev in agent.evidence_collector.evidences
         ],
         "verification_points": [],
@@ -153,17 +210,68 @@ def build_fallback_report_data(agent: AnalysisAgent) -> dict:
     }
 
 
-def build_report_data_from_agent(agent: AnalysisAgent, llm_result: dict) -> dict:
-    report_data = llm_result.copy() if llm_result else {}
-    report_data.setdefault("requirement_title", agent.requirement_text[:100])
-    report_data.setdefault("risk_level", "unknown")
-    report_data.setdefault("warnings", [])
-    evidence_items = [
-        {"kind": ev.type, "source": ev.source, "summary": ev.content, "confidence": ev.confidence}
-        for ev in agent.evidence_collector.evidences
-    ]
-    report_data.setdefault("evidence_items", evidence_items)
-    return report_data
+async def _execute_tool_calls(
+    tool_calls: list[dict],
+    tool_registry: ToolRegistry,
+    tracker: ToolCallTracker,
+) -> list[dict]:
+    tool_results = []
+    for tc in tool_calls:
+        tc_name = tc.get("name", "")
+        tc_id = tc.get("id", "")
+        tc_args_str = tc.get("arguments", "{}")
+
+        try:
+            tc_args = json.loads(tc_args_str) if isinstance(tc_args_str, str) else tc_args_str
+        except json.JSONDecodeError:
+            tc_args = {}
+
+        if tc_name not in tool_registry._tools:
+            tool_results.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": tc_id,
+                    "content": f"Error: Unknown tool '{tc_name}'",
+                }
+            )
+            continue
+
+        if tracker.is_duplicate(tc_name, tc_args):
+            tool_results.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": tc_id,
+                    "content": "(此调用已去重，跳过重复请求)",
+                }
+            )
+            continue
+
+        tracker.track_call(tc_name, tc_args)
+
+        try:
+            result = await tool_registry.execute_with_permissions(tc_name, **tc_args)
+            result_text = result.data if result.success else f"Error: {result.error}"
+        except Exception as e:
+            result_text = f"Error executing {tc_name}: {e}"
+
+        result_text = _truncate_result(result_text)
+        tool_results.append(
+            {
+                "role": "tool",
+                "tool_call_id": tc_id,
+                "content": result_text,
+            }
+        )
+
+        logger.info(
+            "Tool #%d: %s(%s) -> %d chars",
+            tracker.call_count,
+            tc_name,
+            json.dumps(tc_args, ensure_ascii=False)[:60],
+            len(result_text),
+        )
+
+    return tool_results
 
 
 async def run_react_analysis(
@@ -172,47 +280,132 @@ async def run_react_analysis(
     tool_registry: ToolRegistry,
     config=None,
     section_descriptions=None,
+    project_memory=None,
 ) -> dict:
-    system_prompt = build_analysis_system_prompt(
-        project_memory=agent.project_memory_text,
-        user_memory=agent.user_memory_text,
-        historical_context=agent.historical_context,
-        dimension_status=agent.dimension_tracker.status_summary(),
-        template_sections=section_descriptions,
-    )
+    tool_schemas = tool_registry.get_schemas(tool_registry.list_names())
+    tracker = ToolCallTracker()
+    conversation_history: list[dict] = []
 
-    tool_names = tool_registry.list_names()
+    agent.state = AgentState.ANALYZING
 
-    max_total_tokens = 8000
-    if config and hasattr(config, "analysis") and hasattr(config.analysis, "tool_use_max_tokens"):
-        max_total_tokens = config.analysis.tool_use_max_tokens
-
-    while not agent.should_terminate():
-        user_prompt = build_analysis_user_prompt(
-            requirement_text=agent.requirement_text,
-            agent_context=agent.get_context_text() + "\n\n" + agent.get_weak_dimensions_text(),
-        )
-
-        tool_result_data = await run_tool_use_loop(
-            llm_client,
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            tools=tool_names,
-            tool_registry=tool_registry,
-            output_schema=ANALYZE_SCHEMA,
-            max_rounds=5,
-            max_total_tokens=max_total_tokens,
-        )
-
-        if tool_result_data:
-            update_agent_from_tool_result(agent, tool_result_data)
-
+    while True:
         agent.step_count += 1
+
+        ds = agent.dimension_tracker.status_summary()
+        system_prompt = build_dynamic_system_prompt(
+            dimension_status=ds,
+            project_memory=agent.project_memory_text,
+            user_memory=agent.user_memory_text,
+            historical_context=agent.historical_context,
+            template_sections=section_descriptions,
+            pending_actions=agent._pending_actions,
+        )
+
+        user_prompt = build_step_user_prompt(
+            requirement_text=agent.requirement_text,
+            step_count=agent.step_count,
+            max_steps=agent.max_steps,
+            weak_dimensions=agent.get_weak_dimensions_text(),
+            evidence_count=len(agent.evidence_collector.evidences),
+            depth=agent.depth,
+        )
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
+        if conversation_history:
+            recent = conversation_history[-6:]
+            messages = messages[:1] + recent + messages[1:]
+
+        if not tool_schemas:
+            result = await _call_llm_structured(llm_client, messages, STEP_OUTPUT_SCHEMA)
+            if result:
+                update_agent_from_step_result(agent, result)
+            if agent.should_terminate():
+                break
+            await asyncio.sleep(0)
+            continue
+
+        supported = await llm_client.supports_tool_calling()
+        if not supported:
+            result = await _call_llm_structured(llm_client, messages, STEP_OUTPUT_SCHEMA)
+            if result:
+                update_agent_from_step_result(agent, result)
+            if agent.should_terminate():
+                break
+            await asyncio.sleep(0)
+            continue
+
+        response = await _complete_with_tools(llm_client, messages, tool_schemas)
+
+        if response is None:
+            agent._consecutive_failures += 1
+            if agent.should_terminate():
+                break
+            await asyncio.sleep(0)
+            continue
+
+        agent._consecutive_failures = 0
+
+        if "tool_calls" in response and response["tool_calls"]:
+            assistant_msg = response.get("assistant_message", {})
+            if assistant_msg:
+                conversation_history.append(assistant_msg)
+
+            tool_results = await _execute_tool_calls(response["tool_calls"], tool_registry, tracker)
+            conversation_history.extend(tool_results)
+            await asyncio.sleep(0)
+            continue
+
+        if "content" in response and response["content"]:
+            try:
+                parsed = _parse_json_response(response["content"])
+                update_agent_from_step_result(agent, parsed)
+
+                if len(parsed.get("key_findings", [])) == 0:
+                    agent._consecutive_empty_steps += 1
+                else:
+                    agent._consecutive_empty_steps = 0
+            except (json.JSONDecodeError, ValueError):
+                agent._consecutive_empty_steps += 1
+                conversation_history.append(
+                    {
+                        "role": "assistant",
+                        "content": response["content"],
+                    }
+                )
+
+        if agent.should_terminate():
+            break
+
         await asyncio.sleep(0)
 
     agent.state = AgentState.GENERATING
-    report_data = await generate_report(agent, llm_client, system_prompt, section_descriptions)
-    agent.final_report_data = report_data
-    agent.state = AgentState.COMPLETED
 
+    ds = agent.dimension_tracker.status_summary()
+    final_system_prompt = build_dynamic_system_prompt(
+        dimension_status=ds,
+        project_memory=agent.project_memory_text,
+        user_memory=agent.user_memory_text,
+        historical_context=agent.historical_context,
+        template_sections=section_descriptions,
+    )
+    report_data = await generate_report(
+        agent, llm_client, final_system_prompt, section_descriptions
+    )
+    agent.final_report_data = report_data
+
+    enable_memory_evolution = (
+        config and hasattr(config, "memory_evolution") and config.memory_evolution.enabled
+    )
+    if enable_memory_evolution and project_memory is not None:
+        try:
+            from reqradar.agent.memory_evolution import evolve_memory_after_analysis
+
+            await evolve_memory_after_analysis(agent, project_memory, llm_client)
+        except Exception as e:
+            logger.warning("Memory evolution failed: %s", e)
+
+    agent.state = AgentState.COMPLETED
     return report_data
