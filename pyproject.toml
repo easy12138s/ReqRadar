@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "reqradar"
-version = "0.6.1"
+version = "0.8.0"
 description = "需求透视 - 垂直领域需求分析 Agent"
 readme = "README.md"
 license = "MIT"
