@@ -94,4 +94,4 @@ opencode.json
 .opencode/
 
 # Docs (design specs, requirements, issues — managed separately)
-docs/
+docs/.superpowers/

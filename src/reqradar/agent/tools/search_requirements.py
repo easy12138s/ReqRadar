@@ -46,9 +46,7 @@ class SearchRequirementsTool(BaseTool):
                 title = r.metadata.get("title", r.id)
                 similarity = round((1 - r.distance) * 100, 1)
                 content_preview = r.content[:150].replace("\n", " ")
-                lines.append(
-                    f"- [{r.id}] {title} (相似度: {similarity}%)\n  {content_preview}..."
-                )
+                lines.append(f"- [{r.id}] {title} (相似度: {similarity}%)\n  {content_preview}...")
 
             return ToolResult(success=True, data="\n\n".join(lines))
         except Exception as e:

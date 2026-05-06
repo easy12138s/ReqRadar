@@ -26,8 +26,7 @@ def build_memory_evolution_user_prompt(
         parts.append("### 新术语")
         for t in new_terms:
             parts.append(
-                f"- {t.get('term', '?')}: {t.get('definition', '')} "
-                f"[domain: {t.get('domain', '')}]"
+                f"- {t.get('term', '?')}: {t.get('definition', '')} [domain: {t.get('domain', '')}]"
             )
 
     if new_modules:
@@ -42,9 +41,7 @@ def build_memory_evolution_user_prompt(
     if new_constraints:
         parts.append("### 新发现的约束")
         for c in new_constraints:
-            parts.append(
-                f"- [{c.get('type', 'other')}] {c.get('description', '')}"
-            )
+            parts.append(f"- [{c.get('type', 'other')}] {c.get('description', '')}")
 
     if tech_stack_additions:
         parts.append("### 技术栈补充")
@@ -55,25 +52,27 @@ def build_memory_evolution_user_prompt(
     if overview_insights:
         parts.append(f"### 项目概览更新建议\n{overview_insights}")
 
-    parts.extend([
-        "",
-        "## 按以下步骤执行",
-        "",
-        "**第1步——逐条比对**",
-        "对每条候选知识与已有记忆对照：",
-        "- 完全重复 → action: skip",
-        "- 更新已有条目（新信息更完整） → action: update，写出具体更新内容",
-        "- 已有记忆中不存在 → action: add",
-        "- 与已有记忆冲突 → action: merge，写出合并后内容",
-        "- 模糊/无实质内容 → action: skip",
-        "",
-        "**第2步——控制质量**",
-        "- 术语定义必须 ≥10 字才写入",
-        "- 模块名称必须来自代码路径或已有模块列表",
-        "- 约束必须有具体描述",
-        "",
-        "**第3步——输出操作列表**",
-        "在 operations 字段中输出具体写入操作，在 changelog_entry 中写变更摘要。",
-    ])
+    parts.extend(
+        [
+            "",
+            "## 按以下步骤执行",
+            "",
+            "**第1步——逐条比对**",
+            "对每条候选知识与已有记忆对照：",
+            "- 完全重复 → action: skip",
+            "- 更新已有条目（新信息更完整） → action: update，写出具体更新内容",
+            "- 已有记忆中不存在 → action: add",
+            "- 与已有记忆冲突 → action: merge，写出合并后内容",
+            "- 模糊/无实质内容 → action: skip",
+            "",
+            "**第2步——控制质量**",
+            "- 术语定义必须 ≥10 字才写入",
+            "- 模块名称必须来自代码路径或已有模块列表",
+            "- 约束必须有具体描述",
+            "",
+            "**第3步——输出操作列表**",
+            "在 operations 字段中输出具体写入操作，在 changelog_entry 中写变更摘要。",
+        ]
+    )
 
     return "\n".join(parts)

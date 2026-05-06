@@ -26,6 +26,7 @@ def build_report_generation_prompt(
     parts.append("\n请输出完整的 JSON 格式报告数据，包含上述所有章节对应字段。")
     return "\n".join(parts)
 
+
 def build_dimension_section_prompt(
     section_id: str,
     section_title: str,
@@ -38,7 +39,7 @@ def build_dimension_section_prompt(
 
 章节描述：{section_description}
 写作要求：{section_requirements}
-所需维度：{', '.join(section_dimensions) if section_dimensions else '无特定维度'}
+所需维度：{", ".join(section_dimensions) if section_dimensions else "无特定维度"}
 
 请基于以下证据和上下文生成该章节内容：
 

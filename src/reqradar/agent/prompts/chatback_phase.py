@@ -36,7 +36,9 @@ def build_chatback_system_prompt(
         if isinstance(modules, list):
             for m in modules[:5]:
                 if isinstance(m, dict):
-                    summary_lines.append(f"  - {m.get('path', m.get('module', 'unknown'))}: {m.get('relevance_reason', '')}")
+                    summary_lines.append(
+                        f"  - {m.get('path', m.get('module', 'unknown'))}: {m.get('relevance_reason', '')}"
+                    )
                 elif isinstance(m, str):
                     summary_lines.append(f"  - {m}")
     report_summary = "\n".join(summary_lines)
@@ -45,10 +47,14 @@ def build_chatback_system_prompt(
     dim_text = "\n".join(f"- {k}: {v}" for k, v in dimension_status.items())
 
     evidence_list = context_snapshot.get("evidence_list", [])
-    ev_text = "\n".join(
-        f"- [{ev.get('id', '?')}] ({ev.get('type', '?')}) {ev.get('source', '?')}: {str(ev.get('content', ''))[:100]}"
-        for ev in evidence_list[:10]
-    ) if evidence_list else "暂无证据"
+    ev_text = (
+        "\n".join(
+            f"- [{ev.get('id', '?')}] ({ev.get('type', '?')}) {ev.get('source', '?')}: {str(ev.get('content', ''))[:100]}"
+            for ev in evidence_list[:10]
+        )
+        if evidence_list
+        else "暂无证据"
+    )
 
     return CHATBACK_SYSTEM_PROMPT.format(
         report_summary=report_summary,

@@ -29,7 +29,12 @@ class ProjectMemory:
         return {
             "name": "",
             "overview": "",
-            "tech_stack": {"languages": [], "frameworks": [], "databases": [], "key_dependencies": []},
+            "tech_stack": {
+                "languages": [],
+                "frameworks": [],
+                "databases": [],
+                "key_dependencies": [],
+            },
             "modules": [],
             "terms": [],
             "constraints": [],
@@ -53,6 +58,9 @@ class ProjectMemory:
         self._loaded = True
         self.save()
         return self._data
+
+    def to_text(self) -> str:
+        return self._render_markdown(self._data)
 
     def save(self) -> None:
         self.storage_path.mkdir(parents=True, exist_ok=True)
@@ -83,7 +91,9 @@ class ProjectMemory:
                 existing.append(item)
         self.save()
 
-    def add_module(self, name: str, responsibility: str = "", key_classes: list[str] | None = None) -> None:
+    def add_module(
+        self, name: str, responsibility: str = "", key_classes: list[str] | None = None
+    ) -> None:
         self.load()
         modules = self._data.setdefault("modules", [])
         for m in modules:
@@ -94,13 +104,15 @@ class ProjectMemory:
                     m["key_classes"] = key_classes
                 self.save()
                 return
-        modules.append({
-            "name": name,
-            "responsibility": responsibility,
-            "key_classes": key_classes or [],
-            "dependencies": [],
-            "path": "",
-        })
+        modules.append(
+            {
+                "name": name,
+                "responsibility": responsibility,
+                "key_classes": key_classes or [],
+                "dependencies": [],
+                "path": "",
+            }
+        )
         self.save()
 
     def add_term(self, term: str, definition: str, domain: str = "") -> None:
@@ -142,29 +154,35 @@ class ProjectMemory:
                 if item.get("key_classes"):
                     existing_map[name]["key_classes"] = item["key_classes"]
             else:
-                existing.append({
-                    "name": name,
-                    "responsibility": item.get("responsibility", ""),
-                    "key_classes": item.get("key_classes", []),
-                    "dependencies": [],
-                    "path": "",
-                })
+                existing.append(
+                    {
+                        "name": name,
+                        "responsibility": item.get("responsibility", ""),
+                        "key_classes": item.get("key_classes", []),
+                        "dependencies": [],
+                        "path": "",
+                    }
+                )
         self.save()
 
     def batch_add_constraints(self, constraints: list[dict]) -> None:
         self.load()
         for c in constraints:
-            self._data.setdefault("constraints", []).append({
-                "description": c["description"],
-                "type": c.get("constraint_type", "other"),
-            })
+            self._data.setdefault("constraints", []).append(
+                {
+                    "description": c["description"],
+                    "type": c.get("constraint_type", "other"),
+                }
+            )
         self.save()
 
     def _save_changelog(self, description: str) -> None:
-        self._data.setdefault("changelog", []).append({
-            "date": datetime.now().strftime("%Y-%m-%d"),
-            "description": description,
-        })
+        self._data.setdefault("changelog", []).append(
+            {
+                "date": datetime.now().strftime("%Y-%m-%d"),
+                "description": description,
+            }
+        )
 
     def detect_changes(self, old_data: dict, new_data: dict) -> list[dict]:
         changes = []
@@ -188,7 +206,9 @@ class ProjectMemory:
             old_items = set(old_ts.get(category, []))
             new_items = set(new_ts.get(category, []))
             if new_items - old_items:
-                changes.append({"change_type": "tech_stack_updated", "target": f"tech_stack:{category}"})
+                changes.append(
+                    {"change_type": "tech_stack_updated", "target": f"tech_stack:{category}"}
+                )
 
         return changes
 
@@ -222,7 +242,9 @@ class ProjectMemory:
             self._data["tech_stack"] = ts
 
         for mod in old.get("modules", []):
-            self.add_module(mod.get("name", ""), mod.get("responsibility", ""), mod.get("key_classes", []))
+            self.add_module(
+                mod.get("name", ""), mod.get("responsibility", ""), mod.get("key_classes", [])
+            )
 
         for term in old.get("terminology", []):
             self.add_term(term.get("term", ""), term.get("definition", ""), term.get("domain", ""))
@@ -267,7 +289,13 @@ class ProjectMemory:
                     current_subsection = category
                 elif current_section == "modules":
                     mod_name = stripped[4:].strip()
-                    current_module = {"name": mod_name, "responsibility": "", "key_classes": [], "dependencies": [], "path": ""}
+                    current_module = {
+                        "name": mod_name,
+                        "responsibility": "",
+                        "key_classes": [],
+                        "dependencies": [],
+                        "path": "",
+                    }
                     data["modules"].append(current_module)
                     current_subsection = "module_body"
             elif stripped.startswith("- ") and stripped != "- ":
@@ -284,7 +312,13 @@ class ProjectMemory:
                         if "[" in definition and definition.endswith("]"):
                             domain = definition[definition.rindex("[") + 1 : -1]
                             definition = definition[: definition.rindex("[")].strip()
-                        data["terms"].append({"term": term.strip(), "definition": definition.strip(), "domain": domain})
+                        data["terms"].append(
+                            {
+                                "term": term.strip(),
+                                "definition": definition.strip(),
+                                "domain": domain,
+                            }
+                        )
                 elif current_section == "constraints":
                     text = stripped[2:].strip()
                     if text:
@@ -295,12 +329,19 @@ class ProjectMemory:
                         data["changelog"].append({"date": "", "description": text})
             elif current_section == "overview" and stripped and not stripped.startswith("#"):
                 data["overview"] += stripped + "\n"
-            elif current_section == "modules" and current_module and stripped and not stripped.startswith("#"):
+            elif (
+                current_section == "modules"
+                and current_module
+                and stripped
+                and not stripped.startswith("#")
+            ):
                 if stripped.startswith("responsibility:") or stripped.startswith("Responsibility:"):
                     current_module["responsibility"] = stripped.split(":", 1)[1].strip()
                 elif stripped.startswith("key_classes:") or stripped.startswith("Key classes:"):
                     classes_str = stripped.split(":", 1)[1].strip()
-                    current_module["key_classes"] = [c.strip() for c in classes_str.split(",") if c.strip()]
+                    current_module["key_classes"] = [
+                        c.strip() for c in classes_str.split(",") if c.strip()
+                    ]
 
         data["overview"] = data["overview"].strip()
         return data

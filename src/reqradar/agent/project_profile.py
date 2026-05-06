@@ -79,11 +79,13 @@ async def step_build_project_profile(
                     if module_files:
                         code_content = _read_module_code(module_files, max_chars=5000)
                         if code_content:
-                            modules_with_code.append({
-                                "module_name": module_name,
-                                "responsibility": responsibility,
-                                "code_content": code_content,
-                            })
+                            modules_with_code.append(
+                                {
+                                    "module_name": module_name,
+                                    "responsibility": responsibility,
+                                    "code_content": code_content,
+                                }
+                            )
                         else:
                             module_info_list.append((module_name, responsibility))
                     else:
@@ -102,7 +104,9 @@ async def step_build_project_profile(
             for item in modules_with_code:
                 module_name = item["module_name"]
                 responsibility = item["responsibility"]
-                code_summary = batch_summaries.get(module_name, f"模块 {module_name}：{responsibility}")
+                code_summary = batch_summaries.get(
+                    module_name, f"模块 {module_name}：{responsibility}"
+                )
                 memory_manager.add_module(
                     name=module_name,
                     responsibility=responsibility,
@@ -272,22 +276,24 @@ async def _generate_batch_module_summaries(
 
     modules_info = []
     for item in modules_with_code:
-        info = f"""### {item['module_name']}
-职责: {item['responsibility']}
+        info = f"""### {item["module_name"]}
+职责: {item["responsibility"]}
 代码片段:
 ```
-{item['code_content'][:2000]}
+{item["code_content"][:2000]}
 ```
 """
         modules_info.append(info)
 
     try:
-        messages = [{
-            "role": "user",
-            "content": GENERATE_BATCH_MODULE_SUMMARIES_PROMPT.format(
-                modules_info="\n---\n".join(modules_info)
-            ),
-        }]
+        messages = [
+            {
+                "role": "user",
+                "content": GENERATE_BATCH_MODULE_SUMMARIES_PROMPT.format(
+                    modules_info="\n---\n".join(modules_info)
+                ),
+            }
+        ]
 
         result = await _call_llm_structured(
             llm_client,

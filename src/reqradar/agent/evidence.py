@@ -52,7 +52,9 @@ class EvidenceCollector:
         lines = []
         for ev in self.evidences:
             dim_str = ", ".join(ev.dimensions) if ev.dimensions else "无特定维度"
-            lines.append(f"[{ev.id}] ({ev.type}, {ev.confidence}) {ev.source}: {ev.content} [维度: {dim_str}]")
+            lines.append(
+                f"[{ev.id}] ({ev.type}, {ev.confidence}) {ev.source}: {ev.content} [维度: {dim_str}]"
+            )
         return "\n".join(lines)
 
     def to_snapshot(self) -> list[dict]:

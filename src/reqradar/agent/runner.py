@@ -4,7 +4,7 @@ import asyncio
 import json
 import logging
 
-from reqradar.agent.analysis_agent import AnalysisAgent, AgentState
+from reqradar.agent.analysis_agent import AgentState, AnalysisAgent
 from reqradar.agent.llm_utils import (
     _call_llm_structured,
     _complete_with_tools,
@@ -348,7 +348,7 @@ async def run_react_analysis(
 
         agent._consecutive_failures = 0
 
-        if "tool_calls" in response and response["tool_calls"]:
+        if response.get("tool_calls"):
             assistant_msg = response.get("assistant_message", {})
             if assistant_msg:
                 conversation_history.append(assistant_msg)
@@ -358,7 +358,7 @@ async def run_react_analysis(
             await asyncio.sleep(0)
             continue
 
-        if "content" in response and response["content"]:
+        if response.get("content"):
             try:
                 parsed = _parse_json_response(response["content"])
                 update_agent_from_step_result(agent, parsed)

@@ -50,10 +50,16 @@ class ReadFileTool(BaseTool):
         resolved = str(full_path.resolve())
 
         if self._sandbox and not self._sandbox.is_allowed(resolved):
-            return ToolResult(success=False, data="", error=f"Access denied: path escapes project root: {file_path}")
+            return ToolResult(
+                success=False,
+                data="",
+                error=f"Access denied: path escapes project root: {file_path}",
+            )
 
         if self._sensitive_filter.is_sensitive(file_path):
-            return ToolResult(success=False, data="", error=f"Access denied: sensitive file: {file_path}")
+            return ToolResult(
+                success=False, data="", error=f"Access denied: sensitive file: {file_path}"
+            )
 
         if not full_path.exists():
             return ToolResult(success=False, data="", error=f"File not found: {file_path}")

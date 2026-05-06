@@ -23,9 +23,7 @@ class GetProjectProfileTool(BaseTool):
 
         profile = self.memory_data.get("project_profile", {})
         if not profile or not profile.get("description"):
-            return ToolResult(
-                success=True, data="项目画像尚未建立，请先运行 reqradar index"
-            )
+            return ToolResult(success=True, data="项目画像尚未建立，请先运行 reqradar index")
 
         lines = [f"项目名称: {profile.get('name', '未知')}"]
         lines.append(f"描述: {profile.get('description', '未知')}")

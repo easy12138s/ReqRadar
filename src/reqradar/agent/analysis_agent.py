@@ -1,10 +1,8 @@
 import logging
-from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
 
+from reqradar.agent.dimension import DimensionTracker
 from reqradar.agent.evidence import EvidenceCollector
-from reqradar.agent.dimension import DimensionTracker, DEFAULT_DIMENSIONS
 
 logger = logging.getLogger("reqradar.agent.analysis_agent")
 
@@ -70,9 +68,7 @@ class AnalysisAgent:
             return True
         if self._consecutive_empty_steps >= 3:
             return True
-        if self._consecutive_failures >= 3:
-            return True
-        return False
+        return self._consecutive_failures >= 3
 
     def get_current_phase(self) -> str:
         ds = self.dimension_tracker.status_summary()

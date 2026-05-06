@@ -9,8 +9,8 @@ logger = logging.getLogger("reqradar.agent")
 
 def _strip_thinking_tags(text: str) -> str:
     """Remove MiniMax-style ◀thinking▶ and ◀reasoning_content▶ tags."""
-    text = re.sub(r'◀thinking▶.*?◀/thinking▶', '', text, flags=re.DOTALL)
-    text = re.sub(r'◀reasoning_content▶.*?◀/reasoning_content▶', '', text, flags=re.DOTALL)
+    text = re.sub(r"◀thinking▶.*?◀/thinking▶", "", text, flags=re.DOTALL)
+    text = re.sub(r"◀reasoning_content▶.*?◀/reasoning_content▶", "", text, flags=re.DOTALL)
     return text.strip()
 
 
@@ -34,7 +34,9 @@ def _parse_json_response(response: str):
     return json.loads(text)
 
 
-async def _call_llm_structured(llm_client, messages: list[dict], schema: dict, **kwargs) -> dict | None:
+async def _call_llm_structured(
+    llm_client, messages: list[dict], schema: dict, **kwargs
+) -> dict | None:
     """调用 LLM 获取结构化输出。function calling 优先，失败时 fallback 到 complete + 文本解析。"""
     structured = await llm_client.complete_structured(messages, schema, **kwargs)
     if structured is not None:
@@ -42,14 +44,19 @@ async def _call_llm_structured(llm_client, messages: list[dict], schema: dict, *
         return structured
 
     # Fallback: complete + parse JSON from response text
-    logger.info("Function calling returned None for %s, falling back to complete + text parsing", schema.get("name", "unknown"))
+    logger.info(
+        "Function calling returned None for %s, falling back to complete + text parsing",
+        schema.get("name", "unknown"),
+    )
     response = await llm_client.complete(messages, **kwargs)
     if response:
         cleaned = _strip_thinking_tags(response)
         try:
             return _parse_json_response(cleaned)
         except (json.JSONDecodeError, ValueError) as e:
-            logger.warning("Fallback text parsing also failed for %s: %s", schema.get("name", "unknown"), e)
+            logger.warning(
+                "Fallback text parsing also failed for %s: %s", schema.get("name", "unknown"), e
+            )
     return None
 
 
@@ -66,7 +73,9 @@ async def _complete_with_tools(
                     len(result["tool_calls"]),
                 )
             elif "content" in result:
-                logger.debug("complete_with_tools returned content (%d chars)", len(result["content"]))
+                logger.debug(
+                    "complete_with_tools returned content (%d chars)", len(result["content"])
+                )
         return result
     except Exception as e:
         logger.warning("complete_with_tools error: %s", e)

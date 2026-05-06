@@ -16,9 +16,7 @@ class ToolRegistry:
     def get_schemas(self, names: list[str] | None = None) -> list[dict]:
         if names is None:
             return [t.openai_schema() for t in self._tools.values()]
-        return [
-            self._tools[n].openai_schema() for n in names if n in self._tools
-        ]
+        return [self._tools[n].openai_schema() for n in names if n in self._tools]
 
     def list_names(self) -> list[str]:
         return list(self._tools.keys())
@@ -27,7 +25,9 @@ class ToolRegistry:
         tool = self._tools.get(name)
         if tool is None:
             return ToolResult(success=False, data="", error=f"Tool not found: {name}")
-        if not check_tool_permissions(tool.required_permissions, self._permission_checker.user_permissions):
+        if not check_tool_permissions(
+            tool.required_permissions, self._permission_checker.user_permissions
+        ):
             return ToolResult(
                 success=False,
                 data="",

@@ -46,9 +46,7 @@ class GetContributorsTool(BaseTool):
             )
             for rc in fc.recent_contributors[:3]:
                 if rc.email != pc.email:
-                    lines.append(
-                        f"近期贡献者: {rc.name} ({rc.email}), 提交数: {rc.commit_count}"
-                    )
+                    lines.append(f"近期贡献者: {rc.name} ({rc.email}), 提交数: {rc.commit_count}")
 
             return ToolResult(success=True, data="\n".join(lines))
         except Exception as e:
