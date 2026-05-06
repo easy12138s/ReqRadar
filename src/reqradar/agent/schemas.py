@@ -649,3 +649,41 @@ MEMORY_EVOLUTION_SCHEMA = {
         "required": ["operations", "changelog_entry"],
     },
 }
+
+CONSOLIDATION_SCHEMA = {
+    "name": "requirement_consolidation",
+    "description": "整合多个需求文件为结构化需求文档",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "consolidated_text": {
+                "type": "string",
+                "description": "Markdown 格式的结构化需求文档",
+            },
+            "sections_found": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "section": {"type": "string"},
+                        "status": {"type": "string", "enum": ["complete", "partial", "missing"]},
+                        "source_files": {"type": "array", "items": {"type": "string"}},
+                    },
+                    "required": ["section", "status"],
+                },
+                "description": "各章节的填充状态",
+            },
+            "ambiguities": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "LLM 识别的不一致或模糊之处",
+            },
+            "warnings": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "处理过程中的注意事项",
+            },
+        },
+        "required": ["consolidated_text"],
+    },
+}
