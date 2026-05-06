@@ -30,8 +30,6 @@ interface LLMFormValues {
   base_url: string;
   timeout: number;
   max_retries: number;
-  embedding_model: string;
-  embedding_dim: number;
   vision_provider: string;
   vision_model: string;
   vision_api_key: string;
@@ -46,8 +44,6 @@ const LLM_CONFIG_KEYS: Record<keyof LLMFormValues, string> = {
   base_url: 'llm.base_url',
   timeout: 'llm.timeout',
   max_retries: 'llm.max_retries',
-  embedding_model: 'llm.embedding_model',
-  embedding_dim: 'llm.embedding_dim',
   vision_provider: 'vision.provider',
   vision_model: 'vision.model',
   vision_api_key: 'vision.api_key',
@@ -62,8 +58,6 @@ const DEFAULT_VALUES: LLMFormValues = {
   base_url: 'https://api.openai.com/v1',
   timeout: 60,
   max_retries: 2,
-  embedding_model: 'text-embedding-3-small',
-  embedding_dim: 1024,
   vision_provider: 'openai',
   vision_model: 'gpt-4o',
   vision_api_key: '',
@@ -227,15 +221,6 @@ export function LLMConfig() {
               <InputNumber min={0} max={10} style={{ width: 120 }} />
             </Form.Item>
           </Space>
-        </Card>
-
-        <Card title="嵌入模型" style={{ marginBottom: 16 }}>
-          <Form.Item label="嵌入模型名称" name="embedding_model">
-            <Input placeholder="例如: text-embedding-3-small" />
-          </Form.Item>
-          <Form.Item label="向量维度" name="embedding_dim">
-            <InputNumber min={64} max={4096} style={{ width: 160 }} />
-          </Form.Item>
         </Card>
 
         <Card title="视觉分析模型" style={{ marginBottom: 16 }}>
