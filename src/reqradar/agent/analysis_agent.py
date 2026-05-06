@@ -50,6 +50,10 @@ class AnalysisAgent:
         self.historical_context: str = ""
         self.final_report_data: dict | None = None
         self._cancelled: bool = False
+        self._llm_declared_terminal: bool = False
+        self._consecutive_empty_steps: int = 0
+        self._consecutive_failures: int = 0
+        self._pending_actions: list[dict] = []
 
     def cancel(self) -> None:
         self._cancelled = True
@@ -60,9 +64,25 @@ class AnalysisAgent:
             return True
         if self.step_count >= self.max_steps:
             return True
+        if self._llm_declared_terminal:
+            return True
         if self.dimension_tracker.all_sufficient():
             return True
+        if self._consecutive_empty_steps >= 3:
+            return True
+        if self._consecutive_failures >= 3:
+            return True
         return False
+
+    def get_current_phase(self) -> str:
+        ds = self.dimension_tracker.status_summary()
+        if ds.get("understanding") != "sufficient":
+            return "understand"
+        if ds.get("impact") != "sufficient" or ds.get("evidence") != "sufficient":
+            return "scope"
+        if ds.get("risk") != "sufficient" or ds.get("change") != "sufficient":
+            return "assess"
+        return "decide"
 
     def record_evidence(
         self,
@@ -87,12 +107,14 @@ class AnalysisAgent:
         return ev_id
 
     def record_tool_call(self, tool_name: str, parameters: dict, result_summary: str) -> None:
-        self.tool_call_history.append({
-            "step": self.step_count,
-            "tool": tool_name,
-            "parameters": parameters,
-            "result_summary": result_summary[:200],
-        })
+        self.tool_call_history.append(
+            {
+                "step": self.step_count,
+                "tool": tool_name,
+                "parameters": parameters,
+                "result_summary": result_summary[:200],
+            }
+        )
 
     def get_context_text(self) -> str:
         parts = []
@@ -130,6 +152,8 @@ class AnalysisAgent:
             "visited_files": list(self.visited_files),
             "tool_calls": list(self.tool_call_history),
             "step_count": self.step_count,
+            "_llm_declared_terminal": self._llm_declared_terminal,
+            "_consecutive_empty_steps": self._consecutive_empty_steps,
         }
 
     def restore_from_snapshot(self, snapshot: dict) -> None:
@@ -143,3 +167,7 @@ class AnalysisAgent:
             self.tool_call_history = list(snapshot["tool_calls"])
         if "step_count" in snapshot:
             self.step_count = snapshot["step_count"]
+        if "_llm_declared_terminal" in snapshot:
+            self._llm_declared_terminal = snapshot["_llm_declared_terminal"]
+        if "_consecutive_empty_steps" in snapshot:
+            self._consecutive_empty_steps = snapshot["_consecutive_empty_steps"]

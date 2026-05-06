@@ -17,7 +17,9 @@ class LLMConfig(BaseModel):
     timeout: int = Field(default=60, description="Request timeout in seconds")
     max_retries: int = Field(default=2, description="Max retry attempts")
     host: Optional[str] = Field(default=None, description="Ollama host")
-    embedding_model: str = Field(default="text-embedding-3-small", description="OpenAI embedding model name")
+    embedding_model: str = Field(
+        default="text-embedding-3-small", description="OpenAI embedding model name"
+    )
     embedding_dim: int = Field(default=1024, description="Embedding vector dimension")
 
     @field_validator("api_key", mode="before")
@@ -49,8 +51,16 @@ class VisionConfig(BaseModel):
 class MemoryConfig(BaseModel):
     enabled: bool = Field(default=True, description="Enable project memory")
     storage_path: str = Field(default=".reqradar/memory", description="Memory storage directory")
-    project_storage_path: str = Field(default=".reqradar/memories", description="Project memory storage path")
-    user_storage_path: str = Field(default=".reqradar/user_memories", description="User memory storage path")
+    project_storage_path: str = Field(
+        default=".reqradar/memories", description="Project memory storage path"
+    )
+    user_storage_path: str = Field(
+        default=".reqradar/user_memories", description="User memory storage path"
+    )
+
+
+class MemoryEvolutionConfig(BaseModel):
+    enabled: bool = Field(default=True, description="Enable post-analysis memory self-evolution")
 
 
 class LoaderConfig(BaseModel):
@@ -74,8 +84,6 @@ class AnalysisConfig(BaseModel):
     max_code_files: int = Field(default=10)
     contributors_lookback_months: int = Field(default=6)
     tool_use_enabled: bool = Field(default=True, description="启用LLM工具调用循环")
-    tool_use_max_rounds: int = Field(default=15, description="每步最大工具调用轮次")
-    tool_use_max_tokens: int = Field(default=8000, description="工具结果的总token预算")
 
 
 class AgentConfig(BaseModel):
@@ -84,8 +92,18 @@ class AgentConfig(BaseModel):
     max_steps_deep: int = Field(default=25, description="Max agent steps for deep depth")
     version_limit: int = Field(default=10, description="Max report versions per task")
     sensitive_file_patterns: list[str] = Field(
-        default_factory=lambda: [".env", ".env.*", "*.key", "*.pem", "*.crt", "secrets/", "credentials/", ".aws/", ".ssh/"],
-        description="Sensitive file patterns to block agent access"
+        default_factory=lambda: [
+            ".env",
+            ".env.*",
+            "*.key",
+            "*.pem",
+            "*.crt",
+            "secrets/",
+            "credentials/",
+            ".aws/",
+            ".ssh/",
+        ],
+        description="Sensitive file patterns to block agent access",
     )
 
 
@@ -110,12 +128,18 @@ class LogConfig(BaseModel):
 class WebConfig(BaseModel):
     host: str = Field(default="0.0.0.0", description="Web server bind host")
     port: int = Field(default=8000, description="Web server bind port")
-    database_url: str = Field(default="sqlite+aiosqlite:///./reqradar.db", description="Async database URL")
+    database_url: str = Field(
+        default="sqlite+aiosqlite:///./reqradar.db", description="Async database URL"
+    )
     secret_key: str = Field(default="change-me-in-production", description="JWT secret key")
-    access_token_expire_minutes: int = Field(default=1440, description="JWT access token expiry in minutes")
+    access_token_expire_minutes: int = Field(
+        default=1440, description="JWT access token expiry in minutes"
+    )
     max_concurrent_analyses: int = Field(default=2, description="Maximum concurrent analysis tasks")
     max_upload_size: int = Field(default=50, description="Maximum file upload size in MB")
-    cors_origins: Optional[str] = Field(default=None, description="CORS allowed origins (JSON array string or empty for all)")
+    cors_origins: Optional[str] = Field(
+        default=None, description="CORS allowed origins (JSON array string or empty for all)"
+    )
     debug: bool = Field(default=False, description="Enable debug mode")
     static_dir: Optional[str] = Field(default=None, description="Static files directory path")
     auto_create_tables: bool = Field(
@@ -127,8 +151,13 @@ class WebConfig(BaseModel):
         description="Comma-separated list of allowed file upload extensions",
     )
     db_pool_size: int = Field(default=5, description="Database connection pool size")
-    db_pool_max_overflow: int = Field(default=10, description="Max overflow connections beyond pool_size")
-    data_root: str = Field(default="~/.reqradar/data", description="Root directory for project file storage (supports ~ expansion)")
+    db_pool_max_overflow: int = Field(
+        default=10, description="Max overflow connections beyond pool_size"
+    )
+    data_root: str = Field(
+        default="~/.reqradar/data",
+        description="Root directory for project file storage (supports ~ expansion)",
+    )
 
     @field_validator("secret_key", mode="before")
     @classmethod
@@ -143,6 +172,7 @@ class Config(BaseModel):
     llm: LLMConfig = Field(default_factory=LLMConfig)
     vision: VisionConfig = Field(default_factory=VisionConfig)
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
+    memory_evolution: MemoryEvolutionConfig = Field(default_factory=MemoryEvolutionConfig)
     loader: LoaderConfig = Field(default_factory=LoaderConfig)
     index: IndexConfig = Field(default_factory=IndexConfig)
     analysis: AnalysisConfig = Field(default_factory=AnalysisConfig)

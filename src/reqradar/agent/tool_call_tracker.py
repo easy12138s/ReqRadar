@@ -5,13 +5,11 @@ logger = logging.getLogger("reqradar.tool_tracker")
 
 
 class ToolCallTracker:
-    def __init__(self, max_rounds: int = 15, max_total_tokens: int = 8000):
-        self.max_rounds = max_rounds
-        self.max_total_tokens = max_total_tokens
+    def __init__(self, max_calls_per_tool: int = 10):
+        self.max_calls_per_tool = max_calls_per_tool
         self.call_count = 0
         self.tool_counts: dict[str, int] = {}
         self._seen_calls: dict[str, set] = {}
-        self._total_tokens = 0
 
     def track_call(self, tool_name: str, arguments: dict) -> None:
         self.call_count += 1
@@ -27,23 +25,11 @@ class ToolCallTracker:
         key = json.dumps(arguments, sort_keys=True)
         return key in self._seen_calls[tool_name]
 
-    def add_tokens(self, tokens: int) -> None:
-        self._total_tokens += tokens
-        logger.debug(
-            "Tool token usage: %d/%d", self._total_tokens, self.max_total_tokens
-        )
-
-    def within_token_budget(self, estimated_tokens: int) -> bool:
-        return (self._total_tokens + estimated_tokens) <= self.max_total_tokens
-
-    def within_round_limit(self) -> bool:
-        return self.call_count < self.max_rounds
+    def is_tool_over_limit(self, tool_name: str) -> bool:
+        return self.tool_counts.get(tool_name, 0) >= self.max_calls_per_tool
 
     def summary(self) -> str:
-        lines = [f"Total tool calls: {self.call_count}/{self.max_rounds}"]
+        lines = [f"Total tool calls: {self.call_count}"]
         for name, count in self.tool_counts.items():
             lines.append(f"  {name}: {count} calls")
-        lines.append(
-            f"Total tool tokens: {self._total_tokens}/{self.max_total_tokens}"
-        )
         return "\n".join(lines)
