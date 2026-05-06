@@ -3,8 +3,17 @@ import pytest
 from reqradar.agent.analysis_agent import AnalysisAgent, AgentState
 from reqradar.agent.evidence import EvidenceCollector
 from reqradar.agent.dimension import DimensionTracker, DEFAULT_DIMENSIONS
-from reqradar.agent.tools.security import PathSandbox, SensitiveFileFilter, ToolPermissionChecker, check_tool_permissions
-from reqradar.agent.prompts.analysis_phase import build_analysis_system_prompt, build_analysis_user_prompt, build_termination_prompt
+from reqradar.agent.tools.security import (
+    PathSandbox,
+    SensitiveFileFilter,
+    ToolPermissionChecker,
+    check_tool_permissions,
+)
+from reqradar.agent.prompts.analysis_phase import (
+    build_dynamic_system_prompt,
+    build_step_user_prompt,
+    build_termination_prompt,
+)
 from reqradar.agent.prompts.report_phase import build_report_generation_prompt
 from reqradar.infrastructure.template_loader import TemplateLoader
 
@@ -60,15 +69,21 @@ def test_security_components():
 
 
 def test_prompt_builders():
-    sys_prompt = build_analysis_system_prompt(
+    sys_prompt = build_dynamic_system_prompt(
+        dimension_status={"understanding": "sufficient", "impact": "in_progress"},
         project_memory="Project: ReqRadar\nLanguages: Python",
         user_memory="User prefers deep analysis",
-        dimension_status={"understanding": "sufficient", "impact": "in_progress"},
     )
     assert "ReqRadar" in sys_prompt
     assert "understanding" in sys_prompt
 
-    user_prompt = build_analysis_user_prompt("Add SSO support")
+    user_prompt = build_step_user_prompt(
+        "Add SSO support",
+        step_count=1,
+        max_steps=15,
+        weak_dimensions="impact, risk",
+        evidence_count=3,
+    )
     assert "SSO" in user_prompt
 
     term_prompt = build_termination_prompt()
@@ -88,7 +103,7 @@ def test_template_section_injection():
         }
         for s in defn.sections[:3]
     ]
-    prompt = build_analysis_system_prompt(template_sections=section_descs)
+    prompt = build_dynamic_system_prompt(template_sections=section_descs)
     assert "需求理解" in prompt or "understanding" in prompt
 
 

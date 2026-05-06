@@ -1,7 +1,8 @@
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
-from reqradar.agent.tool_use_loop import run_tool_use_loop
+from reqradar.agent.analysis_agent import AnalysisAgent
+from reqradar.agent.runner import run_react_analysis, update_agent_from_step_result
 from reqradar.agent.tools.base import BaseTool, ToolResult
 from reqradar.agent.tools.registry import ToolRegistry
 
@@ -24,32 +25,41 @@ class EchoTool(BaseTool):
 
 
 @pytest.mark.asyncio
-async def test_loop_returns_structured_output_immediately():
+async def test_single_call_returns_step_output_immediately():
     llm = AsyncMock()
-    llm.complete_with_tools = AsyncMock(return_value={"content": '{"summary": "test result"}'})
-    llm.complete_structured = AsyncMock(return_value={"summary": "test result"})
-
-    registry = ToolRegistry()
-    result = await run_tool_use_loop(
-        llm_client=llm,
-        system_prompt="You are a test assistant",
-        user_prompt="Analyze this",
-        tools=[],
-        tool_registry=registry,
-        output_schema={"name": "test_output", "parameters": {"type": "object"}},
+    llm.complete_with_tools = AsyncMock(
+        return_value={
+            "content": '{"reasoning": "test", "dimension_status": {"understanding": "sufficient", "impact": "in_progress", "risk": "insufficient", "change": "insufficient", "decision": "insufficient", "evidence": "insufficient", "verification": "insufficient"}, "final_step": true}'
+        }
     )
-    assert result == {"summary": "test result"}
+    llm.complete_structured = AsyncMock(
+        return_value={
+            "reasoning": "test",
+            "dimension_status": {},
+            "final_step": False,
+        }
+    )
+    llm.supports_tool_calling = AsyncMock(return_value=True)
+
+    agent = AnalysisAgent("test requirement", project_id=1, user_id=1, depth="quick")
+    registry = ToolRegistry()
+
+    result = await run_react_analysis(
+        agent=agent,
+        llm_client=llm,
+        tool_registry=registry,
+    )
+    assert isinstance(result, dict)
+    assert agent.state.value == "completed"
 
 
 @pytest.mark.asyncio
-async def test_loop_calls_tool_then_returns():
+async def test_tool_call_then_step_output():
     llm = AsyncMock()
     llm.complete_with_tools = AsyncMock(
         side_effect=[
             {
-                "tool_calls": [
-                    {"id": "tc1", "name": "echo", "arguments": '{"text": "hello"}'}
-                ],
+                "tool_calls": [{"id": "tc1", "name": "echo", "arguments": '{"text": "hello"}'}],
                 "assistant_message": {
                     "role": "assistant",
                     "content": None,
@@ -57,95 +67,140 @@ async def test_loop_calls_tool_then_returns():
                         {
                             "id": "tc1",
                             "type": "function",
-                            "function": {
-                                "name": "echo",
-                                "arguments": '{"text": "hello"}',
-                            },
+                            "function": {"name": "echo", "arguments": '{"text": "hello"}'},
                         }
                     ],
                 },
             },
-            {"content": '{"result": "done with echo: hello"}'},
-        ]
-    )
-
-    registry = ToolRegistry()
-    registry.register(EchoTool())
-    result = await run_tool_use_loop(
-        llm_client=llm,
-        system_prompt="test",
-        user_prompt="test",
-        tools=["echo"],
-        tool_registry=registry,
-        output_schema={"name": "test", "parameters": {"type": "object"}},
-        max_rounds=5,
-    )
-    assert "done" in result.get("result", "")
-
-
-@pytest.mark.asyncio
-async def test_loop_dedup_same_tool_call():
-    llm = AsyncMock()
-    llm.complete_with_tools = AsyncMock(
-        side_effect=[
             {
-                "tool_calls": [
-                    {"id": "tc1", "name": "echo", "arguments": '{"text": "same"}'},
-                    {"id": "tc2", "name": "echo", "arguments": '{"text": "same"}'},
-                ],
-                "assistant_message": {
-                    "role": "assistant",
-                    "content": None,
-                    "tool_calls": [
-                        {
-                            "id": "tc1",
-                            "type": "function",
-                            "function": {
-                                "name": "echo",
-                                "arguments": '{"text": "same"}',
-                            },
-                        },
-                        {
-                            "id": "tc2",
-                            "type": "function",
-                            "function": {
-                                "name": "echo",
-                                "arguments": '{"text": "same"}',
-                            },
-                        },
-                    ],
-                },
+                "content": '{"reasoning": "got echo", "dimension_status": {}, "final_step": false}',
             },
-            {"content": '{"result": "ok"}'},
+            {
+                "content": '{"reasoning": "done", "dimension_status": {"understanding": "sufficient", "impact": "sufficient", "risk": "sufficient", "change": "sufficient", "decision": "sufficient", "evidence": "sufficient", "verification": "sufficient"}, "final_step": true}',
+            },
         ]
     )
+    llm.complete_structured = AsyncMock(
+        return_value={
+            "requirement_title": "test",
+            "risk_level": "medium",
+        }
+    )
+    llm.supports_tool_calling = AsyncMock(return_value=True)
 
+    agent = AnalysisAgent("test requirement", project_id=1, user_id=1, depth="quick")
     registry = ToolRegistry()
     registry.register(EchoTool())
-    result = await run_tool_use_loop(
+
+    result = await run_react_analysis(
+        agent=agent,
         llm_client=llm,
-        system_prompt="test",
-        user_prompt="test",
-        tools=["echo"],
         tool_registry=registry,
-        output_schema={"name": "test", "parameters": {"type": "object"}},
-        max_rounds=5,
     )
-    assert result.get("result") == "ok"
+    assert isinstance(result, dict)
+    assert agent.state.value == "completed"
 
 
 @pytest.mark.asyncio
-async def test_loop_fallback_when_no_tool_use_support():
+async def test_terminates_on_max_steps():
+    call_count = 0
+
+    async def side_effect(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        return {
+            "content": f'{{"reasoning": "step {call_count}", "dimension_status": {{}}, "final_step": false}}',
+        }
+
+    llm = AsyncMock()
+    llm.complete_with_tools = AsyncMock(side_effect=side_effect)
+    llm.complete_structured = AsyncMock(
+        return_value={
+            "requirement_title": "test",
+            "risk_level": "medium",
+        }
+    )
+    llm.supports_tool_calling = AsyncMock(return_value=True)
+
+    agent = AnalysisAgent("test", project_id=1, user_id=1, depth="quick")
+    registry = ToolRegistry()
+
+    result = await run_react_analysis(
+        agent=agent,
+        llm_client=llm,
+        tool_registry=registry,
+    )
+    assert agent.step_count <= agent.max_steps
+    assert agent.state.value == "completed"
+
+
+@pytest.mark.asyncio
+async def test_dimension_sufficiency_updated():
+    agent = AnalysisAgent("test", project_id=1, user_id=1, depth="standard")
+
+    step_data = {
+        "reasoning": "test",
+        "dimension_status": {
+            "understanding": "sufficient",
+            "impact": "sufficient",
+            "risk": "sufficient",
+            "change": "sufficient",
+            "decision": "sufficient",
+            "evidence": "sufficient",
+            "verification": "sufficient",
+        },
+        "key_findings": [
+            {"dimension": "impact", "finding": "Found auth module", "confidence": "high"}
+        ],
+        "final_step": False,
+    }
+    update_agent_from_step_result(agent, step_data)
+    assert agent.dimension_tracker.all_sufficient()
+    assert len(agent.evidence_collector.evidences) == 1
+
+
+@pytest.mark.asyncio
+async def test_no_tools_falls_back_to_structured():
+    llm = AsyncMock()
+    llm.complete_structured = AsyncMock(
+        return_value={
+            "reasoning": "no tools",
+            "dimension_status": {},
+            "final_step": False,
+        }
+    )
+    llm.supports_tool_calling = AsyncMock(return_value=False)
+
+    agent = AnalysisAgent("test", project_id=1, user_id=1, depth="quick")
+    registry = ToolRegistry()
+
+    await run_react_analysis(
+        agent=agent,
+        llm_client=llm,
+        tool_registry=registry,
+    )
+    assert agent.state.value == "completed"
+
+
+@pytest.mark.asyncio
+async def test_consecutive_failures_terminate():
     llm = AsyncMock()
     llm.complete_with_tools = AsyncMock(return_value=None)
-    llm.complete_structured = AsyncMock(return_value={"summary": "fallback"})
-
-    result = await run_tool_use_loop(
-        llm_client=llm,
-        system_prompt="test",
-        user_prompt="test",
-        tools=[],
-        tool_registry=ToolRegistry(),
-        output_schema={"name": "test", "parameters": {"type": "object"}},
+    llm.complete_structured = AsyncMock(
+        return_value={
+            "requirement_title": "test",
+            "risk_level": "medium",
+        }
     )
-    assert result == {"summary": "fallback"}
+    llm.supports_tool_calling = AsyncMock(return_value=True)
+
+    agent = AnalysisAgent("test", project_id=1, user_id=1, depth="quick")
+    registry = ToolRegistry()
+
+    await run_react_analysis(
+        agent=agent,
+        llm_client=llm,
+        tool_registry=registry,
+    )
+    assert agent.state.value == "completed"
+    assert agent._consecutive_failures >= 3 or agent.step_count >= agent.max_steps
