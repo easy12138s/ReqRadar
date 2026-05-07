@@ -14,7 +14,6 @@ import {
   Popconfirm,
 } from 'antd';
 import {
-  EyeOutlined,
   ReloadOutlined,
   SearchOutlined,
 } from '@ant-design/icons';
@@ -128,11 +127,6 @@ export function AnalysisList() {
               查看报告
             </Button>
           )}
-          <Button
-            type="text"
-            icon={<EyeOutlined />}
-            onClick={() => navigate(`/analyses/${record.id}`)}
-          />
           {record.status === 'failed' && (
             <Popconfirm
               title="确认重试此分析？"

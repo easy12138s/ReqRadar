@@ -46,3 +46,11 @@ body {
 .markdown-body table { width: 100%; border-collapse: collapse; margin: 12px 0; }
 .markdown-body th, .markdown-body td { padding: 8px 12px; border: 1px solid #363b48; text-align: left; }
 .markdown-body th { background: #222b3a; color: #f0f6fc; font-weight: 600; }
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}

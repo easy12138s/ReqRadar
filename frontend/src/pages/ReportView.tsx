@@ -106,6 +106,7 @@ export function ReportView() {
       {/* scrollable report content */}
       <div
         ref={scrollRef}
+        className="no-scrollbar"
         style={{
           flex: 1,
           overflow: 'auto',
