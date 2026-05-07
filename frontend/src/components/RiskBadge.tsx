@@ -20,6 +20,10 @@ export function RiskBadge({ level, score, showScore = false }: RiskBadgeProps) {
   }
 
   const config = RISK_CONFIG[level];
+  if (!config) {
+    return <Tag>未知</Tag>;
+  }
+
   const label = showScore && score !== undefined ? `${config.label} (${score})` : config.label;
 
   return <Tag color={config.color}>{label}</Tag>;
