@@ -77,11 +77,7 @@ export default function AppShell() {
             style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}
             onClick={() => navigate('/')}
           >
-            <div style={{
-              width: 28, height: 28,
-              background: 'linear-gradient(135deg, #00d4ff, #7c3aed)',
-              borderRadius: 7,
-            }} />
+            <img src="/logo.svg" alt="ReqRadar" style={{ width: 28, height: 28 }} />
             <span style={{ fontWeight: 700, fontSize: 16, color: '#f0f6fc', letterSpacing: -0.3 }}>
               ReqRadar
             </span>
