@@ -378,3 +378,46 @@ async def resolve_config(
 
     value = await cm.get(key, user_id=current_user.id, project_id=project_id)
     return ConfigResolveResponse(key=key, resolved_value=value, source="default")
+
+
+@router.post("/me/test-llm")
+async def test_llm_connection(
+    body: dict,
+    current_user: CurrentUser,
+):
+    provider = body.get("provider", "openai")
+    api_key = body.get("api_key", "")
+    base_url = body.get("base_url", "https://api.openai.com/v1")
+    model = body.get("model", "gpt-4o-mini")
+
+    if provider == "openai" and not api_key:
+        raise HTTPException(status_code=400, detail="API Key is required")
+
+    import httpx
+
+    async with httpx.AsyncClient(timeout=15) as client:
+        try:
+            resp = await client.post(
+                f"{base_url.rstrip('/')}/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}"},
+                json={
+                    "model": model,
+                    "messages": [{"role": "user", "content": "ping"}],
+                    "max_tokens": 5,
+                },
+            )
+            if resp.status_code == 200:
+                return {"ok": True, "model": model, "message": "API 连接正常"}
+            else:
+                detail = ""
+                try:
+                    detail = resp.json().get("error", {}).get("message", resp.text[:200])
+                except Exception:
+                    detail = resp.text[:200]
+                raise HTTPException(
+                    status_code=400, detail=f"API error ({resp.status_code}): {detail}"
+                )
+        except httpx.ConnectError:
+            raise HTTPException(status_code=400, detail="无法连接到 API 服务器，请检查 base_url")
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"连接失败: {str(e)[:200]}")

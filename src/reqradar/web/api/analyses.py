@@ -100,6 +100,21 @@ async def submit_analysis(req: AnalysisSubmit, current_user: CurrentUser, db: Db
     if project is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
+    from reqradar.infrastructure.config_manager import ConfigManager
+
+    cm = ConfigManager(db, load_config())
+    provider = await cm.get_str(
+        "llm.provider", user_id=current_user.id, project_id=req.project_id, default="openai"
+    )
+    api_key = await cm.get_str(
+        "llm.api_key", user_id=current_user.id, project_id=req.project_id, default=""
+    )
+    if provider == "openai" and not api_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="LLM API Key 未配置，请先在设置页面配置大模型",
+        )
+
     requirement_text = req.get_text()
 
     if req.requirement_document_id:

@@ -146,11 +146,27 @@ export function LLMConfig() {
           onClick={async () => {
             setTestLoading(true);
             try {
-              const resp = await fetch('/api/auth/me', { headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` } });
+              const values = form.getFieldsValue();
+              const token = localStorage.getItem('access_token');
+              const resp = await fetch('/api/me/test-llm', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                  provider: values.provider || 'openai',
+                  api_key: values.api_key || '',
+                  base_url: values.base_url || 'https://api.openai.com/v1',
+                  model: values.model || 'gpt-4o-mini',
+                }),
+              });
               if (resp.ok) {
-                message.success('API 连接正常');
+                const data = await resp.json();
+                message.success(data.message || '连接成功');
               } else {
-                message.error(`连接失败: ${resp.status}`);
+                const err = await resp.json();
+                message.error(err.detail || '连接失败');
               }
             } catch {
               message.error('无法连接到服务器');

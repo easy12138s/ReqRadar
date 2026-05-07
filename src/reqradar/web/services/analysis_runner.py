@@ -172,6 +172,11 @@ class AnalysisRunner:
             default=config.llm.base_url or "https://api.openai.com/v1",
         )
 
+        if provider == "openai" and not llm_api_key:
+            raise ValueError(
+                "LLM API key not configured. Please configure llm.api_key in Settings > LLM Config."
+            )
+
         llm_kwargs = {
             "openai": {
                 "api_key": llm_api_key,
