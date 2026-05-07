@@ -265,18 +265,22 @@ export interface UserPreference {
   focus_areas: string[];
 }
 
-export interface ProjectProfile {
-  description: string;
-  architecture_style: string;
-  tech_stack: {
-    languages: string[];
-    frameworks: string[];
-    key_dependencies: string[];
-  };
+export interface ProjectProfileData {
+  name: string;
+  overview: string;
+  tech_stack: Record<string, string[]>;
   modules: Array<{
     name: string;
     responsibility: string;
     key_classes: string[];
     dependencies: string[];
   }>;
+  terms: Array<{ term: string; definition: string; domain: string }>;
+  constraints: Array<{ description: string; type: string }>;
+  changelog: Array<{ date: string; description: string }>;
+}
+
+export interface ProjectProfile {
+  content: string;
+  data: ProjectProfileData;
 }
