@@ -227,20 +227,20 @@ async def get_analysis(task_id: int, current_user: CurrentUser, db: DbSession):
     if task is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analysis task not found")
 
-        step_summary = None
-        if task.context_json:
-            try:
-                ctx = task.context_json
-                step_results = ctx.get("step_results", {})
-                step_summary = {
-                    name: {
-                        "success": r.get("success", False),
-                        "confidence": r.get("confidence", 0.0),
-                    }
-                    for name, r in step_results.items()
+    step_summary = None
+    if task.context_json:
+        try:
+            ctx = task.context_json
+            step_results = ctx.get("step_results", {})
+            step_summary = {
+                name: {
+                    "success": r.get("success", False),
+                    "confidence": r.get("confidence", 0.0),
                 }
-            except AttributeError:
-                pass
+                for name, r in step_results.items()
+            }
+        except AttributeError:
+            pass
 
     response = AnalysisDetailResponse.model_validate(task)
     response.step_summary = step_summary
