@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Card, Row, Col, Typography, Button, List, Tag, Space } from 'antd';
+import { Card, Row, Col, Typography, Button, List, Tag, Space, Modal, Form, Input, message } from 'antd';
 import {
   ProjectOutlined, TagsOutlined, AppstoreOutlined,
   ExclamationCircleOutlined, PlusOutlined, ExperimentOutlined,
-  FileTextOutlined, SettingOutlined,
+  FileTextOutlined, SettingOutlined, UserAddOutlined,
 } from '@ant-design/icons';
 import { getProjects, getProjectMemory } from '../api/projects';
 import { getProjectProfile, getPendingChanges } from '../api/profile';
+import { register } from '../api/auth';
 import SkeletonStat from '../components/SkeletonStat';
 import SkeletonCard from '../components/SkeletonCard';
 
@@ -27,6 +28,28 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [error, setError] = useState(false);
+  const [addUserOpen, setAddUserOpen] = useState(false);
+  const [addUserLoading, setAddUserLoading] = useState(false);
+  const [addUserForm] = Form.useForm();
+
+  const handleAddUser = async (values: { email: string; display_name: string }) => {
+    setAddUserLoading(true);
+    try {
+      await register({
+        email: values.email,
+        display_name: values.display_name,
+        password: 'User12138%',
+      });
+      message.success(`用户 ${values.email} 创建成功，默认密码: User12138%`);
+      setAddUserOpen(false);
+      addUserForm.resetFields();
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { detail?: string; message?: string } }; message?: string };
+      message.error(err.response?.data?.detail || err.response?.data?.message || err.message || '创建失败');
+    } finally {
+      setAddUserLoading(false);
+    }
+  };
 
   useEffect(() => {
     async function load() {
@@ -209,8 +232,46 @@ export default function Dashboard() {
           <Button icon={<SettingOutlined />} onClick={() => navigate('/settings/llm')}>
             配置 LLM
           </Button>
+          <Button icon={<UserAddOutlined />} onClick={() => setAddUserOpen(true)}>
+            添加用户
+          </Button>
         </Space>
       </Card>
+
+      <Modal
+        title="添加用户"
+        open={addUserOpen}
+        onCancel={() => { setAddUserOpen(false); addUserForm.resetFields(); }}
+        footer={null}
+      >
+        <Form form={addUserForm} layout="vertical" onFinish={handleAddUser}>
+          <Form.Item
+            label="邮箱"
+            name="email"
+            rules={[
+              { required: true, message: '请输入邮箱' },
+              { type: 'email', message: '请输入有效的邮箱地址' },
+            ]}
+          >
+            <Input placeholder="请输入邮箱" />
+          </Form.Item>
+          <Form.Item
+            label="显示名称"
+            name="display_name"
+            rules={[{ required: true, message: '请输入显示名称' }]}
+          >
+            <Input placeholder="请输入显示名称" />
+          </Form.Item>
+          <div style={{ marginBottom: 16, padding: '8px 12px', background: 'rgba(0,212,255,0.08)', borderRadius: 8, fontSize: 13, color: '#00d4ff' }}>
+            默认密码: <strong>User12138%</strong>
+          </div>
+          <Form.Item>
+            <Button type="primary" htmlType="submit" loading={addUserLoading} block>
+              确认添加
+            </Button>
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   );
 }
