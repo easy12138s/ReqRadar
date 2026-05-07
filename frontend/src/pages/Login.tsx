@@ -49,7 +49,7 @@ export function Login() {
         style={{ width: 400 }}
       >
         <div style={{ textAlign: 'center', marginBottom: 24 }}>
-          <img src="/logo.svg" alt="ReqRadar" style={{ width: 48, height: 48, margin: '0 auto 16px' }} />
+          <img src="/app/logo.svg" alt="ReqRadar" style={{ width: 48, height: 48, margin: '0 auto 16px', display: 'block' }} />
           <Title level={3} style={{ margin: 0, color: '#f0f6fc' }}>
             ReqRadar
           </Title>
