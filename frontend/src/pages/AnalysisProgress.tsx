@@ -152,7 +152,7 @@ export function AnalysisProgress() {
         }}
       >
         <Title level={3} style={{ margin: 0 }}>
-          分析 #{task.id.slice(0, 8)}
+          分析 #{String(task.id).slice(0, 8)}
         </Title>
         <Space>
           {isFailed && (

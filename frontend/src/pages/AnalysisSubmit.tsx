@@ -162,6 +162,7 @@ export function AnalysisSubmit() {
               type="primary"
               htmlType="submit"
               loading={submitting}
+              disabled={submitting}
               icon={<SendOutlined />}
             >
               提交分析
