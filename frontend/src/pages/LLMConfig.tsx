@@ -139,11 +139,10 @@ export function LLMConfig() {
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-        <Title level={3} style={{ margin: 0 }}>大模型配置</Title>
-        <Button
-          size="small"
-          loading={testLoading}
-          onClick={async () => {
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <Button
+            loading={testLoading}
+            onClick={async () => {
             setTestLoading(true);
             try {
               const values = form.getFieldsValue();
@@ -177,6 +176,8 @@ export function LLMConfig() {
         >
           测试连接
         </Button>
+        <Title level={3} style={{ margin: 0 }}>大模型配置</Title>
+        </div>
       </div>
       <Alert
         message="提示"

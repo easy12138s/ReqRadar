@@ -137,18 +137,10 @@ class ChatbackService:
         ]
 
         try:
-            from reqradar.agent.llm_utils import _call_llm_structured
-
-            result = await _call_llm_structured(
-                self.llm_client,
-                messages,
-                {
-                    "type": "object",
-                    "properties": {"reply": {"type": "string"}, "evidence_refs": {"type": "array"}},
-                },
-            )
-            if result and "reply" in result:
-                return result["reply"]
+            response = await self.llm_client.complete(messages)
+            if response and response.strip():
+                return response.strip()
+            logger.warning("Chatback LLM call returned empty response")
         except Exception as e:
             logger.warning("Chatback LLM call failed: %s, using fallback", e)
 
