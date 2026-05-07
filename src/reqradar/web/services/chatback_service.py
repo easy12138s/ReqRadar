@@ -84,7 +84,9 @@ class ChatbackService:
             intent_type=intent,
         )
 
-        reply = await self._generate_reply(agent, report_data, context_snapshot, user_message, intent)
+        reply = await self._generate_reply(
+            agent, report_data, context_snapshot, user_message, intent
+        )
 
         agent_reply = ReportChat(
             task_id=task_id,
@@ -121,7 +123,9 @@ class ChatbackService:
         intent: str,
     ) -> str:
         if self.llm_client is None:
-            return self._generate_fallback_reply(report_data, context_snapshot, user_message, intent)
+            return self._generate_fallback_reply(
+                report_data, context_snapshot, user_message, intent
+            )
 
         system_prompt = build_chatback_system_prompt(
             report_data=report_data,
@@ -134,10 +138,14 @@ class ChatbackService:
 
         try:
             from reqradar.agent.llm_utils import _call_llm_structured
+
             result = await _call_llm_structured(
                 self.llm_client,
                 messages,
-                {"type": "object", "properties": {"reply": {"type": "string"}, "evidence_refs": {"type": "array"}}},
+                {
+                    "type": "object",
+                    "properties": {"reply": {"type": "string"}, "evidence_refs": {"type": "array"}},
+                },
             )
             if result and "reply" in result:
                 return result["reply"]
@@ -153,28 +161,7 @@ class ChatbackService:
         user_message: str,
         intent: str,
     ) -> str:
-        evidence_list = context_snapshot.get("evidence_list", [])
-        dimension_status = context_snapshot.get("dimension_status", {})
-        report_risk = report_data.get("risk_level", "unknown")
-
-        evidence_text = ""
-        if evidence_list:
-            evidence_text = "\n".join(
-                f"- [{ev.get('id', '?')}] ({ev.get('type', '?')}) {ev.get('source', '?')}: {ev.get('content', '?')[:100]}"
-                for ev in evidence_list[:5]
-            )
-        dimension_text = "\n".join(f"- {k}: {v}" for k, v in dimension_status.items())
-
-        if intent == "explain":
-            return f"根据当前分析，风险等级为{report_risk}。\n\n分析基于以下证据：\n{evidence_text}\n\n各维度状态：\n{dimension_text}"
-        elif intent == "correct":
-            return "感谢您的纠正。我可以基于新的信息调整分析。如果您保存为新版本，修改将被记录。当前证据：\n" + evidence_text
-        elif intent == "deepen":
-            return f"我可以进一步分析。当前已收集 {len(evidence_list)} 条证据，各维度状态：\n{dimension_text}\n\n请问我需要关注哪些具体的方面？"
-        elif intent == "explore":
-            return "我可以调用工具探索更多代码信息。当前已访问的文件：\n" + "\n".join(f"- {f}" for f in context_snapshot.get("visited_files", [])[:10])
-        else:
-            return f"当前报告风险等级: {report_risk}。\n已收集 {len(evidence_list)} 条证据。"
+        return "LLM 未配置或调用失败，无法生成智能回复。请在设置页面配置大模型后再试。"
 
     async def save_as_new_version(
         self,
