@@ -1,18 +1,13 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  Card,
   Button,
   Typography,
   Spin,
   Empty,
-  Anchor,
   message,
 } from 'antd';
-import {
-  ArrowLeftOutlined,
-  DownloadOutlined,
-} from '@ant-design/icons';
+import { ArrowLeftOutlined, DownloadOutlined } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import type { Report } from '@/types/api';
 import { getReport, getReportMarkdown } from '@/api/reports';
@@ -27,12 +22,12 @@ export function ReportView() {
   const [report, setReport] = useState<Report | null>(null);
   const [markdown, setMarkdown] = useState('');
   const [loading, setLoading] = useState(true);
-  const contentRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const fetchReport = async () => {
-      if (!taskId) return;
-      setLoading(true);
+    if (!taskId) return;
+    setLoading(true);
+    (async () => {
       try {
         const [reportData, mdData] = await Promise.all([
           getReport(taskId),
@@ -45,8 +40,7 @@ export function ReportView() {
       } finally {
         setLoading(false);
       }
-    };
-    fetchReport();
+    })();
   }, [taskId]);
 
   const handleDownload = () => {
@@ -66,7 +60,7 @@ export function ReportView() {
 
   if (loading) {
     return (
-      <div style={{ textAlign: 'center', padding: 48 }}>
+      <div style={{ textAlign: 'center', padding: 80 }}>
         <Spin size="large" />
       </div>
     );
@@ -76,69 +70,72 @@ export function ReportView() {
     return <Empty description="报告未找到" />;
   }
 
-  const tocItems = [
-    { key: 'report', href: '#report-content', title: '报告' },
-  ];
-
   return (
-    <div>
+    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 80px)' }}>
+      {/* top bar */}
       <div
+        className="glass"
         style={{
           display: 'flex',
-          justifyContent: 'space-between',
           alignItems: 'center',
-          marginBottom: 24,
+          justifyContent: 'space-between',
+          padding: '12px 20px',
+          borderBottom: '1px solid #363b48',
+          borderRadius: '12px 12px 0 0',
+          flexShrink: 0,
         }}
       >
-        <Title level={3} style={{ margin: 0 }}>
-          分析报告
-        </Title>
-        <div>
-          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/analyses')} style={{ marginRight: 8 }}>
-            返回
-          </Button>
-          <Button icon={<DownloadOutlined />} onClick={handleDownload}>
-            下载 MD
-          </Button>
-        </div>
-      </div>
-
-      <Card style={{ marginBottom: 24 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <Button
+            type="text"
+            icon={<ArrowLeftOutlined />}
+            onClick={() => navigate('/analyses')}
+          />
           <div>
-            <Title level={5} style={{ margin: 0 }}>任务 #{report.task_id} 分析报告</Title>
+            <Title level={5} style={{ margin: 0, color: '#f0f6fc' }}>
+              任务 #{report.task_id} 分析报告
+            </Title>
           </div>
           <RiskBadge level={report.risk_level as any} />
         </div>
-      </Card>
+        <Button icon={<DownloadOutlined />} onClick={handleDownload}>
+          下载 MD
+        </Button>
+      </div>
 
-      <div style={{ display: 'flex', gap: 24 }}>
-        <div style={{ width: 180, flexShrink: 0 }}>
-          <Anchor
-            items={tocItems}
-            onClick={(e, link) => {
-              e.preventDefault();
-              const el = document.getElementById(link.href.split('#')[1]);
-              if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }}
-          />
-        </div>
-        <div style={{ flex: 1 }} ref={contentRef}>
-          <Card id="report-content">
+      {/* scrollable report content */}
+      <div
+        ref={scrollRef}
+        style={{
+          flex: 1,
+          overflow: 'auto',
+          padding: '32px 24px',
+          background: '#0d1117',
+        }}
+      >
+        <div style={{ maxWidth: 860, margin: '0 auto' }}>
+          {markdown ? (
             <div className="markdown-body">
-              {markdown ? (
-                <ReactMarkdown>{markdown}</ReactMarkdown>
-              ) : (
-                <Empty description="报告内容为空" />
-              )}
+              <ReactMarkdown>{markdown}</ReactMarkdown>
             </div>
-          </Card>
+          ) : (
+            <Empty description="报告内容为空" />
+          )}
         </div>
       </div>
 
-      <Card title="追问" style={{ marginTop: 24 }}>
+      {/* fixed bottom chat */}
+      <div
+        style={{
+          borderTop: '1px solid #363b48',
+          background: '#0d1117',
+          flexShrink: 0,
+          maxHeight: '40vh',
+          overflow: 'auto',
+        }}
+      >
         <ChatPanel taskId={taskId} />
-      </Card>
+      </div>
     </div>
   );
 }
