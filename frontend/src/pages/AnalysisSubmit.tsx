@@ -55,12 +55,11 @@ export function AnalysisSubmit() {
     fetchProjects();
   }, []);
 
-  const handleTextSubmit = async (values: { project_id: string; text: string }) => {
-    console.log('Form submitted with values:', values);
+  const handleTextSubmit = async (values: { project_id: number; text: string }) => {
     setSubmitting(true);
     try {
       const task = await createAnalysis({
-        project_id: values.project_id,
+        project_id: Number(values.project_id),
         text: values.text,
         depth,
         template_id: templateId,
@@ -120,7 +119,7 @@ export function AnalysisSubmit() {
           form={textForm}
           onFinish={handleTextSubmit}
           onFinishFailed={(errorInfo) => {
-            console.warn('Form validation failed:', errorInfo);
+            message.error('请填写必填字段：' + errorInfo.errorFields.map((f: any) => f.name.join('.')).join(', '));
           }}
           layout="vertical"
         >

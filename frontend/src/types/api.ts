@@ -111,7 +111,7 @@ export interface AnalysisTask {
 }
 
 export interface AnalysisCreate {
-  project_id: string;
+  project_id: number;
   text?: string;
   depth?: AnalysisDepth;
   template_id?: string;

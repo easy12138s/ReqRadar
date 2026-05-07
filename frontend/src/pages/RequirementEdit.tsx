@@ -19,6 +19,7 @@ export default function RequirementEdit() {
   const [analysisModalOpen, setAnalysisModalOpen] = useState(false);
   const [analysisDepth, setAnalysisDepth] = useState('standard');
   const [submitting, setSubmitting] = useState(false);
+  const [projectId, setProjectId] = useState<number>(0);
 
   useEffect(() => {
     if (!id) return;
@@ -27,6 +28,7 @@ export default function RequirementEdit() {
         const doc = await getRequirement(Number(id));
         setTitle(doc.title);
         setText(doc.consolidated_text);
+        setProjectId(doc.project_id);
       } catch {
         message.error('加载需求文档失败');
       } finally {
@@ -51,7 +53,7 @@ export default function RequirementEdit() {
     setSubmitting(true);
     try {
       const task = await createAnalysis({
-        project_id: '',
+        project_id: projectId,
         requirement_document_id: Number(id),
         depth: analysisDepth as any,
       });

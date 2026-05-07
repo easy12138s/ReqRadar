@@ -8,6 +8,7 @@ export interface SourceFile {
 
 export interface RequirementDocument {
   id: number;
+  project_id: number;
   title: string;
   consolidated_text: string;
   source_files: SourceFile[];
