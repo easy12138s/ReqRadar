@@ -17,7 +17,6 @@ import ReactMarkdown from 'react-markdown';
 import type { Report } from '@/types/api';
 import { getReport, getReportMarkdown } from '@/api/reports';
 import { RiskBadge } from '@/components/RiskBadge';
-import { ChatPanel } from '@/components/ChatPanel';
 
 const { Title } = Typography;
 
@@ -136,9 +135,6 @@ export function ReportView() {
         </div>
       </div>
 
-      <Card title="追问" style={{ marginTop: 24 }}>
-        <ChatPanel taskId={taskId} />
-      </Card>
     </div>
   );
 }
