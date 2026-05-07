@@ -89,14 +89,12 @@ export function LLMConfig() {
           return { field, value: undefined };
         }
       });
-
       const results = await Promise.all(promises);
       results.forEach(({ field, value }) => {
         if (value !== undefined) {
           (values as Record<string, unknown>)[field] = value;
         }
       });
-
       form.setFieldsValue({ ...DEFAULT_VALUES, ...values });
     } catch {
       message.error('加载配置失败');
@@ -112,20 +110,44 @@ export function LLMConfig() {
         const value = values[field as keyof LLMFormValues];
         if (value !== undefined && value !== '') {
           const valueType = typeof value === 'number' ? 'int' : typeof value === 'boolean' ? 'bool' : 'str';
-          await setUserConfig(key, {
-            value,
-            value_type: valueType,
-            is_sensitive: key.includes('api_key'),
-          });
+          await setUserConfig(key, { value, value_type: valueType, is_sensitive: key.includes('api_key') });
         }
       });
-
       await Promise.all(promises);
       message.success('配置已保存');
     } catch {
       message.error('保存配置失败');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleTest = async () => {
+    setTestLoading(true);
+    try {
+      const values = form.getFieldsValue();
+      const token = localStorage.getItem('access_token');
+      const resp = await fetch('/api/me/test-llm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({
+          provider: values.provider || 'openai',
+          api_key: values.api_key || '',
+          base_url: values.base_url || 'https://api.openai.com/v1',
+          model: values.model || 'gpt-4o-mini',
+        }),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        message.success(data.message || '连接成功');
+      } else {
+        const err = await resp.json();
+        message.error(err.detail || '连接失败');
+      }
+    } catch {
+      message.error('无法连接到服务器');
+    } finally {
+      setTestLoading(false);
     }
   };
 
@@ -138,54 +160,29 @@ export function LLMConfig() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <Button
-            loading={testLoading}
-            onClick={async () => {
-            setTestLoading(true);
-            try {
-              const values = form.getFieldsValue();
-              const token = localStorage.getItem('access_token');
-              const resp = await fetch('/api/me/test-llm', {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${token}`,
-                },
-                body: JSON.stringify({
-                  provider: values.provider || 'openai',
-                  api_key: values.api_key || '',
-                  base_url: values.base_url || 'https://api.openai.com/v1',
-                  model: values.model || 'gpt-4o-mini',
-                }),
-              });
-              if (resp.ok) {
-                const data = await resp.json();
-                message.success(data.message || '连接成功');
-              } else {
-                const err = await resp.json();
-                message.error(err.detail || '连接失败');
-              }
-            } catch {
-              message.error('无法连接到服务器');
-            } finally {
-              setTestLoading(false);
-            }
-          }}
-        >
-          测试连接
-        </Button>
-        <Title level={3} style={{ margin: 0 }}>大模型配置</Title>
-        </div>
-      </div>
+      <Title level={3}>大模型配置</Title>
+
       <Alert
-        message="提示"
-        description="此处配置的用户级配置优先级高于系统配置文件 (.reqradar.yaml)。API Key 等敏感信息将以掩码形式显示。"
+        message="用户级配置优先级高于系统配置文件 (.reqradar.yaml)，API Key 等敏感信息保存后以掩码形式显示。"
         type="info"
         showIcon
-        style={{ marginBottom: 24 }}
+        style={{ marginBottom: 12 }}
       />
+
+      <Space style={{ marginBottom: 24 }}>
+        <Button onClick={handleTest} loading={testLoading}>
+          测试连接
+        </Button>
+        <Button type="primary" icon={<SaveOutlined />} onClick={() => form.submit()} loading={saving}>
+          保存配置
+        </Button>
+        <Button icon={<ReloadOutlined />} onClick={handleReset}>
+          重置为默认
+        </Button>
+        <Button onClick={loadConfigs}>
+          重新加载
+        </Button>
+      </Space>
 
       <Form
         form={form}
@@ -195,85 +192,48 @@ export function LLMConfig() {
         disabled={loading}
       >
         <Card title="文本分析模型" style={{ marginBottom: 16 }}>
-          <Form.Item
-            label="LLM 提供商"
-            name="provider"
-            rules={[{ required: true, message: '请选择提供商' }]}
-          >
+          <Form.Item label="LLM 提供商" name="provider" rules={[{ required: true, message: '请选择提供商' }]}>
             <Select options={LLM_PROVIDERS} />
           </Form.Item>
-
-          <Form.Item
-            label="模型名称"
-            name="model"
-            rules={[{ required: true, message: '请输入模型名称' }]}
-          >
+          <Form.Item label="模型名称" name="model" rules={[{ required: true, message: '请输入模型名称' }]}>
             <Input placeholder="例如: gpt-4o-mini" />
           </Form.Item>
-
-          <Form.Item
-            label="API Key"
-            name="api_key"
-            tooltip="敏感信息，保存后以掩码形式显示"
-          >
+          <Form.Item label="API Key" name="api_key" tooltip="敏感信息，保存后以掩码形式显示">
             <Input.Password
               placeholder="sk-..."
               visibilityToggle={{ visible: !apiKeyHidden, onVisibleChange: (v) => setApiKeyHidden(!v) }}
             />
           </Form.Item>
-
-          <Form.Item
-            label="Base URL"
-            name="base_url"
-            tooltip="OpenAI 兼容的 API 地址"
-          >
+          <Form.Item label="Base URL" name="base_url" tooltip="OpenAI 兼容的 API 地址">
             <Input placeholder="https://api.openai.com/v1" />
           </Form.Item>
-
           <Space size={16}>
-            <Form.Item label="超时时间 (秒)" name="timeout">
+            <Form.Item label="超时 (秒)" name="timeout">
               <InputNumber min={1} max={300} style={{ width: 120 }} />
             </Form.Item>
-            <Form.Item label="最大重试次数" name="max_retries">
+            <Form.Item label="最大重试" name="max_retries">
               <InputNumber min={0} max={10} style={{ width: 120 }} />
             </Form.Item>
           </Space>
         </Card>
 
         <Card title="视觉分析模型" style={{ marginBottom: 16 }}>
-          <Form.Item
-            label="视觉 LLM 提供商"
-            name="vision_provider"
-          >
+          <Form.Item label="视觉 LLM 提供商" name="vision_provider">
             <Select options={LLM_PROVIDERS} />
           </Form.Item>
-
-          <Form.Item
-            label="视觉模型名称"
-            name="vision_model"
-          >
+          <Form.Item label="视觉模型名称" name="vision_model">
             <Input placeholder="例如: gpt-4o" />
           </Form.Item>
-
-          <Form.Item
-            label="API Key"
-            name="vision_api_key"
-            tooltip="可与文本分析模型共用"
-          >
+          <Form.Item label="API Key" name="vision_api_key" tooltip="可与文本分析模型共用">
             <Input.Password
               placeholder="sk-..."
               visibilityToggle={{ visible: !visionApiKeyHidden, onVisibleChange: (v) => setVisionApiKeyHidden(!v) }}
             />
           </Form.Item>
-
-          <Form.Item
-            label="Base URL"
-            name="vision_base_url"
-          >
+          <Form.Item label="Base URL" name="vision_base_url">
             <Input placeholder="https://api.openai.com/v1" />
           </Form.Item>
-
-          <Form.Item label="超时时间 (秒)" name="vision_timeout">
+          <Form.Item label="超时 (秒)" name="vision_timeout">
             <InputNumber min={1} max={300} style={{ width: 120 }} />
           </Form.Item>
         </Card>
@@ -287,46 +247,16 @@ export function LLMConfig() {
             style={{ marginBottom: 16 }}
           />
         )}
-
-        <Form.Item>
-          <Space>
-            <Button type="primary" htmlType="submit" icon={<SaveOutlined />} loading={saving}>
-              保存配置
-            </Button>
-            <Button icon={<ReloadOutlined />} onClick={handleReset}>
-              重置为默认
-            </Button>
-            <Button onClick={loadConfigs}>
-              重新加载
-            </Button>
-          </Space>
-        </Form.Item>
       </Form>
 
       <Divider />
       <Card title="配置优先级说明" size="small">
         <Space direction="vertical" style={{ width: '100%' }}>
-          <Text>配置值按以下优先级从高到低解析：</Text>
-          <Space>
-            <Tag color="red">1. 用户级配置</Tag>
-            <Text type="secondary">（即本页面设置的值）</Text>
-          </Space>
-          <Space>
-            <Tag color="orange">2. 项目级配置</Tag>
-            <Text type="secondary">（项目设置页面）</Text>
-          </Space>
-          <Space>
-            <Tag color="blue">3. 系统级配置</Tag>
-            <Text type="secondary">（管理员设置）</Text>
-          </Space>
-          <Space>
-            <Tag>4. 配置文件</Tag>
-            <Text type="secondary">（.reqradar.yaml）</Text>
-          </Space>
-          <Space>
-            <Tag color="default">5. 默认值</Tag>
-            <Text type="secondary">（代码内置默认值）</Text>
-          </Space>
+          <Space><Tag color="red">1. 用户级配置</Tag><Text type="secondary">（本页面）</Text></Space>
+          <Space><Tag color="orange">2. 项目级配置</Tag><Text type="secondary">（项目设置）</Text></Space>
+          <Space><Tag color="blue">3. 系统级配置</Tag><Text type="secondary">（管理员设置）</Text></Space>
+          <Space><Tag>4. 配置文件</Tag><Text type="secondary">（.reqradar.yaml）</Text></Space>
+          <Space><Tag color="default">5. 默认值</Tag><Text type="secondary">（代码默认值）</Text></Space>
         </Space>
       </Card>
     </div>
