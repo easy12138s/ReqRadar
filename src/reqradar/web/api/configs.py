@@ -45,6 +45,7 @@ class ConfigResolveResponse(BaseModel):
 # 依赖：管理员权限
 # ------------------------------------------------------------------
 
+
 async def _get_admin_user(
     token: str = Depends(lambda: None),
     db: AsyncSession = Depends(get_db),
@@ -65,6 +66,7 @@ AdminUser = Annotated[User, Depends(_get_admin_user)]
 # 序列化辅助
 # ------------------------------------------------------------------
 
+
 def _serialize_config_row(row) -> dict:
     value = row.config_value
     if row.is_sensitive:
@@ -81,6 +83,7 @@ def _serialize_config_row(row) -> dict:
 # ------------------------------------------------------------------
 # 系统级配置 API（管理员权限）
 # ------------------------------------------------------------------
+
 
 @router.get("/configs/system", response_model=list[ConfigValueResponse])
 async def list_system_configs(
@@ -118,7 +121,9 @@ async def set_system_config(
         result = await db.execute(select(SystemConfig).where(SystemConfig.config_key == key))
         existing = result.scalar_one_or_none()
         if existing is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Config not found, value required")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Config not found, value required"
+            )
         return _serialize_config_row(existing)
 
     if req.value == "":
@@ -154,12 +159,15 @@ async def delete_system_config(
 # 项目级配置 API（项目所有者权限）
 # ------------------------------------------------------------------
 
+
 async def _check_project_access(project_id: int, user_id: int, db: AsyncSession):
     result = await db.execute(
         select(Project).where(Project.id == project_id, Project.owner_id == user_id)
     )
     if result.scalar_one_or_none() is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found or access denied")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Project not found or access denied"
+        )
 
 
 @router.get("/projects/{project_id}/configs", response_model=list[ConfigValueResponse])
@@ -212,7 +220,9 @@ async def set_project_config(
         )
         existing = result.scalar_one_or_none()
         if existing is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Config not found, value required")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Config not found, value required"
+            )
         return _serialize_config_row(existing)
 
     if req.value == "":
@@ -250,6 +260,7 @@ async def delete_project_config(
 # 用户级配置 API（本人权限）
 # ------------------------------------------------------------------
 
+
 @router.get("/me/configs", response_model=list[ConfigValueResponse])
 async def list_user_configs(
     db: DbSession,
@@ -266,13 +277,9 @@ async def get_user_config(
     db: DbSession,
     current_user: CurrentUser,
 ):
-    result = await db.execute(
-        select(UserConfig).where(UserConfig.user_id == current_user.id, UserConfig.config_key == key)
-    )
-    row = result.scalar_one_or_none()
-    if row is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Config not found")
-    return _serialize_config_row(row)
+    cm = ConfigManager(db, load_config())
+    value = await cm.get(key, user_id=current_user.id)
+    return {"key": key, "value": value, "value_type": "string", "is_sensitive": False}
 
 
 @router.put("/me/configs/{key:path}", response_model=ConfigValueResponse)
@@ -286,11 +293,15 @@ async def set_user_config(
 
     if req.value is None:
         result = await db.execute(
-            select(UserConfig).where(UserConfig.user_id == current_user.id, UserConfig.config_key == key)
+            select(UserConfig).where(
+                UserConfig.user_id == current_user.id, UserConfig.config_key == key
+            )
         )
         existing = result.scalar_one_or_none()
         if existing is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Config not found, value required")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Config not found, value required"
+            )
         return _serialize_config_row(existing)
 
     if req.value == "":
@@ -326,6 +337,7 @@ async def delete_user_config(
 # 配置解析查询 API
 # ------------------------------------------------------------------
 
+
 @router.get("/configs/resolve", response_model=ConfigResolveResponse)
 async def resolve_config(
     current_user: CurrentUser,
@@ -337,7 +349,9 @@ async def resolve_config(
     cm = ConfigManager(db, load_config())
 
     user_result = await db.execute(
-        select(UserConfig).where(UserConfig.user_id == current_user.id, UserConfig.config_key == key)
+        select(UserConfig).where(
+            UserConfig.user_id == current_user.id, UserConfig.config_key == key
+        )
     )
     if user_result.scalar_one_or_none():
         value = await cm.get(key, user_id=current_user.id, project_id=project_id)
