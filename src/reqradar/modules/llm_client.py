@@ -80,6 +80,13 @@ class LLMClient(ABC):
         """发送对话请求"""
         pass
 
+    async def stream_complete(self, messages: list[dict], **kwargs):
+        """流式调用，默认回退到 complete 方法"""
+        result = await self.complete(messages, **kwargs)
+        if result:
+            yield result
+        return
+
     async def complete_vision(self, image_data: bytes, prompt: str, **kwargs) -> str:
         """发送视觉请求（图片+文本）- 默认抛出 NotImplementedError"""
         raise NotImplementedError(f"{self.__class__.__name__} does not support vision")
@@ -262,6 +269,52 @@ class OpenAIClient(LLMClient):
         raise LLMException(
             f"OpenAI API timeout after {self.max_retries + 1} attempts", cause=last_error
         )
+
+    async def stream_complete(self, messages: list[dict], **kwargs):
+        import time
+        import json as _json
+
+        headers = self._build_headers()
+        model_name = kwargs.get("model", self.model)
+
+        payload = {
+            "model": model_name,
+            "messages": messages,
+            "temperature": kwargs.get("temperature", 0.7),
+            "max_tokens": kwargs.get("max_tokens", 2048),
+            "stream": True,
+        }
+        if "stream_options" not in payload:
+            payload["stream_options"] = {}
+
+        t0 = time.monotonic()
+        total_tokens = 0
+
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout + 60) as client:
+                async with client.stream(
+                    "POST",
+                    f"{self.base_url}/chat/completions",
+                    headers=headers,
+                    json=payload,
+                ) as response:
+                    response.raise_for_status()
+                    async for line in response.aiter_lines():
+                        if line.startswith("data: "):
+                            data = line[6:]
+                            if data == "[DONE]":
+                                break
+                            try:
+                                chunk = _json.loads(data)
+                                delta = chunk.get("choices", [{}])[0].get("delta", {})
+                                content = delta.get("content", "")
+                                if content:
+                                    total_tokens += 1
+                                    yield content
+                            except _json.JSONDecodeError:
+                                continue
+        except Exception as e:
+            raise LLMException(f"OpenAI API stream failed: {e}", cause=e)
 
     async def complete_structured(
         self, messages: list[dict], schema: dict, **kwargs

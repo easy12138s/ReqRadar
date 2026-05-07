@@ -218,9 +218,10 @@ export interface ReportVersionDetail extends ReportVersion {
 }
 
 export interface ChatMessage {
-  id: string;
-  role: 'user' | 'assistant';
+  id: number | string;
+  role: 'user' | 'assistant' | 'agent';
   content: string;
+  version_number?: number;
   intent_type?: string;
   created_at: string;
 }
