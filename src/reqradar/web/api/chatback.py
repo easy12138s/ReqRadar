@@ -66,6 +66,15 @@ async def chat(
     if provider == "openai" and not api_key:
         raise HTTPException(status_code=400, detail="LLM API Key 未配置，请先在设置页面配置大模型")
 
+    from reqradar.modules.llm_connectivity import is_llm_reachable
+
+    connectivity = is_llm_reachable(provider, api_key, llm_base_url)
+    if connectivity is False:
+        raise HTTPException(
+            status_code=400,
+            detail="LLM 连接不通，请检查设置页面的 API 配置并使用「测试连接」按钮验证",
+        )
+
     llm_client = create_llm_client(
         provider,
         api_key=api_key,

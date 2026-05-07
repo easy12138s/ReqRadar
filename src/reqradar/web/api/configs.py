@@ -407,8 +407,14 @@ async def test_llm_connection(
                 },
             )
             if resp.status_code == 200:
+                from reqradar.modules.llm_connectivity import mark_llm_reachable
+
+                mark_llm_reachable(provider, api_key, base_url)
                 return {"ok": True, "model": model, "message": "API 连接正常"}
             else:
+                from reqradar.modules.llm_connectivity import mark_llm_unreachable
+
+                mark_llm_unreachable(provider, api_key, base_url)
                 detail = ""
                 try:
                     detail = resp.json().get("error", {}).get("message", resp.text[:200])
@@ -418,6 +424,12 @@ async def test_llm_connection(
                     status_code=400, detail=f"API error ({resp.status_code}): {detail}"
                 )
         except httpx.ConnectError:
+            from reqradar.modules.llm_connectivity import mark_llm_unreachable
+
+            mark_llm_unreachable(provider, api_key, base_url)
             raise HTTPException(status_code=400, detail="无法连接到 API 服务器，请检查 base_url")
         except Exception as e:
+            from reqradar.modules.llm_connectivity import mark_llm_unreachable
+
+            mark_llm_unreachable(provider, api_key, base_url)
             raise HTTPException(status_code=400, detail=f"连接失败: {str(e)[:200]}")

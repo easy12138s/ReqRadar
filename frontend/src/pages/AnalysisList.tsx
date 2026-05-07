@@ -63,9 +63,9 @@ export function AnalysisList() {
 
   const handleRetry = async (id: number) => {
     try {
-      await retryAnalysis(String(id));
+      const res = await retryAnalysis(String(id));
       message.success('正在重试分析');
-      fetchAnalyses();
+      navigate(`/analyses/${res.id}`);
     } catch {
       message.error('重试失败');
     }
