@@ -77,6 +77,7 @@ class AnalysisSubmit(BaseModel):
 class AnalysisResponse(BaseModel):
     id: int
     project_id: int
+    project_name: Optional[str] = None
     user_id: int
     requirement_name: str
     requirement_text: str
