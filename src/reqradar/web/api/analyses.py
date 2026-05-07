@@ -227,8 +227,31 @@ async def list_analyses(
     if status_filter is not None:
         query = query.where(AnalysisTask.status == status_filter)
     query = query.order_by(AnalysisTask.created_at.desc())
-    result = await db.execute(query)
-    return list(result.scalars().all())
+    tasks = (await db.execute(query)).scalars().all()
+
+    project_ids = {t.project_id for t in tasks}
+    projects = {}
+    if project_ids:
+        proj_result = await db.execute(select(Project).where(Project.id.in_(project_ids)))
+        for p in proj_result.scalars().all():
+            projects[p.id] = p.name
+
+    return [
+        {
+            "id": t.id,
+            "project_id": t.project_id,
+            "project_name": projects.get(t.project_id, "Unknown"),
+            "user_id": t.user_id,
+            "requirement_name": t.requirement_name,
+            "requirement_text": t.requirement_text,
+            "status": t.status.value if hasattr(t.status, "value") else str(t.status),
+            "error_message": t.error_message,
+            "started_at": t.started_at.isoformat() if t.started_at else None,
+            "completed_at": t.completed_at.isoformat() if t.completed_at else None,
+            "created_at": t.created_at.isoformat() if t.created_at else None,
+        }
+        for t in tasks
+    ]
 
 
 @router.get("/{task_id}", response_model=AnalysisDetailResponse)

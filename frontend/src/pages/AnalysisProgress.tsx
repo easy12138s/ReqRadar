@@ -182,8 +182,8 @@ export function AnalysisProgress() {
               {task.status}
             </Tag>
           </Descriptions.Item>
-          <Descriptions.Item label="类型">
-            <Tag>{task.input_type}</Tag>
+          <Descriptions.Item label="需求">
+            {task.requirement_name || '-'}
           </Descriptions.Item>
           <Descriptions.Item label="风险">
             <RiskBadge level={task.risk_level} score={task.risk_score} showScore />

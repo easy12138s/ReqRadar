@@ -18,37 +18,31 @@ import {
   ReloadOutlined,
   SearchOutlined,
 } from '@ant-design/icons';
-import type { AnalysisTask, AnalysisStatus, RiskLevel } from '@/types/api';
+import type { AnalysisTask } from '@/types/api';
 import { getAnalyses, retryAnalysis } from '@/api/analyses';
-import { RiskBadge } from '@/components/RiskBadge';
 
 const { Title } = Typography;
-const { Option } = Select;
 
-const STATUS_COLORS: Record<AnalysisStatus, string> = {
+const STATUS_COLORS: Record<string, string> = {
   pending: 'default',
-  queued: 'processing',
-  extracting_requirements: 'processing',
-  analyzing_risks: 'warning',
-  generating_report: 'warning',
+  running: 'processing',
   completed: 'success',
   failed: 'error',
+  cancelled: 'warning',
 };
 
-const STATUS_LABELS: Record<AnalysisStatus, string> = {
+const STATUS_LABELS: Record<string, string> = {
   pending: '等待中',
-  queued: '排队中',
-  extracting_requirements: '提取需求',
-  analyzing_risks: '风险分析',
-  generating_report: '生成报告',
+  running: '运行中',
   completed: '已完成',
   failed: '失败',
+  cancelled: '已取消',
 };
 
 export function AnalysisList() {
   const [analyses, setAnalyses] = useState<AnalysisTask[]>([]);
   const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState<AnalysisStatus | 'all'>('all');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
   const [searchText, setSearchText] = useState('');
   const navigate = useNavigate();
 
@@ -68,9 +62,9 @@ export function AnalysisList() {
     fetchAnalyses();
   }, []);
 
-  const handleRetry = async (id: string) => {
+  const handleRetry = async (id: number) => {
     try {
-      await retryAnalysis(id);
+      await retryAnalysis(String(id));
       message.success('正在重试分析');
       fetchAnalyses();
     } catch {
@@ -82,61 +76,58 @@ export function AnalysisList() {
     const matchesStatus = statusFilter === 'all' || a.status === statusFilter;
     const matchesSearch =
       !searchText ||
-      a.input_preview.toLowerCase().includes(searchText.toLowerCase());
+      a.requirement_name?.toLowerCase().includes(searchText.toLowerCase()) ||
+      a.project_name?.toLowerCase().includes(searchText.toLowerCase());
     return matchesStatus && matchesSearch;
   });
 
   const columns = [
     {
-      title: 'ID',
-      dataIndex: 'id',
-      key: 'id',
+      title: '需求名称',
+      dataIndex: 'requirement_name',
+      key: 'requirement_name',
       ellipsis: true,
-      width: 80,
+      render: (v: string) => <span style={{ color: '#e2e8f0' }}>{v || '-'}</span>,
     },
     {
-      title: '预览',
-      dataIndex: 'input_preview',
-      key: 'input_preview',
-      ellipsis: true,
-    },
-    {
-      title: '类型',
-      dataIndex: 'input_type',
-      key: 'input_type',
-      render: (v: string) => <Tag>{v}</Tag>,
-      width: 80,
+      title: '项目',
+      dataIndex: 'project_name',
+      key: 'project_name',
+      render: (v: string) => <Tag>{v || '-'}</Tag>,
+      width: 120,
     },
     {
       title: '状态',
       dataIndex: 'status',
       key: 'status',
-      render: (status: AnalysisStatus) => (
-        <Tag color={STATUS_COLORS[status]}>{STATUS_LABELS[status]}</Tag>
+      render: (status: string) => (
+        <Tag color={STATUS_COLORS[status] || 'default'}>
+          {STATUS_LABELS[status] || status}
+        </Tag>
       ),
-      width: 120,
-    },
-    {
-      title: '风险',
-      dataIndex: 'risk_level',
-      key: 'risk_level',
-      render: (level: RiskLevel, record: AnalysisTask) => (
-        <RiskBadge level={level} score={record.risk_score} showScore />
-      ),
-      width: 120,
+      width: 100,
     },
     {
       title: '创建时间',
       dataIndex: 'created_at',
       key: 'created_at',
       render: (v: string) => new Date(v).toLocaleString(),
-      width: 180,
+      width: 170,
     },
     {
       title: '操作',
       key: 'actions',
       render: (_: unknown, record: AnalysisTask) => (
         <Space>
+          {record.status === 'completed' && (
+            <Button
+              type="primary"
+              size="small"
+              onClick={() => navigate(`/reports/${record.id}`)}
+            >
+              查看报告
+            </Button>
+          )}
           <Button
             type="text"
             icon={<EyeOutlined />}
@@ -152,7 +143,7 @@ export function AnalysisList() {
           )}
         </Space>
       ),
-      width: 100,
+      width: 180,
     },
   ];
 
@@ -176,7 +167,7 @@ export function AnalysisList() {
 
       <Space style={{ marginBottom: 16 }} wrap>
         <Input
-          placeholder="搜索..."
+          placeholder="搜索需求名称或项目..."
           prefix={<SearchOutlined />}
           value={searchText}
           onChange={(e) => setSearchText(e.target.value)}
@@ -188,14 +179,12 @@ export function AnalysisList() {
           onChange={setStatusFilter}
           style={{ width: 140 }}
         >
-          <Option value="all">全部状态</Option>
-          <Option value="pending">等待中</Option>
-          <Option value="queued">排队中</Option>
-          <Option value="extracting_requirements">提取需求</Option>
-          <Option value="analyzing_risks">风险分析</Option>
-          <Option value="generating_report">生成报告</Option>
-          <Option value="completed">已完成</Option>
-          <Option value="failed">失败</Option>
+          <Select.Option value="all">全部状态</Select.Option>
+          <Select.Option value="pending">等待中</Select.Option>
+          <Select.Option value="running">运行中</Select.Option>
+          <Select.Option value="completed">已完成</Select.Option>
+          <Select.Option value="failed">失败</Select.Option>
+          <Select.Option value="cancelled">已取消</Select.Option>
         </Select>
       </Space>
 

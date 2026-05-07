@@ -95,19 +95,19 @@ export type AnalysisStatus =
 export type RiskLevel = 'low' | 'medium' | 'high' | 'critical';
 
 export interface AnalysisTask {
-  id: string;
-  project_id: string;
+  id: number;
+  project_id: number;
+  project_name: string;
+  requirement_name: string;
+  requirement_text: string;
   status: AnalysisStatus;
-  input_type: 'text' | 'file';
-  input_preview: string;
   risk_level?: RiskLevel;
   risk_score?: number;
-  created_at: string;
-  updated_at: string;
-  completed_at?: string;
   error_message?: string;
   depth?: AnalysisDepth;
-  current_version?: number;
+  created_at: string;
+  started_at?: string;
+  completed_at?: string;
 }
 
 export interface AnalysisCreate {
