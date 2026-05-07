@@ -134,7 +134,7 @@ async def submit_analysis(req: AnalysisSubmit, current_user: CurrentUser, db: Db
 @router.post("/upload", response_model=AnalysisResponse, status_code=status.HTTP_201_CREATED)
 async def submit_analysis_upload(
     project_id: int = Form(...),
-    requirement_name: str = Form(...),
+    requirement_name: str = Form(default=""),
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -175,7 +175,7 @@ async def submit_analysis_upload(
     task = AnalysisTask(
         project_id=project_id,
         user_id=current_user.id,
-        requirement_name=requirement_name,
+        requirement_name=requirement_name or filename.rsplit(".", 1)[0],
         requirement_text=content.decode("utf-8", errors="replace"),
         status=TaskStatus.PENDING,
     )

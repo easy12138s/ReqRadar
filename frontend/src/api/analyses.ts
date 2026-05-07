@@ -29,6 +29,7 @@ export async function uploadAnalysis(
   const formData = new FormData();
   formData.append('project_id', projectId);
   formData.append('file', file);
+  formData.append('requirement_name', file.name.replace(/\.[^.]+$/, ''));
   if (depth) formData.append('depth', depth);
   if (templateId) formData.append('template_id', templateId);
   if (focusAreas && focusAreas.length > 0) formData.append('focus_areas', JSON.stringify(focusAreas));
