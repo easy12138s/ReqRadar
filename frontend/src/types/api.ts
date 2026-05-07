@@ -128,12 +128,10 @@ export interface AnalysisProgress {
 }
 
 export interface Report {
-  task_id: string;
-  title: string;
-  summary: string;
-  findings: Finding[];
-  recommendations: Recommendation[];
-  created_at: string;
+  task_id: number;
+  content_markdown: string;
+  content_html: string;
+  risk_level: string;
 }
 
 export interface Finding {
