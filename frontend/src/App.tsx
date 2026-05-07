@@ -19,6 +19,7 @@ const ReportView = lazy(() => import('./pages/ReportView').then(m => ({ default:
 const LLMConfig = lazy(() => import('./pages/LLMConfig').then(m => ({ default: m.LLMConfig })));
 const TemplateManager = lazy(() => import('./pages/TemplateManager').then(m => ({ default: m.TemplateManager })));
 const UserPreferences = lazy(() => import('./pages/UserPreferences').then(m => ({ default: m.UserPreferences })));
+const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const UserManagement = lazy(() => import('./pages/UserManagement'));
 const RequirementEdit = lazy(() => import('./pages/RequirementEdit'));
 
@@ -116,7 +117,7 @@ export default function App() {
                     <Route path="analyses/submit" element={<AnalysisSubmit />} />
                     <Route path="analyses/:id" element={<AnalysisProgress />} />
                     <Route path="reports/:taskId" element={<ReportView />} />
-                    <Route path="settings" element={<Navigate to="/settings/llm" replace />} />
+                    <Route path="settings" element={<SettingsPage />} />
                     <Route path="settings/llm" element={<LLMConfig />} />
                     <Route path="settings/templates" element={<TemplateManager />} />
                     <Route path="settings/preferences" element={<UserPreferences />} />
