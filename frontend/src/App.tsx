@@ -113,6 +113,7 @@ export default function App() {
                     <Route path="analyses/submit" element={<AnalysisSubmit />} />
                     <Route path="analyses/:id" element={<AnalysisProgress />} />
                     <Route path="reports/:taskId" element={<ReportView />} />
+                    <Route path="settings" element={<Navigate to="/settings/llm" replace />} />
                     <Route path="settings/llm" element={<LLMConfig />} />
                     <Route path="settings/templates" element={<TemplateManager />} />
                     <Route path="settings/preferences" element={<UserPreferences />} />
