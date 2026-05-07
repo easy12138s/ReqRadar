@@ -235,6 +235,9 @@ export default function Dashboard() {
           <Button icon={<UserAddOutlined />} onClick={() => setAddUserOpen(true)}>
             添加用户
           </Button>
+          <Button icon={<SettingOutlined />} onClick={() => navigate('/settings/users')}>
+            用户管理
+          </Button>
         </Space>
       </Card>
 

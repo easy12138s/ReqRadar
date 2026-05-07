@@ -19,6 +19,7 @@ const ReportView = lazy(() => import('./pages/ReportView').then(m => ({ default:
 const LLMConfig = lazy(() => import('./pages/LLMConfig').then(m => ({ default: m.LLMConfig })));
 const TemplateManager = lazy(() => import('./pages/TemplateManager').then(m => ({ default: m.TemplateManager })));
 const UserPreferences = lazy(() => import('./pages/UserPreferences').then(m => ({ default: m.UserPreferences })));
+const UserManagement = lazy(() => import('./pages/UserManagement'));
 const RequirementEdit = lazy(() => import('./pages/RequirementEdit'));
 
 const darkTheme = {
@@ -119,6 +120,7 @@ export default function App() {
                     <Route path="settings/llm" element={<LLMConfig />} />
                     <Route path="settings/templates" element={<TemplateManager />} />
                     <Route path="settings/preferences" element={<UserPreferences />} />
+                    <Route path="settings/users" element={<UserManagement />} />
                     <Route path="requirements/:id" element={<RequirementEdit />} />
                   </Route>
 

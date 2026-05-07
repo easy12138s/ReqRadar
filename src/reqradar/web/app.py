@@ -23,6 +23,7 @@ from reqradar.web.api.synonyms import router as synonyms_router
 from reqradar.web.api.templates import router as templates_router
 from reqradar.web.api.profile import router as profile_router
 from reqradar.web.api.chatback import router as chatback_router
+from reqradar.web.api.users import router as users_router
 from reqradar.web.api.versions import router as versions_router
 from reqradar.web.api.evidence_api import router as evidence_router
 from reqradar.web.api.requirements import router as requirements_router
@@ -155,6 +156,7 @@ def create_app(config_path: Optional[Path] = None):
     app.include_router(versions_router)
     app.include_router(evidence_router)
     app.include_router(requirements_router)
+    app.include_router(users_router)
 
     static_path = Path(__file__).parent / "static"
     if static_path.exists():
