@@ -10,7 +10,7 @@ import {
 import { ArrowLeftOutlined, DownloadOutlined } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import type { Report } from '@/types/api';
-import { getReport, getReportMarkdown } from '@/api/reports';
+import { getReport } from '@/api/reports';
 import { RiskBadge } from '@/components/RiskBadge';
 import { ChatPanel } from '@/components/ChatPanel';
 
@@ -20,7 +20,6 @@ export function ReportView() {
   const { taskId } = useParams<{ taskId: string }>();
   const navigate = useNavigate();
   const [report, setReport] = useState<Report | null>(null);
-  const [markdown, setMarkdown] = useState('');
   const [loading, setLoading] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -29,12 +28,8 @@ export function ReportView() {
     setLoading(true);
     (async () => {
       try {
-        const [reportData, mdData] = await Promise.all([
-          getReport(taskId),
-          getReportMarkdown(taskId).catch(() => ''),
-        ]);
+        const reportData = await getReport(taskId);
         setReport(reportData);
-        setMarkdown(mdData);
       } catch {
         message.error('加载报告失败');
       } finally {
@@ -44,8 +39,8 @@ export function ReportView() {
   }, [taskId]);
 
   const handleDownload = () => {
-    if (!markdown) return;
-    const blob = new Blob([markdown], { type: 'text/markdown' });
+    if (!report?.content_markdown) return;
+    const blob = new Blob([report.content_markdown], { type: 'text/markdown' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -115,9 +110,9 @@ export function ReportView() {
         }}
       >
         <div style={{ maxWidth: 860, margin: '0 auto' }}>
-          {markdown ? (
+          {report.content_markdown ? (
             <div className="markdown-body">
-              <ReactMarkdown>{markdown}</ReactMarkdown>
+              <ReactMarkdown>{report.content_markdown}</ReactMarkdown>
             </div>
           ) : (
             <Empty description="报告内容为空" />

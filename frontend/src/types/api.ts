@@ -123,8 +123,9 @@ export interface AnalysisProgress {
 export interface Report {
   task_id: number;
   content_markdown: string;
-  content_html: string;
-  risk_level: string;
+  content_html?: string;
+  risk_level?: string;
+  risk_score?: number;
 }
 
 export interface Finding {

@@ -289,7 +289,14 @@ class AnalysisRunner:
     ):
         from reqradar.web.services.version_service import VersionService
 
-        task.context_json = agent.get_context_snapshot()
+        risk_level = report_data.get("risk_level", "unknown")
+        risk_score = report_data.get("risk_score")
+        snapshot = agent.get_context_snapshot()
+        snapshot["deep_analysis"] = {
+            "risk_level": risk_level,
+            "risk_score": risk_score,
+        }
+        task.context_json = snapshot
         task.status = TaskStatus.COMPLETED
         task.completed_at = datetime.now(timezone.utc)
 
