@@ -63,10 +63,23 @@ async def lifespan(app: FastAPI):
             "Refusing to start with insecure default key."
         )
 
-    if web_config.auto_create_tables:
-        async with engine.begin() as conn:
+    from sqlalchemy import inspect
+
+    async with engine.begin() as conn:
+        def _check_tables(sync_conn):
+            inspector = inspect(sync_conn)
+            return inspector.get_table_names()
+
+        existing_tables = await conn.run_sync(_check_tables)
+        if not existing_tables:
+            logger.warning(
+                "Database tables not found — auto-creating. "
+                "Use Alembic migrations in production."
+            )
             await conn.run_sync(Base.metadata.create_all)
-        logger.warning("auto_create_tables is enabled — use Alembic migrations in production")
+        elif web_config.auto_create_tables:
+            logger.warning("auto_create_tables is enabled — use Alembic migrations in production")
+            await conn.run_sync(Base.metadata.create_all)
 
     try:
         async with session_factory() as session:

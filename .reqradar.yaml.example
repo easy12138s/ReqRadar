@@ -72,4 +72,4 @@ web:
   data_root: ~/.reqradar/data
 
 reporting:
-  default_template_id:
+  default_template_id: 1
