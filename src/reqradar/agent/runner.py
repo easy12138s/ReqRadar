@@ -214,6 +214,8 @@ async def _execute_tool_calls(
     tool_calls: list[dict],
     tool_registry: ToolRegistry,
     tracker: ToolCallTracker,
+    ws_manager=None,
+    task_id: int | None = None,
 ) -> list[dict]:
     tool_results = []
     for tc in tool_calls:
@@ -225,6 +227,18 @@ async def _execute_tool_calls(
             tc_args = json.loads(tc_args_str) if isinstance(tc_args_str, str) else tc_args_str
         except json.JSONDecodeError:
             tc_args = {}
+
+        if ws_manager and task_id:
+            await ws_manager.broadcast(
+                task_id,
+                {
+                    "type": "agent_action",
+                    "task_id": task_id,
+                    "message": f"调用工具: {tc_name}",
+                    "tool": tc_name,
+                    "args": tc_args,
+                },
+            )
 
         if tc_name not in tool_registry._tools:
             tool_results.append(
@@ -282,6 +296,8 @@ async def run_react_analysis(
     section_descriptions=None,
     project_memory=None,
     requirement_text: str | None = None,
+    ws_manager=None,
+    task_id: int | None = None,
 ) -> dict:
     if requirement_text:
         agent.requirement_text = requirement_text
@@ -294,6 +310,17 @@ async def run_react_analysis(
 
     while True:
         agent.step_count += 1
+
+        if ws_manager and task_id:
+            await ws_manager.broadcast(
+                task_id,
+                {
+                    "type": "dimension_progress",
+                    "task_id": task_id,
+                    "step": agent.step_count,
+                    "dimensions": agent.dimension_tracker.status_summary(),
+                },
+            )
 
         ds = agent.dimension_tracker.status_summary()
         system_prompt = build_dynamic_system_prompt(
@@ -357,7 +384,9 @@ async def run_react_analysis(
             if assistant_msg:
                 conversation_history.append(assistant_msg)
 
-            tool_results = await _execute_tool_calls(response["tool_calls"], tool_registry, tracker)
+            tool_results = await _execute_tool_calls(
+                response["tool_calls"], tool_registry, tracker, ws_manager, task_id
+            )
             conversation_history.extend(tool_results)
             await asyncio.sleep(0)
             continue

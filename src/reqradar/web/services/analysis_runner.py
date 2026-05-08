@@ -86,7 +86,7 @@ class AnalysisRunner:
 
             async with factory() as db:
                 try:
-                    await self._execute_agent(task_id, project, config, db)
+                    await self._execute_agent(task_id, project, config, db, ws_manager)
                 except asyncio.CancelledError:
                     logger.info("Agent analysis task %d cancelled", task_id)
                     raise
@@ -323,7 +323,7 @@ class AnalysisRunner:
         await db.commit()
 
     async def _execute_agent(
-        self, task_id: int, project: Project, config: Config, db: AsyncSession
+        self, task_id: int, project: Project, config: Config, db: AsyncSession, ws_manager=None
     ):
         result = await db.execute(select(AnalysisTask).where(AnalysisTask.id == task_id))
         task = result.scalar_one_or_none()
@@ -375,6 +375,8 @@ class AnalysisRunner:
                 config=config,
                 section_descriptions=section_descriptions,
                 project_memory=analysis_memory.project_memory if analysis_memory else None,
+                ws_manager=ws_manager,
+                task_id=task_id,
             )
 
             renderer = ReportRenderer(

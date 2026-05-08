@@ -15,6 +15,8 @@ export function useWebSocket({ url, onMessage, enabled = true, maxRetries = 10 }
   const wsRef = useRef<WebSocket | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const urlRef = useRef(url);
+  urlRef.current = url;
 
   const cleanup = useCallback(() => {
     if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
@@ -38,7 +40,9 @@ export function useWebSocket({ url, onMessage, enabled = true, maxRetries = 10 }
     setStatus(retryCountRef.current > 0 ? 'reconnecting' : 'connecting');
 
     try {
-      const ws = new WebSocket(url);
+      const freshToken = localStorage.getItem('access_token');
+      const connectUrl = urlRef.current.replace(/token=[^&]*/, `token=${freshToken}`);
+      const ws = new WebSocket(connectUrl);
       wsRef.current = ws;
 
       ws.onopen = () => {
@@ -81,7 +85,7 @@ export function useWebSocket({ url, onMessage, enabled = true, maxRetries = 10 }
         timerRef.current = setTimeout(connect, 2000);
       }
     }
-  }, [url, enabled, maxRetries, onMessage, cleanup]);
+  }, [enabled, maxRetries, onMessage, cleanup]);
 
   useEffect(() => {
     if (enabled) {

@@ -34,6 +34,9 @@ export function AnalysisProgress() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [stepProgressMessage, setStepProgressMessage] = useState('连接中...');
+  const [dimensions, setDimensions] = useState<Record<string, string>>({});
+  const [currentStep, setCurrentStep] = useState(0);
+  const [logs, setLogs] = useState<string[]>([]);
 
   const fetchTask = async () => {
     if (!id) return;
@@ -76,6 +79,11 @@ export function AnalysisProgress() {
       } else if (msg.type === 'analysis_failed') {
         setStepProgressMessage(`错误: ${msg.error || '分析失败'}`);
         fetchTask();
+      } else if (msg.type === 'dimension_progress') {
+        if (msg.dimensions) setDimensions(msg.dimensions);
+        if (msg.step) setCurrentStep(msg.step);
+      } else if (msg.type === 'agent_action') {
+        setLogs(prev => [...prev, `[工具调用] ${msg.message || msg.tool || ''}`]);
       }
     },
   });
@@ -187,10 +195,10 @@ export function AnalysisProgress() {
           </div>
           <Card style={{ marginBottom: 24 }}>
             <DimensionProgress
-              dimensions={{}}
+              dimensions={dimensions}
               evidenceCount={0}
-              step={0}
-              maxSteps={0}
+              step={currentStep}
+              maxSteps={25}
             />
           </Card>
           <StepProgress

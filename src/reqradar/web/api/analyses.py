@@ -105,6 +105,9 @@ async def submit_analysis(req: AnalysisSubmit, current_user: CurrentUser, db: Db
     if project is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
+    if project.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to analyze this project")
+
     from reqradar.infrastructure.config_manager import ConfigManager
     from reqradar.modules.llm_connectivity import is_llm_reachable
 
@@ -181,6 +184,9 @@ async def submit_analysis_upload(
     project = result.scalar_one_or_none()
     if project is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+
+    if project.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to analyze this project")
 
     filename = file.filename or "upload"
     ext = os.path.splitext(filename)[1].lower()
@@ -400,7 +406,13 @@ async def analysis_websocket(websocket: WebSocket, task_id: int, token: str = Qu
     try:
         while True:
             try:
-                await websocket.receive_text()
+                message = await websocket.receive_text()
+                try:
+                    data = json.loads(message)
+                    if data.get("type") == "ping":
+                        await websocket.send_json({"type": "pong"})
+                except (json.JSONDecodeError, RuntimeError):
+                    pass
             except WebSocketDisconnect:
                 break
     except WebSocketDisconnect:
