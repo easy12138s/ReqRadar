@@ -14,7 +14,7 @@ import {
   InputNumber,
 } from 'antd';
 import { SaveOutlined, ReloadOutlined } from '@ant-design/icons';
-import { setUserConfig, getUserConfig } from '@/api/configs';
+import { setUserConfig, listUserConfigs } from '@/api/configs';
 
 const { Title, Text } = Typography;
 
@@ -71,19 +71,14 @@ export function LLMConfig() {
   const loadConfigs = async () => {
     setLoading(true);
     try {
+      const allConfigs = await listUserConfigs();
+      const byKey: Record<string, unknown> = {};
+      allConfigs.forEach((c) => { byKey[c.key] = c.value; });
+
       const values: Partial<LLMFormValues> = {};
-      const promises = Object.entries(LLM_CONFIG_KEYS).map(async ([field, key]) => {
-        try {
-          const res = await getUserConfig(key);
-          return { field, value: res.value };
-        } catch {
-          return { field, value: undefined };
-        }
-      });
-      const results = await Promise.all(promises);
-      results.forEach(({ field, value }) => {
-        if (value !== undefined) {
-          (values as Record<string, unknown>)[field] = value;
+      Object.entries(LLM_CONFIG_KEYS).forEach(([field, key]) => {
+        if (key in byKey) {
+          (values as Record<string, unknown>)[field] = byKey[key];
         }
       });
       form.setFieldsValue({ ...DEFAULT_VALUES, ...values });
