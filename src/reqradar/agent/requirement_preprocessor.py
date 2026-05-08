@@ -22,28 +22,14 @@ def _load_file_content(file_path: Path, llm_client=None) -> dict:
     try:
         loader = LoaderRegistry.get_for_file(str(file_path))
         if loader:
-            docs = loader.load(str(file_path))
-            result["content"] = "\n\n".join(d.content for d in docs)
+            if hasattr(loader, "load_full"):
+                result["content"] = loader.load_full(file_path, llm_client=llm_client)
+            else:
+                docs = loader.load(str(file_path))
+                result["content"] = "\n\n".join(d.content for d in docs)
             return result
 
-        ext = file_path.suffix.lower()
-        if ext in (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"):
-            if llm_client:
-                import base64
-
-                image_bytes = file_path.read_bytes()
-                b64 = base64.b64encode(image_bytes).decode()
-                data_uri = f"data:image/{ext.lstrip('.')};base64,{b64}"
-
-                vision_result = llm_client.describe_image(
-                    data_uri,
-                    "请详细描述这张图片的内容，包括界面元素、文字、流程关系等所有可观察的信息。",
-                )
-                result["content"] = vision_result
-            else:
-                result["content"] = f"[图片: {file_path.name}, 无法处理（无 Vision LLM）]"
-        else:
-            result["content"] = file_path.read_text(encoding="utf-8", errors="replace")
+        result["content"] = file_path.read_text(encoding="utf-8", errors="replace")
     except Exception as e:
         logger.warning("Failed to load file %s: %s", file_path, e)
         result["content"] = f"[加载失败: {str(e)}]"

@@ -23,17 +23,23 @@ ALLOWED_UPLOAD_EXTENSIONS = {
     ".md",
     ".pdf",
     ".docx",
+    ".pptx",
     ".xlsx",
+    ".xls",
     ".csv",
     ".json",
     ".yaml",
     ".yml",
     ".html",
+    ".htm",
+    ".epub",
+    ".xml",
     ".png",
     ".jpg",
     ".jpeg",
     ".gif",
     ".bmp",
+    ".webp",
 }
 
 
