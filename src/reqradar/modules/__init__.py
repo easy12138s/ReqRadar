@@ -2,7 +2,7 @@
 
 from reqradar.modules.code_parser import CodeParser, PythonCodeParser
 from reqradar.modules.git_analyzer import GitAnalyzer
-from reqradar.modules.llm_client import LLMClient, OllamaClient, OpenAIClient
+from reqradar.modules.llm_client import LiteLLMClient, LLMClient
 from reqradar.modules.vector_store import ChromaVectorStore, VectorStore
 
 __all__ = [
@@ -12,6 +12,5 @@ __all__ = [
     "ChromaVectorStore",
     "GitAnalyzer",
     "LLMClient",
-    "OpenAIClient",
-    "OllamaClient",
+    "LiteLLMClient",
 ]

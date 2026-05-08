@@ -391,51 +391,30 @@ async def test_llm_connection(
     body: dict,
     current_user: CurrentUser,
 ):
-    provider = body.get("provider", "openai")
     api_key = body.get("api_key", "")
     base_url = body.get("base_url", "https://api.openai.com/v1")
     model = body.get("model", "gpt-4o-mini")
 
-    if provider == "openai" and not api_key:
+    if not api_key:
         raise HTTPException(status_code=400, detail="API Key is required")
 
-    import httpx
+    from reqradar.modules.llm_connectivity import mark_llm_reachable, mark_llm_unreachable
 
-    async with httpx.AsyncClient(timeout=15) as client:
-        try:
-            resp = await client.post(
-                f"{base_url.rstrip('/')}/chat/completions",
-                headers={"Authorization": f"Bearer {api_key}"},
-                json={
-                    "model": model,
-                    "messages": [{"role": "user", "content": "ping"}],
-                    "max_tokens": 5,
-                },
-            )
-            if resp.status_code == 200:
-                from reqradar.modules.llm_connectivity import mark_llm_reachable
+    provider = body.get("provider", "openai")
 
-                mark_llm_reachable(provider, api_key, base_url)
-                return {"ok": True, "model": model, "message": "API 连接正常"}
-            else:
-                from reqradar.modules.llm_connectivity import mark_llm_unreachable
+    try:
+        import litellm
 
-                mark_llm_unreachable(provider, api_key, base_url)
-                detail = ""
-                try:
-                    detail = resp.json().get("error", {}).get("message", resp.text[:200])
-                except Exception:
-                    detail = resp.text[:200]
-                raise HTTPException(
-                    status_code=400, detail=f"API error ({resp.status_code}): {detail}"
-                )
-        except httpx.ConnectError:
-            from reqradar.modules.llm_connectivity import mark_llm_unreachable
-
-            mark_llm_unreachable(provider, api_key, base_url)
-            raise HTTPException(status_code=400, detail="无法连接到 API 服务器，请检查 base_url")
-        except Exception as e:
-            from reqradar.modules.llm_connectivity import mark_llm_unreachable
-
-            mark_llm_unreachable(provider, api_key, base_url)
-            raise HTTPException(status_code=400, detail=f"连接失败: {str(e)[:200]}")
+        response = await litellm.acompletion(
+            model=model,
+            messages=[{"role": "user", "content": "ping"}],
+            api_key=api_key,
+            api_base=base_url,
+            max_tokens=5,
+            timeout=15,
+        )
+        mark_llm_reachable(provider, api_key, base_url)
+        return {"ok": True, "model": model, "message": "API 连接正常"}
+    except Exception as e:
+        mark_llm_unreachable(provider, api_key, base_url)
+        raise HTTPException(status_code=400, detail=f"连接失败: {str(e)[:200]}")

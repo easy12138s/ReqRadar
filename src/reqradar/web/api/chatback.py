@@ -64,7 +64,7 @@ async def chat(
         default=config.llm.base_url or "https://api.openai.com/v1",
     )
 
-    if provider == "openai" and not api_key:
+    if not api_key:
         raise HTTPException(status_code=400, detail="LLM API Key 未配置，请先在设置页面配置大模型")
 
     from reqradar.modules.llm_connectivity import is_llm_reachable
@@ -77,9 +77,8 @@ async def chat(
         )
 
     llm_client = create_llm_client(
-        provider,
-        api_key=api_key,
         model=llm_model,
+        api_key=api_key,
         base_url=llm_base_url,
         timeout=config.llm.timeout,
         max_retries=config.llm.max_retries,
@@ -139,7 +138,7 @@ async def chat_stream(
         project_id=task.project_id,
         default=config.llm.base_url or "https://api.openai.com/v1",
     )
-    if provider == "openai" and not api_key:
+    if not api_key:
         raise HTTPException(status_code=400, detail="LLM API Key 未配置")
 
     from reqradar.modules.llm_connectivity import is_llm_reachable
@@ -149,9 +148,8 @@ async def chat_stream(
         raise HTTPException(status_code=400, detail="LLM 连接不通")
 
     llm_client = create_llm_client(
-        provider,
-        api_key=api_key,
         model=llm_model,
+        api_key=api_key,
         base_url=llm_base_url,
         timeout=config.llm.timeout,
         max_retries=config.llm.max_retries,

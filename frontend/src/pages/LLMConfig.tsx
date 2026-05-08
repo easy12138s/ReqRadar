@@ -20,7 +20,11 @@ const { Title, Text } = Typography;
 
 const LLM_PROVIDERS = [
   { label: 'OpenAI', value: 'openai' },
+  { label: 'Anthropic (Claude)', value: 'anthropic' },
+  { label: 'Google Gemini', value: 'gemini' },
+  { label: 'DeepSeek', value: 'deepseek' },
   { label: 'Ollama', value: 'ollama' },
+  { label: 'OpenAI 兼容', value: 'openai' },
 ];
 
 interface LLMFormValues {
@@ -31,11 +35,6 @@ interface LLMFormValues {
   host: string;
   timeout: number;
   max_retries: number;
-  vision_provider: string;
-  vision_model: string;
-  vision_api_key: string;
-  vision_base_url: string;
-  vision_timeout: number;
 }
 
 const LLM_CONFIG_KEYS: Record<keyof LLMFormValues, string> = {
@@ -46,11 +45,6 @@ const LLM_CONFIG_KEYS: Record<keyof LLMFormValues, string> = {
   host: 'llm.host',
   timeout: 'llm.timeout',
   max_retries: 'llm.max_retries',
-  vision_provider: 'vision.provider',
-  vision_model: 'vision.model',
-  vision_api_key: 'vision.api_key',
-  vision_base_url: 'vision.base_url',
-  vision_timeout: 'vision.timeout',
 };
 
 const DEFAULT_VALUES: LLMFormValues = {
@@ -61,11 +55,6 @@ const DEFAULT_VALUES: LLMFormValues = {
   host: 'http://localhost:11434',
   timeout: 60,
   max_retries: 2,
-  vision_provider: 'openai',
-  vision_model: 'gpt-4o',
-  vision_api_key: '',
-  vision_base_url: 'https://api.openai.com/v1',
-  vision_timeout: 120,
 };
 
 export function LLMConfig() {
@@ -74,7 +63,6 @@ export function LLMConfig() {
   const [saving, setSaving] = useState(false);
   const [testLoading, setTestLoading] = useState(false);
   const [apiKeyHidden, setApiKeyHidden] = useState(true);
-  const [visionApiKeyHidden, setVisionApiKeyHidden] = useState(true);
 
   useEffect(() => {
     loadConfigs();
@@ -238,31 +226,10 @@ export function LLMConfig() {
           </Space>
         </Card>
 
-        <Card title="视觉分析模型" style={{ marginBottom: 16 }}>
-          <Form.Item label="视觉 LLM 提供商" name="vision_provider">
-            <Select options={LLM_PROVIDERS} />
-          </Form.Item>
-          <Form.Item label="视觉模型名称" name="vision_model">
-            <Input placeholder="例如: gpt-4o" />
-          </Form.Item>
-          <Form.Item label="API Key" name="vision_api_key" tooltip="可与文本分析模型共用">
-            <Input.Password
-              placeholder="sk-..."
-              visibilityToggle={{ visible: !visionApiKeyHidden, onVisibleChange: (v) => setVisionApiKeyHidden(!v) }}
-            />
-          </Form.Item>
-          <Form.Item label="Base URL" name="vision_base_url">
-            <Input placeholder="https://api.openai.com/v1" />
-          </Form.Item>
-          <Form.Item label="超时 (秒)" name="vision_timeout">
-            <InputNumber min={1} max={300} style={{ width: 120 }} />
-          </Form.Item>
-        </Card>
-
         {provider === 'ollama' && (
           <Alert
             message="Ollama 模式"
-            description="使用 Ollama 时，API Key 和 Base URL 将被忽略。请确保本地 Ollama 服务已启动并加载了指定模型。"
+            description="Ollama v0.5+ 已支持 OpenAI 兼容 API (http://localhost:11434/v1)。请确保本地 Ollama 服务已启动并加载了指定模型。"
             type="warning"
             showIcon
             style={{ marginBottom: 16 }}

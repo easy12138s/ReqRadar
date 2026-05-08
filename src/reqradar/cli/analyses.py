@@ -388,22 +388,13 @@ def analyze_file(ctx, requirement_file, index_path, output, llm_backend, verbose
         agent.project_memory_text = analysis_memory.get_project_profile_text()
         agent.user_memory_text = analysis_memory.get_user_memory_text()
 
-        provider = llm_backend or config.llm.provider
-        llm_kwargs = {
-            "openai": {
-                "api_key": config.llm.api_key,
-                "model": config.llm.model,
-                "base_url": config.llm.base_url or "https://api.openai.com/v1",
-                "timeout": config.llm.timeout,
-                "max_retries": config.llm.max_retries,
-            },
-            "ollama": {
-                "model": config.llm.model if llm_backend == "ollama" else "qwen2.5:14b",
-                "host": config.llm.host or "http://localhost:11434",
-            },
-        }
-
-        llm_client = create_llm_client(provider, **llm_kwargs[provider])
+        llm_client = create_llm_client(
+            model=config.llm.model,
+            api_key=config.llm.api_key,
+            base_url=config.llm.base_url or "https://api.openai.com/v1",
+            timeout=config.llm.timeout,
+            max_retries=config.llm.max_retries,
+        )
 
         vector_store = None
         if vectorstore_path.exists():

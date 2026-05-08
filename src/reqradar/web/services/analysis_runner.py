@@ -171,26 +171,39 @@ class AnalysisRunner:
             project_id=project.id,
             default=config.llm.base_url or "https://api.openai.com/v1",
         )
+        llm_timeout = await cm.get_int(
+            "llm.timeout",
+            user_id=task.user_id,
+            project_id=project.id,
+            default=config.llm.timeout,
+        )
+        llm_retries = await cm.get_int(
+            "llm.max_retries",
+            user_id=task.user_id,
+            project_id=project.id,
+            default=config.llm.max_retries,
+        )
+        llm_host = await cm.get_str(
+            "llm.host",
+            user_id=task.user_id,
+            project_id=project.id,
+            default=config.llm.host or "http://localhost:11434",
+        )
 
-        if provider == "openai" and not llm_api_key:
+        if llm_api_key is None or not str(llm_api_key).strip():
             raise ValueError(
                 "LLM API key not configured. Please configure llm.api_key in Settings > LLM Config."
             )
 
-        llm_kwargs = {
-            "openai": {
-                "api_key": llm_api_key,
-                "model": llm_model,
-                "base_url": llm_base_url,
-                "timeout": config.llm.timeout,
-                "max_retries": config.llm.max_retries,
-            },
-            "ollama": {
-                "model": llm_model,
-                "host": config.llm.host or "http://localhost:11434",
-            },
-        }
-        llm_client = create_llm_client(provider, **llm_kwargs.get(provider, {}))
+        llm_client = create_llm_client(
+            provider=provider,
+            model=llm_model,
+            api_key=llm_api_key,
+            base_url=llm_base_url,
+            host=llm_host,
+            timeout=llm_timeout,
+            max_retries=llm_retries,
+        )
         llm_client._current_task_id = task.id
 
         file_svc = ProjectFileService(config.web)

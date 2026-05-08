@@ -28,23 +28,6 @@ class LLMConfig(BaseModel):
         return v
 
 
-class VisionConfig(BaseModel):
-    provider: str = Field(default="openai", description="Vision LLM provider")
-    model: str = Field(default="gpt-4o", description="Vision model name")
-    api_key: Optional[str] = Field(default=None, description="API key (or env var reference)")
-    base_url: Optional[str] = Field(default=None, description="OpenAI-compatible API base URL")
-    timeout: int = Field(default=120, description="Timeout for vision requests")
-    max_retries: int = Field(default=2, description="Max retry attempts")
-
-    @field_validator("api_key", mode="before")
-    @classmethod
-    def resolve_env_var(cls, v: Optional[str]) -> Optional[str]:
-        if v and isinstance(v, str) and v.startswith("${") and v.endswith("}"):
-            env_var = v[2:-1]
-            return os.getenv(env_var)
-        return v
-
-
 class MemoryConfig(BaseModel):
     enabled: bool = Field(default=True, description="Enable project memory")
     storage_path: str = Field(default=".reqradar/memory", description="Memory storage directory")
@@ -179,7 +162,6 @@ class WebConfig(BaseModel):
 
 class Config(BaseModel):
     llm: LLMConfig = Field(default_factory=LLMConfig)
-    vision: VisionConfig = Field(default_factory=VisionConfig)
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
     memory_evolution: MemoryEvolutionConfig = Field(default_factory=MemoryEvolutionConfig)
     loader: LoaderConfig = Field(default_factory=LoaderConfig)

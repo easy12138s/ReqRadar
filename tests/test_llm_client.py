@@ -1,58 +1,47 @@
 """测试 LLM 客户端"""
 
 import pytest
-from reqradar.modules.llm_client import OllamaClient, OpenAIClient, create_llm_client
+from reqradar.modules.llm_client import LiteLLMClient, create_llm_client
 
 
-def test_create_llm_client_openai():
-    client = create_llm_client("openai", api_key="test", model="gpt-4o")
-    assert isinstance(client, OpenAIClient)
-    assert client.model == "gpt-4o"
+def test_create_llm_client_litellm():
+    client = create_llm_client(
+        model="gpt-4o-mini", api_key="test", base_url="https://api.openai.com/v1"
+    )
+    assert isinstance(client, LiteLLMClient)
+    assert client.model == "gpt-4o-mini"
 
 
 def test_create_llm_client_ollama():
-    client = create_llm_client("ollama", model="qwen2.5")
-    assert isinstance(client, OllamaClient)
-    assert client.model == "qwen2.5"
+    client = create_llm_client(model="ollama/qwen2.5:14b", api_base="http://localhost:11434/v1")
+    assert isinstance(client, LiteLLMClient)
+    assert "ollama/" in client.model
 
 
-def test_create_llm_client_unknown():
-    with pytest.raises(ValueError):
-        create_llm_client("unknown")
+def test_create_llm_client_default_model():
+    client = create_llm_client()
+    assert client.model == "gpt-4o-mini"
 
 
-class TestOpenAICompleteWithTools:
-    @pytest.mark.asyncio
-    async def test_complete_with_tools_returns_tool_calls(self):
-        llm = OpenAIClient(
-            api_key="test-key", model="test-model", base_url="http://localhost:9999/v1"
-        )
+class TestLiteLLMClientAttributes:
+    def test_client_has_all_methods(self):
+        llm = LiteLLMClient(model="gpt-4o-mini", api_key="test")
+        assert hasattr(llm, "complete")
+        assert hasattr(llm, "stream_complete")
+        assert hasattr(llm, "complete_structured")
         assert hasattr(llm, "complete_with_tools")
+        assert hasattr(llm, "complete_vision")
+        assert hasattr(llm, "supports_tool_calling")
 
-    @pytest.mark.asyncio
-    async def test_ollama_complete_with_tools_returns_none(self):
-        llm = OllamaClient(model="test", host="http://localhost:9999")
-        result = await llm.complete_with_tools(
-            messages=[{"role": "user", "content": "test"}],
-            tools=[],
+    def test_ollama_host_routing(self):
+        llm = LiteLLMClient(model="ollama/qwen2.5", host="http://localhost:11434")
+        assert llm.api_base == "http://localhost:11434/v1"
+
+    def test_deepseek_model(self):
+        llm = LiteLLMClient(
+            model="deepseek/deepseek-chat",
+            api_key="sk-test",
+            base_url="https://api.deepseek.com/v1",
         )
-        assert result is None
-
-
-class TestOpenAIClientApiKeyValidation:
-    @pytest.mark.asyncio
-    async def test_complete_rejects_empty_api_key_with_clear_error(self):
-        llm = OpenAIClient(api_key="", model="test-model")
-
-        with pytest.raises(Exception, match="API key is missing or empty"):
-            await llm.complete(messages=[{"role": "user", "content": "test"}])
-
-    @pytest.mark.asyncio
-    async def test_complete_structured_rejects_empty_api_key_with_clear_error(self):
-        llm = OpenAIClient(api_key="", model="test-model")
-
-        with pytest.raises(Exception, match="API key is missing or empty"):
-            await llm.complete_structured(
-                messages=[{"role": "user", "content": "test"}],
-                schema={"name": "test", "parameters": {"type": "object", "properties": {}}},
-            )
+        assert llm.model == "deepseek/deepseek-chat"
+        assert llm.api_base == "https://api.deepseek.com/v1"

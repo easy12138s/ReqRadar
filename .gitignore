@@ -96,3 +96,4 @@ opencode.json
 # Docs (design specs, requirements, issues — managed separately)
 docs/.superpowers/
 docs/
+.superpowers/

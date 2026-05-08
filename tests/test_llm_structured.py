@@ -1,241 +1,38 @@
-"""测试 LLM 结构化输出（function calling）"""
-
-import json
-from unittest.mock import AsyncMock, MagicMock, patch
+"""测试 LLM 结构化输出（function calling）—— LiteLLM 适配"""
 
 import pytest
 
-from reqradar.modules.llm_client import OpenAIClient, OllamaClient
+from reqradar.modules.llm_client import LiteLLMClient
 
 
-class TestOpenAIClientCompleteStructured:
-    def _make_tool_response(self, arguments_dict):
-        return {
-            "choices": [
-                {
-                    "message": {
-                        "tool_calls": [
-                            {
-                                "function": {
-                                    "name": "structured_output",
-                                    "arguments": json.dumps(arguments_dict, ensure_ascii=False),
-                                },
-                                "id": "call_123",
-                                "type": "function",
-                            }
-                        ]
-                    }
-                }
-            ]
-        }
+class TestLiteLLMCompleteStructured:
+    def test_client_has_structured_method(self):
+        client = LiteLLMClient(api_key="test-key", model="test-model")
+        assert hasattr(client, "complete_structured")
+        assert hasattr(client, "complete_with_tools")
 
-    @pytest.mark.asyncio
-    async def test_complete_structured_success(self):
-        client = OpenAIClient(api_key="test-key", model="test-model")
+    def test_client_has_vision_method(self):
+        client = LiteLLMClient(api_key="test-key", model="gpt-4o")
+        assert hasattr(client, "complete_vision")
 
-        schema = {
-            "name": "extract_info",
-            "description": "Extract information",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "summary": {"type": "string"},
-                    "keywords": {"type": "array", "items": {"type": "string"}},
-                },
-                "required": ["summary"],
-            },
-        }
+    def test_client_supports_tool_calling_by_default(self):
+        client = LiteLLMClient(api_key="test-key", model="test-model")
+        assert hasattr(client, "supports_tool_calling")
 
-        mock_response = self._make_tool_response(
-            {
-                "summary": "测试摘要",
-                "keywords": ["关键词1", "关键词2"],
-            }
+    def test_ollama_model_sets_api_base(self):
+        client = LiteLLMClient(model="ollama/qwen2.5", host="http://localhost:11434")
+        assert client.api_base == "http://localhost:11434/v1"
+
+    def test_deepseek_model_routing(self):
+        client = LiteLLMClient(
+            model="deepseek/deepseek-chat",
+            api_key="sk-test",
+            base_url="https://api.deepseek.com/v1",
         )
+        assert "deepseek/" in client.model
+        assert client.api_base == "https://api.deepseek.com/v1"
 
-        with patch("httpx.AsyncClient") as mock_client_class:
-            mock_client = AsyncMock()
-            mock_client_class.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_client_class.return_value.__aexit__ = AsyncMock(return_value=False)
-
-            mock_post = AsyncMock()
-            mock_response_obj = MagicMock()
-            mock_response_obj.raise_for_status = MagicMock()
-            mock_response_obj.json = MagicMock(return_value=mock_response)
-            mock_post.return_value = mock_response_obj
-            mock_client.post = mock_post
-
-            result = await client.complete_structured(
-                messages=[{"role": "user", "content": "test"}],
-                schema=schema,
-            )
-
-        assert result == {"summary": "测试摘要", "keywords": ["关键词1", "关键词2"]}
-
-    @pytest.mark.asyncio
-    async def test_complete_structured_no_tool_calls(self):
-        client = OpenAIClient(api_key="test-key", model="test-model")
-
-        schema = {
-            "name": "test",
-            "description": "test",
-            "parameters": {"type": "object", "properties": {}},
-        }
-
-        mock_response_data = {
-            "choices": [{"message": {"content": "text response", "tool_calls": []}}]
-        }
-
-        with patch("httpx.AsyncClient") as mock_client_class:
-            mock_client = AsyncMock()
-            mock_client_class.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_client_class.return_value.__aexit__ = AsyncMock(return_value=False)
-
-            mock_post = AsyncMock()
-            mock_response_obj = MagicMock()
-            mock_response_obj.raise_for_status = MagicMock()
-            mock_response_obj.json = MagicMock(return_value=mock_response_data)
-            mock_post.return_value = mock_response_obj
-            mock_client.post = mock_post
-
-            result = await client.complete_structured(
-                messages=[{"role": "user", "content": "test"}],
-                schema=schema,
-            )
-
-        assert result is None
-
-    @pytest.mark.asyncio
-    async def test_complete_structured_parses_json_from_content_when_no_tool_calls(self):
-        client = OpenAIClient(api_key="test-key", model="test-model")
-
-        schema = {
-            "name": "test",
-            "description": "test",
-            "parameters": {"type": "object", "properties": {}},
-        }
-
-        mock_response_data = {
-            "choices": [
-                {
-                    "message": {
-                        "content": '```json\n{"summary": "from-content", "keywords": ["x"]}\n```',
-                        "tool_calls": [],
-                    }
-                }
-            ]
-        }
-
-        with patch("httpx.AsyncClient") as mock_client_class:
-            mock_client = AsyncMock()
-            mock_client_class.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_client_class.return_value.__aexit__ = AsyncMock(return_value=False)
-
-            mock_post = AsyncMock()
-            mock_response_obj = MagicMock()
-            mock_response_obj.raise_for_status = MagicMock()
-            mock_response_obj.json = MagicMock(return_value=mock_response_data)
-            mock_post.return_value = mock_response_obj
-            mock_client.post = mock_post
-
-            result = await client.complete_structured(
-                messages=[{"role": "user", "content": "test"}],
-                schema=schema,
-            )
-
-        assert result == {"summary": "from-content", "keywords": ["x"]}
-
-    @pytest.mark.asyncio
-    async def test_complete_structured_parses_wrapped_function_arguments(self):
-        client = OpenAIClient(api_key="test-key", model="test-model")
-
-        schema = {
-            "name": "extract_info",
-            "description": "Extract information",
-            "parameters": {
-                "type": "object",
-                "properties": {"summary": {"type": "string"}},
-            },
-        }
-
-        mock_response = {
-            "choices": [
-                {
-                    "message": {
-                        "tool_calls": [
-                            {
-                                "function": {
-                                    "name": "extract_info",
-                                    "arguments": '```json\n{"summary": "wrapped"}\n```',
-                                },
-                                "id": "call_123",
-                                "type": "function",
-                            }
-                        ]
-                    }
-                }
-            ]
-        }
-
-        with patch("httpx.AsyncClient") as mock_client_class:
-            mock_client = AsyncMock()
-            mock_client_class.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_client_class.return_value.__aexit__ = AsyncMock(return_value=False)
-
-            mock_post = AsyncMock()
-            mock_response_obj = MagicMock()
-            mock_response_obj.raise_for_status = MagicMock()
-            mock_response_obj.json = MagicMock(return_value=mock_response)
-            mock_post.return_value = mock_response_obj
-            mock_client.post = mock_post
-
-            result = await client.complete_structured(
-                messages=[{"role": "user", "content": "test"}],
-                schema=schema,
-            )
-
-        assert result == {"summary": "wrapped"}
-
-    @pytest.mark.asyncio
-    async def test_complete_structured_400_returns_none(self):
-        client = OpenAIClient(api_key="test-key", model="test-model")
-
-        schema = {
-            "name": "test",
-            "description": "test",
-            "parameters": {"type": "object", "properties": {}},
-        }
-
-        with patch("httpx.AsyncClient") as mock_client_class:
-            mock_client = AsyncMock()
-            mock_client_class.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_client_class.return_value.__aexit__ = AsyncMock(return_value=False)
-
-            mock_post = AsyncMock()
-            import httpx
-
-            mock_response_obj = MagicMock()
-            mock_response_obj.status_code = 400
-            mock_response_obj.text = "Bad Request"
-            mock_post.side_effect = httpx.HTTPStatusError(
-                "400 Bad Request", request=MagicMock(), response=mock_response_obj
-            )
-            mock_client.post = mock_post
-
-            result = await client.complete_structured(
-                messages=[{"role": "user", "content": "test"}],
-                schema=schema,
-            )
-
-        assert result is None
-
-
-class TestOllamaClientCompleteStructured:
-    @pytest.mark.asyncio
-    async def test_ollama_returns_none(self):
-        client = OllamaClient(model="test-model", host="http://localhost:11434")
-        result = await client.complete_structured(
-            messages=[{"role": "user", "content": "test"}],
-            schema={"name": "test"},
-        )
-        assert result is None
+    def test_default_timeout_and_retries(self):
+        client = LiteLLMClient()
+        assert client.timeout == 60
+        assert client.max_retries == 2

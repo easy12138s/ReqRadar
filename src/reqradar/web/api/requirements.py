@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 
 from reqradar.agent.requirement_preprocessor import preprocess_requirements
 from reqradar.agent.llm_utils import _call_llm_structured
-from reqradar.modules.llm_client import OpenAIClient
+from reqradar.modules.llm_client import LiteLLMClient
 from reqradar.web.dependencies import get_current_user, get_db
 from reqradar.web.models import RequirementDocument, Project, User
 from reqradar.web.enums import PreprocessStatus
@@ -103,7 +103,13 @@ async def preprocess_requirements_endpoint(
         )
         saved_paths.append(file_path)
 
-    llm_client = OpenAIClient(config.llm)
+    llm_client = LiteLLMClient(
+        api_key=config.llm.api_key or "",
+        model=config.llm.model,
+        base_url=config.llm.base_url or "https://api.openai.com/v1",
+        timeout=config.llm.timeout,
+        max_retries=config.llm.max_retries,
+    )
 
     if not title:
         title = files[0].filename.rsplit(".", 1)[0] if files else "未命名需求"

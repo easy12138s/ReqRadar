@@ -71,26 +71,6 @@ class TestLoaderRegistry:
         assert loader.supports(Path("test.xyz")) is False
 
 
-class TestVisionConfig:
-    def test_defaults(self):
-        from reqradar.infrastructure.config import VisionConfig
-
-        config = VisionConfig()
-        assert config.provider == "openai"
-        assert config.model == "gpt-4o"
-        assert config.timeout == 120
-
-    def test_env_var_resolution(self):
-        import os
-
-        from reqradar.infrastructure.config import VisionConfig
-
-        os.environ["TEST_VISION_KEY"] = "vk-123"
-        config = VisionConfig(api_key="${TEST_VISION_KEY}")
-        assert config.api_key == "vk-123"
-        del os.environ["TEST_VISION_KEY"]
-
-
 class TestMemoryConfig:
     def test_defaults(self):
         from reqradar.infrastructure.config import MemoryConfig

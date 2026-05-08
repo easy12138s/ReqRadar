@@ -320,9 +320,8 @@ def project_index(ctx, project_id, build_profile):
                 project_memory = ProjectMemory(storage_path=str(memory_path), project_id=p.id)
 
                 llm_client = create_llm_client(
-                    config.llm.provider,
-                    api_key=config.llm.api_key,
                     model=config.llm.model,
+                    api_key=config.llm.api_key,
                     base_url=config.llm.base_url or "https://api.openai.com/v1",
                     timeout=config.llm.timeout,
                     max_retries=config.llm.max_retries,

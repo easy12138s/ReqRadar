@@ -41,7 +41,7 @@ def preprocess_command(project_id, files, directory, name, output, wait):
     """预处理需求文件，整合为结构化文档"""
     from reqradar.agent.requirement_preprocessor import preprocess_requirements
     from reqradar.agent.llm_utils import _call_llm_structured
-    from reqradar.modules.llm_client import OpenAIClient
+    from reqradar.modules.llm_client import LiteLLMClient
     from reqradar.web.models import RequirementDocument, Project
     from sqlalchemy import select
 
@@ -85,7 +85,13 @@ def preprocess_command(project_id, files, directory, name, output, wait):
     title = name or file_paths[0].stem
 
     config = load_config()
-    llm_client = OpenAIClient(config.llm)
+    llm_client = LiteLLMClient(
+        api_key=config.llm.api_key or "",
+        model=config.llm.model,
+        base_url=config.llm.base_url or "https://api.openai.com/v1",
+        timeout=config.llm.timeout,
+        max_retries=config.llm.max_retries,
+    )
 
     async def _run():
         return await preprocess_requirements(file_paths, llm_client, title)
