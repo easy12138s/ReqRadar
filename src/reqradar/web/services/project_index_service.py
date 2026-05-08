@@ -74,6 +74,14 @@ class ProjectIndexService:
                     from reqradar.modules.loaders import LoaderRegistry
                     from reqradar.modules.vector_store import Document
 
+                    try:
+                        import chromadb
+
+                        client = chromadb.PersistentClient(path=str(vectorstore_path))
+                        client.delete_collection("requirements")
+                    except (ValueError, Exception):
+                        pass
+
                     vs = ChromaVectorStore(
                         persist_directory=str(vectorstore_path),
                         embedding_model=config.index.embedding_model,
@@ -132,6 +140,15 @@ class ProjectIndexService:
             return
 
         vectorstore_path = index_path / "vectorstore"
+
+        try:
+            import chromadb
+
+            client = chromadb.PersistentClient(path=str(vectorstore_path))
+            client.delete_collection("commits")
+        except (ValueError, Exception):
+            pass
+
         vs = ChromaVectorStore(
             persist_directory=str(vectorstore_path),
             embedding_model=config.index.embedding_model,

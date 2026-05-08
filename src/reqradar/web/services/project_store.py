@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+from collections import OrderedDict
 from pathlib import Path
 from typing import Optional
 
@@ -8,17 +9,22 @@ logger = logging.getLogger("reqradar.web.services.project_store")
 
 
 class ProjectStore:
-    MAX_CACHED_PROJECTS = 32
+    MAX_CACHED_PROJECTS = 10
 
     def __init__(self):
-        self._code_graphs: dict[int, object] = {}
-        self._vector_stores: dict[int, object] = {}
-        self._git_vector_stores: dict[int, object] = {}
+        self._code_graphs: OrderedDict[int, object] = OrderedDict()
+        self._vector_stores: OrderedDict[int, object] = OrderedDict()
+        self._git_vector_stores: OrderedDict[int, object] = OrderedDict()
         self._lock = asyncio.Lock()
+
+    def _evict_lru(self, cache: OrderedDict):
+        while len(cache) > self.MAX_CACHED_PROJECTS:
+            cache.popitem(last=False)
 
     async def get_code_graph(self, project_id: int, index_path: str) -> Optional[object]:
         async with self._lock:
             if project_id in self._code_graphs:
+                self._code_graphs.move_to_end(project_id)
                 return self._code_graphs[project_id]
 
         code_graph_path = Path(index_path) / "code_graph.json"
@@ -44,9 +50,7 @@ class ProjectStore:
 
             async with self._lock:
                 self._code_graphs[project_id] = code_graph
-                while len(self._code_graphs) > self.MAX_CACHED_PROJECTS:
-                    oldest_key = next(iter(self._code_graphs))
-                    del self._code_graphs[oldest_key]
+                self._evict_lru(self._code_graphs)
 
             return code_graph
         except Exception:
@@ -56,6 +60,7 @@ class ProjectStore:
     async def get_vector_store(self, project_id: int, index_path: str) -> Optional[object]:
         async with self._lock:
             if project_id in self._vector_stores:
+                self._vector_stores.move_to_end(project_id)
                 return self._vector_stores[project_id]
 
         vectorstore_path = Path(index_path) / "vectorstore"
@@ -75,9 +80,7 @@ class ProjectStore:
 
             async with self._lock:
                 self._vector_stores[project_id] = vector_store
-                while len(self._vector_stores) > self.MAX_CACHED_PROJECTS:
-                    oldest_key = next(iter(self._vector_stores))
-                    del self._vector_stores[oldest_key]
+                self._evict_lru(self._vector_stores)
 
             return vector_store
         except Exception:
@@ -94,6 +97,7 @@ class ProjectStore:
     async def get_commits_vector_store(self, project_id: int, index_path: str) -> Optional[object]:
         async with self._lock:
             if project_id in self._git_vector_stores:
+                self._git_vector_stores.move_to_end(project_id)
                 return self._git_vector_stores[project_id]
 
         vectorstore_path = Path(index_path) / "vectorstore"
@@ -113,9 +117,7 @@ class ProjectStore:
 
             async with self._lock:
                 self._git_vector_stores[project_id] = store
-                while len(self._git_vector_stores) > self.MAX_CACHED_PROJECTS:
-                    oldest_key = next(iter(self._git_vector_stores))
-                    del self._git_vector_stores[oldest_key]
+                self._evict_lru(self._git_vector_stores)
 
             return store
         except Exception:

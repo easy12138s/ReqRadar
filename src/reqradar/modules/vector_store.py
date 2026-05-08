@@ -157,6 +157,13 @@ class ChromaVectorStore(VectorStore):
 
     def search(self, query: str, top_k: int = 5) -> list[SearchResult]:
         """搜索相似文档"""
+        try:
+            count = self.collection.count()
+            if count == 0:
+                return []
+        except Exception:
+            pass
+
         query_embedding = self.embedding_model.encode([query]).tolist()
 
         results = self.collection.query(

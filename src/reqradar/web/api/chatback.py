@@ -172,45 +172,53 @@ async def chat_stream(
     await db.refresh(chat_record)
 
     async def token_generator():
-        collected = []
-        try:
-            version = await version_service.get_version(task_id, version_number)
-            if version is None:
-                yield f"data: {_json.dumps({'error': 'Version not found'})}\n\n"
-                return
+        import reqradar.web.dependencies as dep_module
 
-            report_data = version.report_data or {}
-            context_snapshot = (
-                await version_service.get_context_snapshot(task_id, version_number) or {}
-            )
-            system_prompt = build_chatback_system_prompt(
-                report_data=report_data, context_snapshot=context_snapshot
-            )
-            messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": req.message},
-            ]
+        if dep_module.async_session_factory is None:
+            yield f"data: {_json.dumps({'error': 'Database not available'})}\n\n"
+            return
 
-            async for token in llm_client.stream_complete(messages):
-                collected.append(token)
-                yield f"data: {_json.dumps({'token': token})}\n\n"
+        async with dep_module.async_session_factory() as stream_db:
+            stream_version_service = VersionService(stream_db)
+            collected = []
+            try:
+                version = await stream_version_service.get_version(task_id, version_number)
+                if version is None:
+                    yield f"data: {_json.dumps({'error': 'Version not found'})}\n\n"
+                    return
 
-            full_reply = "".join(collected)
-            agent_reply = ReportChat(
-                task_id=task_id,
-                version_number=version_number,
-                role="agent",
-                content=full_reply,
-                evidence_refs=[],
-            )
-            db.add(agent_reply)
-            await db.commit()
-            await db.refresh(agent_reply)
-            yield f"data: {_json.dumps({'done': True, 'chat_id': agent_reply.id})}\n\n"
+                report_data = version.report_data or {}
+                context_snapshot = (
+                    await stream_version_service.get_context_snapshot(task_id, version_number) or {}
+                )
+                system_prompt = build_chatback_system_prompt(
+                    report_data=report_data, context_snapshot=context_snapshot
+                )
+                messages = [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": req.message},
+                ]
 
-        except Exception as e:
-            logger.warning("Stream chat failed: %s", e)
-            yield f"data: {_json.dumps({'error': '调用失败，请检查 LLM 配置'})}\n\n"
+                async for token in llm_client.stream_complete(messages):
+                    collected.append(token)
+                    yield f"data: {_json.dumps({'token': token})}\n\n"
+
+                full_reply = "".join(collected)
+                agent_reply = ReportChat(
+                    task_id=task_id,
+                    version_number=version_number,
+                    role="agent",
+                    content=full_reply,
+                    evidence_refs=[],
+                )
+                stream_db.add(agent_reply)
+                await stream_db.commit()
+                await stream_db.refresh(agent_reply)
+                yield f"data: {_json.dumps({'done': True, 'chat_id': agent_reply.id, 'new_version': None})}\n\n"
+
+            except Exception as e:
+                logger.warning("Stream chat failed: %s", e)
+                yield f"data: {_json.dumps({'error': '调用失败，请检查 LLM 配置'})}\n\n"
 
     return StreamingResponse(token_generator(), media_type="text/event-stream")
 

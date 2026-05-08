@@ -277,9 +277,15 @@ async def get_user_config(
     db: DbSession,
     current_user: CurrentUser,
 ):
-    cm = ConfigManager(db, load_config())
-    value = await cm.get(key, user_id=current_user.id)
-    return {"key": key, "value": value, "value_type": "string", "is_sensitive": False}
+    result = await db.execute(
+        select(UserConfig).where(
+            UserConfig.user_id == current_user.id, UserConfig.config_key == key
+        )
+    )
+    row = result.scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Config not found")
+    return _serialize_config_row(row)
 
 
 @router.put("/me/configs/{key:path}", response_model=ConfigValueResponse)

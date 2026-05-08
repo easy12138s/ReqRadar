@@ -58,9 +58,7 @@ class ConfigManager:
 
         # 1. 用户级
         if user_id is not None:
-            raw_value, value_type = await self._get_from_db(
-                UserConfig, key, user_id=user_id
-            )
+            raw_value, value_type = await self._get_from_db(UserConfig, key, user_id=user_id)
 
         # 2. 项目级
         if raw_value is None and project_id is not None:
@@ -90,46 +88,90 @@ class ConfigManager:
         return self._convert_type(raw_value, as_type or value_type)
 
     async def get_str(
-        self, key: str, *, user_id: int | None = None, project_id: int | None = None, default: str = ""
+        self,
+        key: str,
+        *,
+        user_id: int | None = None,
+        project_id: int | None = None,
+        default: str = "",
     ) -> str:
-        result = await self.get(key, user_id=user_id, project_id=project_id, default=default, as_type="string")
+        result = await self.get(
+            key, user_id=user_id, project_id=project_id, default=default, as_type="string"
+        )
         return str(result) if result is not None else default
 
     async def get_int(
-        self, key: str, *, user_id: int | None = None, project_id: int | None = None, default: int = 0
+        self,
+        key: str,
+        *,
+        user_id: int | None = None,
+        project_id: int | None = None,
+        default: int = 0,
     ) -> int:
-        result = await self.get(key, user_id=user_id, project_id=project_id, default=default, as_type="integer")
+        result = await self.get(
+            key, user_id=user_id, project_id=project_id, default=default, as_type="integer"
+        )
         return result if result is not None else default
 
     async def get_float(
-        self, key: str, *, user_id: int | None = None, project_id: int | None = None, default: float = 0.0
+        self,
+        key: str,
+        *,
+        user_id: int | None = None,
+        project_id: int | None = None,
+        default: float = 0.0,
     ) -> float:
-        result = await self.get(key, user_id=user_id, project_id=project_id, default=default, as_type="float")
+        result = await self.get(
+            key, user_id=user_id, project_id=project_id, default=default, as_type="float"
+        )
         return result if result is not None else default
 
     async def get_bool(
-        self, key: str, *, user_id: int | None = None, project_id: int | None = None, default: bool = False
+        self,
+        key: str,
+        *,
+        user_id: int | None = None,
+        project_id: int | None = None,
+        default: bool = False,
     ) -> bool:
-        result = await self.get(key, user_id=user_id, project_id=project_id, default=default, as_type="boolean")
+        result = await self.get(
+            key, user_id=user_id, project_id=project_id, default=default, as_type="boolean"
+        )
         return result if result is not None else default
 
     async def get_json(
-        self, key: str, *, user_id: int | None = None, project_id: int | None = None, default: Any = None
+        self,
+        key: str,
+        *,
+        user_id: int | None = None,
+        project_id: int | None = None,
+        default: Any = None,
     ) -> Any:
-        return await self.get(key, user_id=user_id, project_id=project_id, default=default, as_type="json")
+        return await self.get(
+            key, user_id=user_id, project_id=project_id, default=default, as_type="json"
+        )
 
     async def get_masked(
-        self, key: str, *, user_id: int | None = None, project_id: int | None = None, default: str = ""
+        self,
+        key: str,
+        *,
+        user_id: int | None = None,
+        project_id: int | None = None,
+        default: str = "",
     ) -> str:
         """获取掩码后的值（用于 API 返回）"""
         value = await self.get_str(key, user_id=user_id, project_id=project_id, default=default)
         return self._mask_sensitive(value)
 
-    async def is_set(self, key: str, *, user_id: int | None = None, project_id: int | None = None) -> bool:
+    async def is_set(
+        self, key: str, *, user_id: int | None = None, project_id: int | None = None
+    ) -> bool:
         """检查某层级是否有显式配置（非继承）"""
         if user_id is not None:
             row = await self._db.execute(
-                select(UserConfig).where(UserConfig.user_id == user_id, UserConfig.config_key == key)
+                select(UserConfig).where(
+                    UserConfig.user_id == user_id, UserConfig.config_key == key
+                )
             )
             if row.scalar_one_or_none():
                 return True
@@ -381,14 +423,14 @@ class ConfigManager:
 
         str_value = str(value)
 
-        if target_type == "boolean":
+        if target_type in ("bool", "boolean"):
             return str_value.lower() in ("true", "1", "yes", "on")
-        if target_type == "integer":
+        if target_type in ("int", "integer"):
             try:
                 return int(str_value)
             except ValueError:
                 return None
-        if target_type == "float":
+        if target_type in ("float", "number"):
             try:
                 return float(str_value)
             except ValueError:

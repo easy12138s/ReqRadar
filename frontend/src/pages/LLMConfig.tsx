@@ -28,6 +28,7 @@ interface LLMFormValues {
   model: string;
   api_key: string;
   base_url: string;
+  host: string;
   timeout: number;
   max_retries: number;
   vision_provider: string;
@@ -42,6 +43,7 @@ const LLM_CONFIG_KEYS: Record<keyof LLMFormValues, string> = {
   model: 'llm.model',
   api_key: 'llm.api_key',
   base_url: 'llm.base_url',
+  host: 'llm.host',
   timeout: 'llm.timeout',
   max_retries: 'llm.max_retries',
   vision_provider: 'vision.provider',
@@ -56,6 +58,7 @@ const DEFAULT_VALUES: LLMFormValues = {
   model: 'gpt-4o-mini',
   api_key: '',
   base_url: 'https://api.openai.com/v1',
+  host: 'http://localhost:11434',
   timeout: 60,
   max_retries: 2,
   vision_provider: 'openai',
@@ -108,9 +111,9 @@ export function LLMConfig() {
     try {
       const promises = Object.entries(LLM_CONFIG_KEYS).map(async ([field, key]) => {
         const value = values[field as keyof LLMFormValues];
-        if (value !== undefined && value !== '') {
+        if (value !== undefined) {
           const valueType = typeof value === 'number' ? 'int' : typeof value === 'boolean' ? 'bool' : 'str';
-          await setUserConfig(key, { value, value_type: valueType, is_sensitive: key.includes('api_key') });
+          await setUserConfig(key, { value: String(value), value_type: valueType, is_sensitive: key.includes('api_key') });
         }
       });
       await Promise.all(promises);
@@ -180,7 +183,20 @@ export function LLMConfig() {
           重置为默认
         </Button>
         <Button onClick={loadConfigs}>
-          重新加载
+           重新加载
+        </Button>
+        <Button
+          danger
+          onClick={async () => {
+            const promises = Object.values(LLM_CONFIG_KEYS).map(async (key) => {
+              await setUserConfig(key, { value: '', value_type: 'str', is_sensitive: key.includes('api_key') });
+            });
+            await Promise.all(promises);
+            form.setFieldsValue(DEFAULT_VALUES);
+            message.success('配置已清除');
+          }}
+        >
+           清除配置
         </Button>
       </Space>
 
@@ -207,6 +223,11 @@ export function LLMConfig() {
           <Form.Item label="Base URL" name="base_url" tooltip="OpenAI 兼容的 API 地址">
             <Input placeholder="https://api.openai.com/v1" />
           </Form.Item>
+          {provider === 'ollama' && (
+            <Form.Item label="Ollama Host" name="host" tooltip="Ollama 服务地址">
+              <Input placeholder="http://localhost:11434" />
+            </Form.Item>
+          )}
           <Space size={16}>
             <Form.Item label="超时 (秒)" name="timeout">
               <InputNumber min={1} max={300} style={{ width: 120 }} />
