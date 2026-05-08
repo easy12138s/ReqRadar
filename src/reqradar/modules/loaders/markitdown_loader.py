@@ -39,11 +39,22 @@ ALL_EXTENSIONS = sorted(_IMAGE_EXTENSIONS | _DOCUMENT_EXTENSIONS)
 
 
 def _split_by_headings(text: str) -> list[str]:
-    """按 ## 二级标题自然分块，保持语义完整。"""
+    """按标题自然分块：## Markdown / # Markdown / 中文编号 / 数字编号。"""
     if not text.strip():
         return [text]
 
-    parts = re.split(r"\n(?=## )", text)
+    # 中文编号：标准汉字 + CJK Compatibility Ideographs 变体
+    cn_num = r"[\u2f00\u2f06\u2f09\u2f14\u2f18\u2f1d一二三四五六七八九十]+、"
+
+    patterns = [
+        r"##\s",  # Markdown h2
+        r"#\s",  # Markdown h1
+        cn_num,  # 中文编号：一、二、三、...⼀、⼆、
+        r"\d+(?:\.\d+)+\s",  # 数字子编号：1.1, 2.3.1
+    ]
+    combined = "|".join(f"(?={p})" for p in patterns)
+    parts = re.split(rf"\n({combined})", text)
+
     return [p.strip() for p in parts if p.strip()]
 
 
