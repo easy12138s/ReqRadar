@@ -1,4 +1,8 @@
+from datetime import datetime
+from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -6,6 +10,21 @@ from reqradar.web.dependencies import DbSession, CurrentUser
 from reqradar.web.models import User
 
 router = APIRouter(prefix="/api/users", tags=["users"])
+
+
+class UserResponse(BaseModel):
+    id: int
+    email: str
+    display_name: str
+    role: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class UserUpdateRequest(BaseModel):
+    role: Optional[str] = None
+    display_name: Optional[str] = None
 
 
 @router.get("")
@@ -33,30 +52,31 @@ async def list_users(
 @router.put("/{user_id}")
 async def update_user(
     user_id: int,
-    body: dict,
+    body: UserUpdateRequest,
     db: DbSession,
     current_user: CurrentUser,
 ):
     if current_user.role != "admin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin only")
 
-    # admin不能通过API改变自己的角色
-    if current_user.id == user_id and "role" in body:
+    user = await db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    if user.id == current_user.id and body.role is not None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot change your own role"
         )
 
-    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
-    if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-
-    if "role" in body and body["role"] in ("admin", "user"):
-        user.role = body["role"]
-    if "display_name" in body and body["display_name"]:
-        user.display_name = body["display_name"]
+    if body.role is not None:
+        if body.role not in ("admin", "user"):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid role")
+        user.role = body.role
+    if body.display_name is not None and body.display_name.strip():
+        user.display_name = body.display_name.strip()
 
     await db.commit()
-    return {"id": user.id, "updated": True}
+    return UserResponse.model_validate(user)
 
 
 @router.delete("/{user_id}")

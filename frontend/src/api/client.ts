@@ -27,6 +27,10 @@ apiClient.interceptors.response.use(
     const status = error.response?.status;
 
     if (status === 401) {
+      const detail = error.response?.data?.detail || '';
+      if (detail.includes('expired') || detail.includes('Expired')) {
+        message.warning('会话已过期，请重新登录');
+      }
       localStorage.removeItem('access_token');
       window.location.href = '/app/login';
     } else if (status === 403) {

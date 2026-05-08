@@ -13,10 +13,9 @@ logger = logging.getLogger("reqradar.seed")
 
 
 async def seed_admin_user(db: AsyncSession) -> User:
-    result = await db.execute(select(User))
-    existing = result.scalars().first()
+    result = await db.execute(select(User).where(User.email == "admin@reqradar.io"))
+    existing = result.scalar_one_or_none()
     if existing:
-        logger.info("Users already exist, skipping admin seed")
         return existing
 
     password = "Admin12138%"
@@ -32,7 +31,7 @@ async def seed_admin_user(db: AsyncSession) -> User:
     db.add(admin)
     await db.commit()
     await db.refresh(admin)
-    logger.info("Seeded default admin user (email=admin@reqradar.io, password=Admin12138%%)")
+    logger.info("Seeded default admin user (email=admin@reqradar.io)")
     return admin
 
 

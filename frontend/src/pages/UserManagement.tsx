@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import {
-  Card, Table, Button, Typography, Modal, Select, message, Space, Popconfirm,
+  Card, Table, Button, Typography, Modal, Select, message, Space, Popconfirm, Form, Input,
 } from 'antd';
 import { UserAddOutlined, DeleteOutlined, ReloadOutlined } from '@ant-design/icons';
 import { getUsers, updateUser, deleteUser, type UserInfo } from '../api/users';
@@ -14,8 +14,7 @@ export default function UserManagement() {
   const [loading, setLoading] = useState(true);
   const [addOpen, setAddOpen] = useState(false);
   const [adding, setAdding] = useState(false);
-  const [email, setEmail] = useState('');
-  const [displayName, setDisplayName] = useState('');
+  const [form] = Form.useForm();
 
   const loadUsers = async () => {
     setLoading(true);
@@ -31,18 +30,17 @@ export default function UserManagement() {
 
   useEffect(() => { loadUsers(); }, []);
 
-  const handleAdd = async () => {
-    if (!email || !displayName) {
-      message.warning('请填写邮箱和显示名称');
-      return;
-    }
+  const handleCreate = async (values: any) => {
     setAdding(true);
     try {
-      await register({ email, display_name: displayName, password: 'User12138%' });
-      message.success(`用户 ${email} 创建成功，默认密码: User12138%`);
+      await register({
+        email: values.email,
+        password: values.password,
+        display_name: values.display_name,
+      });
+      message.success(`用户 ${values.email} 创建成功`);
       setAddOpen(false);
-      setEmail('');
-      setDisplayName('');
+      form.resetFields();
       loadUsers();
     } catch (e: any) {
       message.error(e.response?.data?.detail || '创建失败');
@@ -150,39 +148,43 @@ export default function UserManagement() {
       <Modal
         title="添加用户"
         open={addOpen}
-        onCancel={() => { setAddOpen(false); setEmail(''); setDisplayName(''); }}
-        onOk={handleAdd}
+        onCancel={() => { setAddOpen(false); form.resetFields(); }}
+        onOk={() => form.submit()}
         confirmLoading={adding}
         okText="确认添加"
       >
-        <div style={{ marginBottom: 12 }}>
-          <div style={{ marginBottom: 4, color: '#a0aec0', fontSize: 13 }}>邮箱</div>
-          <input
-            type="email"
-            placeholder="请输入邮箱"
-            value={email}
-            onChange={e => setEmail(e.target.value)}
-            style={{
-              width: '100%', padding: '8px 12px', borderRadius: 6,
-              background: '#1f2937', border: '1px solid #2d3748', color: '#e2e8f0', fontSize: 14, outline: 'none',
-            }}
-          />
-        </div>
-        <div style={{ marginBottom: 12 }}>
-          <div style={{ marginBottom: 4, color: '#a0aec0', fontSize: 13 }}>显示名称</div>
-          <input
-            placeholder="请输入显示名称"
-            value={displayName}
-            onChange={e => setDisplayName(e.target.value)}
-            style={{
-              width: '100%', padding: '8px 12px', borderRadius: 6,
-              background: '#1f2937', border: '1px solid #2d3748', color: '#e2e8f0', fontSize: 14, outline: 'none',
-            }}
-          />
-        </div>
-        <div style={{ padding: '8px 12px', background: 'rgba(0,212,255,0.08)', borderRadius: 6, fontSize: 13, color: '#00d4ff' }}>
-          默认密码: <strong>User12138%</strong>
-        </div>
+        <Form form={form} layout="vertical" onFinish={handleCreate}>
+          <Form.Item
+            label="邮箱"
+            name="email"
+            rules={[
+              { required: true, message: '请输入邮箱' },
+              { type: 'email', message: '邮箱格式不正确' },
+            ]}
+          >
+            <Input placeholder="请输入邮箱" />
+          </Form.Item>
+          <Form.Item
+            label="显示名称"
+            name="display_name"
+            rules={[{ required: true, message: '请输入显示名称' }]}
+          >
+            <Input placeholder="请输入显示名称" />
+          </Form.Item>
+          <Form.Item
+            label="密码"
+            name="password"
+            rules={[
+              { required: true, message: '请输入密码' },
+              { min: 8, message: '密码至少8位' },
+              { pattern: /[A-Z]/, message: '需要大写字母' },
+              { pattern: /[a-z]/, message: '需要小写字母' },
+              { pattern: /[0-9]/, message: '需要数字' },
+            ]}
+          >
+            <Input.Password placeholder="设置密码" />
+          </Form.Item>
+        </Form>
       </Modal>
     </div>
   );

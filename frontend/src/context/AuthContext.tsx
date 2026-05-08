@@ -8,6 +8,7 @@ import {
 } from 'react';
 import type { User } from '@/types/api';
 import { getMe } from '@/api/auth';
+import { apiClient } from '@/api/client';
 
 interface AuthContextType {
   user: User | null;
@@ -56,7 +57,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    try {
+      await apiClient.post('/auth/logout');
+    } catch {
+      // Best-effort, proceed with local cleanup
+    }
     localStorage.removeItem('access_token');
     localStorage.removeItem('user');
     setUser(null);
