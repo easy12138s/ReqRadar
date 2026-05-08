@@ -69,14 +69,13 @@ export function ReportView() {
     <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 80px)' }}>
       {/* top bar */}
       <div
-        className="glass"
         style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           padding: '12px 20px',
-          borderBottom: '1px solid #363b48',
-          borderRadius: '12px 12px 0 0',
+          background: '#111827',
+          borderBottom: '1px solid #1e293b',
           flexShrink: 0,
         }}
       >
@@ -87,7 +86,7 @@ export function ReportView() {
             onClick={() => navigate('/analyses')}
           />
           <div>
-            <Title level={5} style={{ margin: 0, color: '#f0f6fc' }}>
+            <Title level={5} style={{ margin: 0 }}>
               任务 #{report.task_id} 分析报告
             </Title>
           </div>

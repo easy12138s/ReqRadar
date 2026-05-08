@@ -12,6 +12,7 @@ import {
   Empty,
   message,
   Popconfirm,
+  theme,
 } from 'antd';
 import {
   ReloadOutlined,
@@ -43,6 +44,7 @@ export function AnalysisList() {
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [searchText, setSearchText] = useState('');
+  const { token } = theme.useToken();
   const navigate = useNavigate();
 
   const fetchAnalyses = async () => {
@@ -86,7 +88,7 @@ export function AnalysisList() {
       dataIndex: 'requirement_name',
       key: 'requirement_name',
       ellipsis: true,
-      render: (v: string) => <span style={{ color: '#e2e8f0' }}>{v || '-'}</span>,
+      render: (v: string) => <span style={{ color: token.colorText }}>{v || '-'}</span>,
     },
     {
       title: '项目',

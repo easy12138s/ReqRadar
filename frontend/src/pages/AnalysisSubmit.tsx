@@ -235,9 +235,9 @@ export function AnalysisSubmit() {
               status: 'done' as const,
             }))}
           >
-            <p><InboxOutlined style={{ fontSize: 48, color: '#00d4ff' }} /></p>
+            <p><InboxOutlined style={{ fontSize: 48 }} /></p>
             <p>拖拽或点击选择文件（支持多选）</p>
-            <p style={{ color: '#64748b', fontSize: 12 }}>
+            <p style={{ fontSize: 12 }}>
               支持: PDF, DOCX, MD, TXT, PNG, JPG
             </p>
           </Upload.Dragger>

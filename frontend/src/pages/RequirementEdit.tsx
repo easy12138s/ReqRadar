@@ -95,7 +95,7 @@ export default function RequirementEdit() {
       </div>
 
       <Card
-        className="glass-card"
+        className="flat-card"
         style={{ marginBottom: 24 }}
       >
         <TextArea
@@ -140,7 +140,7 @@ export default function RequirementEdit() {
       >
         <Space direction="vertical" style={{ width: '100%' }}>
           <div>
-            <div style={{ marginBottom: 4, color: '#8b949e', fontSize: 13 }}>分析深度</div>
+            <div style={{ marginBottom: 4, fontSize: 13 }}>分析深度</div>
             <Select
               value={analysisDepth}
               onChange={setAnalysisDepth}

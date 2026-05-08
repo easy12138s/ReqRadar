@@ -14,19 +14,20 @@ import {
   Input,
   Upload,
   Space,
+  Dropdown,
 } from 'antd';
 import {
-  CodeOutlined,
   CalendarOutlined,
-  ProfileOutlined,
   SyncOutlined,
-  BookOutlined,
   UploadOutlined,
   GithubOutlined,
   FolderOpenOutlined,
   DeleteOutlined,
+  MoreOutlined,
+  IdcardOutlined,
+  SwapOutlined,
 } from '@ant-design/icons';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import type { Project, ProjectCreateFromLocal, ProjectCreateFromGit } from '@/types/api';
 import { getProjects, createFromZip, createFromGit, createFromLocal, deleteProject } from '@/api/projects';
 import { apiClient } from '@/api/client';
@@ -128,17 +129,19 @@ export function Projects() {
     }
   };
 
-  const handleDeleteProject = (projectId: string, projectName: string, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const onProfile = (p: Project) => navigate(`/projects/${p.id}/profile`);
+  const onSynonyms = (p: Project) => navigate(`/projects/${p.id}/synonyms`);
+  const onRefreshProfile = (p: Project) => handleRegenerateProfile(p.id);
+  const onDelete = (p: Project) => {
     Modal.confirm({
       title: '确认删除',
-      content: `确定要删除项目「${projectName}」吗？此操作不可撤销。`,
+      content: `确定要删除项目「${p.name}」吗？此操作不可撤销。`,
       okText: '删除',
       okType: 'danger',
       cancelText: '取消',
       onOk: async () => {
         try {
-          await deleteProject(projectId);
+          await deleteProject(p.id);
           message.success('项目已删除');
           fetchProjects();
         } catch {
@@ -218,7 +221,25 @@ export function Projects() {
                 hoverable
                 onClick={() => navigate(`/projects/${project.id}`)}
                 title={project.name}
-                extra={<CodeOutlined />}
+                extra={
+                  <Dropdown menu={{
+                    items: [
+                      { key: 'profile', icon: <IdcardOutlined />, label: '画像管理' },
+                      { key: 'synonyms', icon: <SwapOutlined />, label: '同义词管理' },
+                      { key: 'index', icon: <SyncOutlined />, label: '更新画像' },
+                      { type: 'divider' },
+                      { key: 'delete', icon: <DeleteOutlined />, label: '删除项目', danger: true },
+                    ],
+                    onClick: ({ key }) => {
+                      if (key === 'profile') onProfile(project);
+                      else if (key === 'synonyms') onSynonyms(project);
+                      else if (key === 'index') onRefreshProfile(project);
+                      else if (key === 'delete') onDelete(project);
+                    }
+                  }} trigger={['click']}>
+                    <Button type="text" size="small" icon={<MoreOutlined />} />
+                  </Dropdown>
+                }
               >
                 <Paragraph ellipsis={{ rows: 2 }}>{project.description}</Paragraph>
                 <div style={{ marginTop: 12 }}>
@@ -231,18 +252,6 @@ export function Projects() {
                     <CalendarOutlined />{' '}
                     {new Date(project.created_at).toLocaleDateString()}
                   </Text>
-                </div>
-                <div style={{ marginTop: 12 }}>
-                  <Space size="small" onClick={(e) => e.stopPropagation()}>
-                    <Link to={`/projects/${project.id}/profile`}>
-                      <Button icon={<ProfileOutlined />} size="small">画像管理</Button>
-                    </Link>
-                    <Link to={`/projects/${project.id}/synonyms`}>
-                      <Button icon={<BookOutlined />} size="small">同义词</Button>
-                    </Link>
-                    <Button icon={<SyncOutlined />} size="small" onClick={(e) => { e.stopPropagation(); handleRegenerateProfile(project.id); }}>更新画像</Button>
-                    <Button icon={<DeleteOutlined />} size="small" danger onClick={(e) => handleDeleteProject(project.id, project.name, e)}>删除</Button>
-                  </Space>
                 </div>
               </Card>
             </Col>

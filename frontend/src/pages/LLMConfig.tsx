@@ -12,8 +12,11 @@ import {
   Alert,
   Tag,
   InputNumber,
+  Flex,
+  Popconfirm,
+  theme,
 } from 'antd';
-import { SaveOutlined, ReloadOutlined } from '@ant-design/icons';
+import { SaveOutlined, ReloadOutlined, ApiOutlined } from '@ant-design/icons';
 import { setUserConfig, listUserConfigs } from '@/api/configs';
 
 const { Title, Text } = Typography;
@@ -24,7 +27,7 @@ const LLM_PROVIDERS = [
   { label: 'Google Gemini', value: 'gemini' },
   { label: 'DeepSeek', value: 'deepseek' },
   { label: 'Ollama', value: 'ollama' },
-  { label: 'OpenAI 兼容', value: 'openai' },
+  { label: 'OpenAI 兼容', value: 'openai_compatible' },
 ];
 
 interface LLMFormValues {
@@ -63,6 +66,7 @@ export function LLMConfig() {
   const [saving, setSaving] = useState(false);
   const [testLoading, setTestLoading] = useState(false);
   const [apiKeyHidden, setApiKeyHidden] = useState(true);
+  const { token } = theme.useToken();
 
   useEffect(() => {
     loadConfigs();
@@ -142,6 +146,15 @@ export function LLMConfig() {
     message.info('已重置为默认值，请点击保存');
   };
 
+  const handleClear = async () => {
+    const promises = Object.values(LLM_CONFIG_KEYS).map(async (key) => {
+      await setUserConfig(key, { value: '', value_type: 'str', is_sensitive: key.includes('api_key') });
+    });
+    await Promise.all(promises);
+    form.setFieldsValue(DEFAULT_VALUES);
+    message.success('配置已清除');
+  };
+
   const provider = Form.useWatch('provider', form);
 
   return (
@@ -152,36 +165,9 @@ export function LLMConfig() {
         message="用户级配置优先级高于系统配置文件 (.reqradar.yaml)，API Key 等敏感信息保存后以掩码形式显示。"
         type="info"
         showIcon
+        closable
         style={{ marginBottom: 12 }}
       />
-
-      <Space style={{ marginBottom: 24 }}>
-        <Button onClick={handleTest} loading={testLoading}>
-          测试连接
-        </Button>
-        <Button type="primary" icon={<SaveOutlined />} onClick={() => form.submit()} loading={saving}>
-          保存配置
-        </Button>
-        <Button icon={<ReloadOutlined />} onClick={handleReset}>
-          重置为默认
-        </Button>
-        <Button onClick={loadConfigs}>
-           重新加载
-        </Button>
-        <Button
-          danger
-          onClick={async () => {
-            const promises = Object.values(LLM_CONFIG_KEYS).map(async (key) => {
-              await setUserConfig(key, { value: '', value_type: 'str', is_sensitive: key.includes('api_key') });
-            });
-            await Promise.all(promises);
-            form.setFieldsValue(DEFAULT_VALUES);
-            message.success('配置已清除');
-          }}
-        >
-           清除配置
-        </Button>
-      </Space>
 
       <Form
         form={form}
@@ -190,7 +176,7 @@ export function LLMConfig() {
         initialValues={DEFAULT_VALUES}
         disabled={loading}
       >
-        <Card title="文本分析模型" style={{ marginBottom: 16 }}>
+        <Card title="文本分析模型" style={{ background: token.colorBgContainer, border: '1px solid #1e293b' }}>
           <Form.Item label="LLM 提供商" name="provider" rules={[{ required: true, message: '请选择提供商' }]}>
             <Select options={LLM_PROVIDERS} />
           </Form.Item>
@@ -219,6 +205,27 @@ export function LLMConfig() {
               <InputNumber min={0} max={10} style={{ width: 120 }} />
             </Form.Item>
           </Space>
+
+          <Divider />
+          <Flex justify="space-between" align="center">
+            <Space>
+              <Button icon={<ApiOutlined />} onClick={handleTest} loading={testLoading}>
+                测试连接
+              </Button>
+              <Button onClick={handleReset}>重置为默认</Button>
+              <Popconfirm title="确定清除所有配置？" onConfirm={handleClear}>
+                <Button danger>清除配置</Button>
+              </Popconfirm>
+            </Space>
+            <Space>
+              <Button icon={<ReloadOutlined />} onClick={loadConfigs}>
+                重新加载
+              </Button>
+              <Button type="primary" icon={<SaveOutlined />} onClick={() => form.submit()} loading={saving}>
+                保存配置
+              </Button>
+            </Space>
+          </Flex>
         </Card>
 
         {provider === 'ollama' && (
@@ -227,7 +234,7 @@ export function LLMConfig() {
             description="Ollama v0.5+ 已支持 OpenAI 兼容 API (http://localhost:11434/v1)。请确保本地 Ollama 服务已启动并加载了指定模型。"
             type="warning"
             showIcon
-            style={{ marginBottom: 16 }}
+            style={{ marginTop: 16 }}
           />
         )}
       </Form>

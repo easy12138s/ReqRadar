@@ -45,7 +45,7 @@ export function Login() {
       }}
     >
       <Card
-        className="glass-card"
+        className="flat-card"
         style={{ width: 400 }}
       >
         <div style={{ textAlign: 'center', marginBottom: 24 }}>

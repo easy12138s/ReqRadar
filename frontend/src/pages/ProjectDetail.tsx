@@ -15,6 +15,7 @@ import {
   message,
   Modal,
   Tree,
+  theme,
 } from 'antd';
 import {
   EditOutlined,
@@ -57,6 +58,7 @@ function buildAntTree(nodes: FileTreeNode[]): import('antd').TreeDataNode[] {
 export function ProjectDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { token } = theme.useToken();
   const [project, setProject] = useState<Project | null>(null);
   const [memory, setMemory] = useState<ProjectMemory | null>(null);
   const [fileTree, setFileTree] = useState<FileTreeNode[]>([]);
@@ -240,6 +242,7 @@ export function ProjectDetail() {
       label: '知识库',
       children: (
         <Tabs
+          style={{ marginTop: 12 }}
           items={[
             {
               key: 'terminology',
@@ -333,7 +336,7 @@ export function ProjectDetail() {
   return (
     <div>
       <Title level={3}>{project.name}</Title>
-      <Card>
+      <Card style={{ background: '#111827', border: '1px solid #1e293b' }}>
         <Tabs items={tabItems} />
       </Card>
     </div>

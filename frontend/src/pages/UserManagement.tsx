@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import {
-  Card, Table, Button, Typography, Modal, Select, message, Space, Popconfirm, Form, Input,
+  Card, Table, Button, Typography, Modal, Select, message, Space, Popconfirm, Form, Input, theme,
 } from 'antd';
 import { UserAddOutlined, DeleteOutlined, ReloadOutlined } from '@ant-design/icons';
 import { getUsers, updateUser, deleteUser, type UserInfo } from '../api/users';
@@ -15,6 +15,7 @@ export default function UserManagement() {
   const [addOpen, setAddOpen] = useState(false);
   const [adding, setAdding] = useState(false);
   const [form] = Form.useForm();
+  const { token } = theme.useToken();
 
   const loadUsers = async () => {
     setLoading(true);
@@ -80,7 +81,7 @@ export default function UserManagement() {
     {
       title: '邮箱',
       dataIndex: 'email',
-      render: (v: string) => <span style={{ color: '#e2e8f0' }}>{v}</span>,
+      render: (v: string) => <span style={{ color: token.colorText }}>{v}</span>,
     },
     {
       title: '显示名称',
@@ -126,7 +127,7 @@ export default function UserManagement() {
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-        <Title level={4} style={{ margin: 0, color: '#f7fafc' }}>用户管理</Title>
+        <Title level={4} style={{ margin: 0, color: token.colorTextHeading }}>用户管理</Title>
         <Space>
           <Button icon={<ReloadOutlined />} onClick={loadUsers}>刷新</Button>
           <Button type="primary" icon={<UserAddOutlined />} onClick={() => setAddOpen(true)}>
@@ -135,7 +136,7 @@ export default function UserManagement() {
         </Space>
       </div>
 
-      <Card className="glass-card">
+      <Card className="flat-card">
         <Table
           dataSource={users}
           columns={columns}

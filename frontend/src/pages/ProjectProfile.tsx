@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   Card, message, Spin, Empty, Typography, Tabs, Descriptions, Tag,
-  Form, Input, Button,
+  Form, Input, Button, Divider, Space, theme,
 } from 'antd';
 import {
   getProjectProfile, updateProjectProfile,
@@ -21,6 +21,7 @@ export function ProjectProfile() {
   const [loading, setLoading] = useState(true);
   const [editOverview, setEditOverview] = useState('');
   const [editing, setEditing] = useState(false);
+  const { token } = theme.useToken();
 
   async function fetchProfile() {
     if (!projectId) return;
@@ -76,98 +77,100 @@ export function ProjectProfile() {
             key: 'view',
             label: '当前画像',
             children: d ? (
-              <Card>
-                <Descriptions column={2} size="small" style={{ marginBottom: 16 }}>
-                  <Descriptions.Item label="项目名称">{d.name || '-'}</Descriptions.Item>
-                  <Descriptions.Item label="模块">{d.modules?.length || 0} 个</Descriptions.Item>
-                  <Descriptions.Item label="术语">{d.terms?.length || 0} 个</Descriptions.Item>
-                  <Descriptions.Item label="约束">{d.constraints?.length || 0} 个</Descriptions.Item>
-                </Descriptions>
+              <div style={{ maxWidth: 860 }}>
+                <Title level={5}>项目概述</Title>
+                <div style={{ whiteSpace: 'pre-wrap', color: token.colorText }}>{d.overview || '暂无'}</div>
 
-                {d.overview ? (
-                  <Card type="inner" title="项目概述" size="small" style={{ marginBottom: 16 }}>
-                    <Text style={{ whiteSpace: 'pre-wrap', color: '#c9d1d9' }}>{d.overview}</Text>
-                  </Card>
-                ) : null}
+                <Divider />
 
-                {d.tech_stack && Object.keys(d.tech_stack).length > 0 ? (
-                  <Card type="inner" title="技术栈" size="small" style={{ marginBottom: 16 }}>
-                    {Object.entries(d.tech_stack).map(([cat, items]) => (
-                      <div key={cat} style={{ marginBottom: 8 }}>
-                        <Text strong>{cat}: </Text>
-                        {items.map((item: string) => <Tag key={item} color="blue">{item}</Tag>)}
-                      </div>
-                    ))}
-                  </Card>
-                ) : null}
+                <Title level={5}>技术栈</Title>
+                {d.tech_stack && Object.keys(d.tech_stack).length > 0
+                  ? Object.entries(d.tech_stack).map(([cat, items]) => (
+                    <div key={cat} style={{ marginBottom: 12 }}>
+                      <Text strong>{cat}:</Text>
+                      <Space wrap style={{ marginLeft: 8 }}>
+                        {items.map((item: string) => <Tag key={item}>{item}</Tag>)}
+                      </Space>
+                    </div>
+                  ))
+                  : <Text type="secondary">暂无</Text>}
 
-                {d.modules && d.modules.length > 0 ? (
-                  <Card type="inner" title={'模块 (' + d.modules.length + ')'} size="small" style={{ marginBottom: 16 }}>
-                    {d.modules.map((m, i) => (
-                      <div key={i} style={{ marginBottom: 8, padding: '8px 12px', background: 'rgba(0,0,0,0.15)', borderRadius: 8 }}>
-                        <Text strong style={{ color: '#e2e8f0' }}>{m.name}</Text>
-                        {m.responsibility ? <div style={{ color: '#94a3b8', fontSize: 13 }}>{m.responsibility}</div> : null}
-                      </div>
-                    ))}
-                  </Card>
-                ) : null}
+                <Divider />
 
-                {d.terms && d.terms.length > 0 ? (
-                  <Card type="inner" title={'术语 (' + d.terms.length + ')'} size="small">
-                    {d.terms.map((t, i) => (
-                      <div key={i} style={{ marginBottom: 6, fontSize: 13 }}>
-                        <Text strong>{t.term}</Text>: <Text type="secondary">{t.definition}</Text>
-                      </div>
-                    ))}
-                  </Card>
-                ) : null}
+                <Title level={5}>模块</Title>
+                {d.modules && d.modules.length > 0
+                  ? d.modules.map((m, i) => (
+                    <div key={i} style={{ marginBottom: 8, padding: '8px 12px', borderRadius: 8, border: `1px solid ${token.colorBorderSecondary}` }}>
+                      <Text strong>{m.name}</Text>
+                      {m.responsibility ? <div style={{ color: token.colorTextSecondary, fontSize: 13 }}>{m.responsibility}</div> : null}
+                    </div>
+                  ))
+                  : <Text type="secondary">暂无</Text>}
+
+                <Divider />
+
+                <Title level={5}>术语</Title>
+                {d.terms && d.terms.length > 0
+                  ? d.terms.map((t, i) => (
+                    <div key={i} style={{ marginBottom: 6, fontSize: 13 }}>
+                      <Text strong>{t.term}</Text>: <Text type="secondary">{t.definition}</Text>
+                    </div>
+                  ))
+                  : <Text type="secondary">暂无</Text>}
+
+                <Divider />
+
+                <Title level={5}>约束条件</Title>
+                {d.constraints && d.constraints.length > 0
+                  ? <ul style={{ paddingLeft: 20 }}>
+                    {d.constraints.map((c: string, i: number) => <li key={i} style={{ marginBottom: 4 }}>{c}</li>)}
+                  </ul>
+                  : <Text type="secondary">暂无</Text>}
 
                 {profile?.content ? (
-                  <Card type="inner" title="Markdown 原文" size="small" style={{ marginTop: 16 }}>
+                  <>
+                    <Divider />
+                    <Title level={5}>Markdown 原文</Title>
                     <div className="markdown-body" style={{ maxHeight: 400, overflow: 'auto' }}>
                       <ReactMarkdown>{profile.content}</ReactMarkdown>
                     </div>
-                  </Card>
+                  </>
                 ) : null}
-              </Card>
+              </div>
             ) : <Empty description="暂无画像数据" />,
           },
           {
             key: 'edit',
             label: '编辑画像',
             children: d ? (
-              <Card>
-                <Form layout="vertical">
-                  <Form.Item label="项目名称">
-                    <Input value={d.name || ''} disabled />
-                  </Form.Item>
-                  <Form.Item label="项目概述">
-                    <Input.TextArea
-                      value={editOverview}
-                      onChange={e => setEditOverview(e.target.value)}
-                      rows={6}
-                    />
-                  </Form.Item>
-                  <Form.Item>
-                    <Button type="primary" onClick={handleSave} loading={editing}>
-                      保存
-                    </Button>
-                  </Form.Item>
-                </Form>
-              </Card>
+              <Form layout="vertical">
+                <Form.Item label="项目名称">
+                  <Input value={d.name || ''} disabled />
+                </Form.Item>
+                <Form.Item label="项目概述">
+                  <Input.TextArea
+                    value={editOverview}
+                    onChange={e => setEditOverview(e.target.value)}
+                    rows={6}
+                  />
+                </Form.Item>
+                <Form.Item>
+                  <Button type="primary" onClick={handleSave} loading={editing}>
+                    保存
+                  </Button>
+                </Form.Item>
+              </Form>
             ) : <Empty description="暂无画像数据" />,
           },
           {
             key: 'pending',
             label: '待确认变更 (' + pendingChanges.length + ')',
             children: (
-              <Card>
-                {pendingChanges.length === 0
-                  ? <Empty description="暂无待确认变更" />
-                  : pendingChanges.map(c => (
-                    <PendingChangeCard key={c.id} change={c} onAccept={handleAccept} onReject={handleReject} />
-                  ))}
-              </Card>
+              pendingChanges.length === 0
+                ? <Empty description="暂无待确认变更" />
+                : pendingChanges.map(c => (
+                  <PendingChangeCard key={c.id} change={c} onAccept={handleAccept} onReject={handleReject} />
+                ))
             ),
           },
         ]}
