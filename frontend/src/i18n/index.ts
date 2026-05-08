@@ -1,34 +1,19 @@
-import { useCallback } from 'react';
-import zhCN from './locales/zh-CN';
+import i18n from 'i18next';
+import { initReactI18next } from 'react-i18next';
+import LanguageDetector from 'i18next-browser-languagedetector';
+import zhCN from './locales/zh-CN.json';
+import enUS from './locales/en-US.json';
 
-const _locales: Record<string, typeof zhCN> = {};
-let _currentLocale = 'zh-CN';
+i18n
+  .use(LanguageDetector)
+  .use(initReactI18next)
+  .init({
+    resources: {
+      'zh-CN': { translation: zhCN },
+      'en-US': { translation: enUS },
+    },
+    fallbackLng: 'zh-CN',
+    interpolation: { escapeValue: false },
+  });
 
-async function loadLocale(locale: string) {
-  if (locale === 'zh-CN') {
-    _locales[locale] = zhCN;
-  } else {
-    const mod = await import(`./locales/${locale}.ts`);
-    _locales[locale] = mod.default;
-  }
-}
-
-export function t(path: string): string {
-  const keys = path.split('.');
-  let value: unknown = _locales[_currentLocale] || zhCN;
-  for (const key of keys) {
-    if (value && typeof value === 'object') {
-      value = (value as Record<string, unknown>)[key];
-    } else {
-      return path;
-    }
-  }
-  return typeof value === 'string' ? value : path;
-}
-
-export function useTranslation() {
-  const translate = useCallback((path: string) => t(path), []);
-  return { t: translate };
-}
-
-export default loadLocale;
+export default i18n;

@@ -39,18 +39,33 @@ body {
 }
 
 .markdown-body h1 { font-size: 28px; border-bottom: 1px solid #363b48; padding-bottom: 12px; margin-bottom: 24px; color: #f0f6fc; }
-.markdown-body h2 { font-size: 22px; margin-top: 32px; margin-bottom: 12px; color: #f0f6fc; }
+.markdown-body h2 { font-size: 22px; margin-top: 32px; margin-bottom: 12px; color: #f0f6fc; border-bottom: 1px solid #1e293b; padding-bottom: 8px; }
 .markdown-body h3 { font-size: 18px; margin-top: 24px; margin-bottom: 8px; color: #e6edf3; }
 .markdown-body p { margin: 8px 0; }
 .markdown-body ul, .markdown-body ol { padding-left: 24px; margin: 8px 0; }
-.markdown-body li { margin: 4px 0; }
+.markdown-body li { margin: 4px 0; color: #e6edf3; }
+.markdown-body li::marker { color: #64748b; }
 .markdown-body code { background: #222b3a; padding: 2px 6px; border-radius: 4px; font-size: 13px; color: #00b8d4; }
-.markdown-body pre { background: #222b3a; padding: 16px; border-radius: 8px; overflow-x: auto; margin: 12px 0; border: 1px solid #363b48; }
+.markdown-body pre { background: #0d1117; padding: 16px; border-radius: 8px; overflow-x: auto; margin: 12px 0; border: 1px solid #363b48; }
 .markdown-body pre code { background: none; padding: 0; color: #e6edf3; }
+.markdown-body hr { border: none; border-top: 1px solid #1e293b; margin: 24px 0; }
 .markdown-body blockquote { border-left: 3px solid #00b8d4; padding: 8px 16px; margin: 12px 0; color: #8b949e; background: rgba(0,184,212,0.06); border-radius: 0 8px 8px 0; }
+.markdown-body blockquote strong:first-child { color: #f0f6fc; }
 .markdown-body table { width: 100%; border-collapse: collapse; margin: 12px 0; }
 .markdown-body th, .markdown-body td { padding: 8px 12px; border: 1px solid #363b48; text-align: left; }
 .markdown-body th { background: #222b3a; color: #f0f6fc; font-weight: 600; }
+.markdown-body table tr:nth-child(even) { background: rgba(30,41,59,0.3); }
+.markdown-body table tr:hover { background: rgba(0,212,255,0.05); }
+.markdown-body code[class*="language-"] { color: #e6edf3; }
+.markdown-body .token.keyword { color: #c792ea; }
+.markdown-body .token.string { color: #c3e88d; }
+.markdown-body .token.function { color: #82aaff; }
+.markdown-body .token.comment { color: #546e7a; font-style: italic; }
+.markdown-body .token.number { color: #f78c6c; }
+.markdown-body .token.operator { color: #89ddff; }
+.markdown-body .token.punctuation { color: #89ddff; }
+.markdown-body .token.class-name { color: #ffcb6b; }
+.markdown-body .token.builtin { color: #ffcb6b; }
 
 .no-scrollbar::-webkit-scrollbar {
   display: none;
@@ -58,4 +73,76 @@ body {
 .no-scrollbar {
   scrollbar-width: none;
   -ms-overflow-style: none;
+}
+
+.login-bg {
+  background: linear-gradient(135deg, #0a0e17 0%, #1a1f2e 100%);
+  position: relative;
+}
+.login-bg::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(0,212,255,0.05) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.login-card {
+  background: linear-gradient(145deg, rgba(17,24,39,0.95), rgba(30,41,59,0.9));
+  border: 1px solid rgba(0,212,255,0.15);
+  box-shadow: 0 0 40px rgba(0,212,255,0.05);
+  border-radius: 16px;
+}
+
+.login-card .ant-card-body {
+  padding: 40px 36px 24px;
+}
+
+.login-card .ant-input-affix-wrapper,
+.login-card .ant-input {
+  background: rgba(15,23,42,0.8);
+  border: 1px solid #1e293b;
+  color: #e6edf3;
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+.login-card .ant-input-affix-wrapper:hover,
+.login-card .ant-input:hover {
+  border-color: rgba(0,212,255,0.3);
+}
+.login-card .ant-input-affix-wrapper:focus,
+.login-card .ant-input-affix-wrapper-focused,
+.login-card .ant-input:focus {
+  border-color: rgba(0,212,255,0.5);
+  box-shadow: 0 0 0 2px rgba(0,212,255,0.1);
+}
+.login-card .ant-input-affix-wrapper .ant-input {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+.login-card .ant-btn-primary {
+  background: linear-gradient(135deg, #00d4ff, #0066ff);
+  border: none;
+  font-weight: 600;
+  height: 44px;
+  font-size: 15px;
+  border-radius: 8px;
+}
+.login-card .ant-btn-primary:hover {
+  background: linear-gradient(135deg, #00e5ff, #0077ff);
+}
+
+.typing-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 16px;
+  background: #00d4ff;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  animation: blink 1s step-end infinite;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
 }

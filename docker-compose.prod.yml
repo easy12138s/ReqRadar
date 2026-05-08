@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  reqradar:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    environment:
+      - REQRADAR_SECRET_KEY=${REQRADAR_SECRET_KEY}
+    restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

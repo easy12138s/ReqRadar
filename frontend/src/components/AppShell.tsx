@@ -1,5 +1,6 @@
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Layout, Button, Dropdown, Avatar, Breadcrumb, theme } from 'antd';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import {
   DashboardOutlined,
@@ -14,34 +15,39 @@ import PageLoader from './PageLoader';
 
 const { Header, Content } = Layout;
 
-const navItems = [
-  { key: '/', icon: <DashboardOutlined />, label: 'Dashboard' },
-  { key: '/projects', icon: <ProjectOutlined />, label: '项目' },
-  { key: '/analyses', icon: <ExperimentOutlined />, label: '分析' },
-  { key: '/settings', icon: <SettingOutlined />, label: '设置' },
-];
-
-function getBreadcrumbTitle(segment: string): string {
-  const map: Record<string, string> = {
-    'projects': '项目',
-    'analyses': '分析',
-    'settings': '设置',
-    'llm': 'LLM 配置',
-    'templates': '报告模板',
-    'preferences': '偏好设置',
-    'users': '用户管理',
-    'profile': '项目画像',
-    'synonyms': '同义词管理',
-    'reports': '分析报告',
-  };
-  return map[segment] || segment;
-}
-
 export default function AppShell() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, isAuthenticated, isLoading, logout } = useAuth();
   const { token } = theme.useToken();
+  const { t, i18n } = useTranslation();
+
+  const toggleLang = () => {
+    i18n.changeLanguage(i18n.language === 'zh-CN' ? 'en-US' : 'zh-CN');
+  };
+
+  const navItems = [
+    { key: '/', icon: <DashboardOutlined />, label: t('nav.dashboard') },
+    { key: '/projects', icon: <ProjectOutlined />, label: t('nav.projects') },
+    { key: '/analyses', icon: <ExperimentOutlined />, label: t('nav.analyses') },
+    { key: '/settings', icon: <SettingOutlined />, label: t('nav.settings') },
+  ];
+
+  function getBreadcrumbTitle(segment: string): string {
+    const map: Record<string, string> = {
+      'projects': t('nav.projects'),
+      'analyses': t('nav.analyses'),
+      'settings': t('nav.settings'),
+      'llm': t('nav.llmConfig'),
+      'templates': t('nav.templates'),
+      'preferences': t('nav.preferences'),
+      'users': t('nav.users'),
+      'profile': t('nav.profile'),
+      'synonyms': t('nav.synonyms'),
+      'reports': t('nav.reports'),
+    };
+    return map[segment] || segment;
+  }
 
   if (isLoading) {
     return <PageLoader />;
@@ -72,7 +78,7 @@ export default function AppShell() {
       {
         key: 'logout',
         icon: <LogoutOutlined />,
-        label: '退出登录',
+        label: t('nav.logout'),
         danger: true,
       },
     ],
@@ -131,6 +137,9 @@ export default function AppShell() {
 
         <Dropdown menu={userMenu} placement="bottomRight">
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+            <Button type="text" size="small" onClick={toggleLang} style={{ color: token.colorTextSecondary, fontSize: 11 }}>
+              {i18n.language === 'zh-CN' ? 'EN' : '中文'}
+            </Button>
             <span style={{ fontSize: 13, color: token.colorTextSecondary, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {user?.email || ''}
             </span>

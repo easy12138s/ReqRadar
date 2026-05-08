@@ -1,0 +1,76 @@
+template_definition:
+  name: "通用需求分析"
+  description: "全面的企业级需求分析报告，覆盖需求理解、技术影响、风险评估和决策建议"
+  sections:
+    - id: "requirement_understanding"
+      title: "需求理解"
+      description: "从业务和技术角度理解需求的核心内容。提取关键术语、识别业务目标、约束条件和建议优先级。"
+      requirements: "150-200字，包含背景描述、核心问题、成功标准和关键术语"
+      required: true
+      dimensions: ["understanding"]
+    - id: "executive_summary"
+      title: "执行摘要"
+      description: "面向管理层和产品负责人的高层总结。结论先行，突出关键决策建议和业务影响。"
+      requirements: "120-180字，结论先行，基于证据，避免技术细节"
+      required: true
+      dimensions: ["decision"]
+    - id: "business_context"
+      title: "业务上下文"
+      description: "分析需求的业务背景、市场定位和利益相关方影响。"
+      requirements: "100-150字，包含业务目标、KPI影响和利益相关方分析"
+      required: true
+      dimensions: ["understanding", "impact"]
+    - id: "functional_analysis"
+      title: "功能分析"
+      description: "详细拆解功能需求，梳理功能点之间的依赖关系和优先级。"
+      requirements: "包含功能列表、优先级矩阵、依赖关系图描述"
+      required: true
+      dimensions: ["change"]
+    - id: "technical_summary"
+      title: "技术概述"
+      description: "面向技术负责人和架构师的概要。概括影响域、技术风险和实施路径。"
+      requirements: "120-180字，概括性描述，包含技术栈影响和架构变更方向"
+      required: true
+      dimensions: ["impact", "risk"]
+    - id: "impact_analysis"
+      title: "影响分析"
+      description: "识别需求对项目代码、模块、接口的影响。需要引用具体代码文件和模块。"
+      requirements: "包含影响域列表、代码命中模块、变更评估表格、影响范围描述"
+      required: true
+      dimensions: ["impact", "change"]
+    - id: "risk_assessment"
+      title: "风险评估"
+      description: "识别技术风险、业务风险和合规风险。每个风险必须有代码或历史依据支撑。"
+      requirements: "包含总体风险等级、风险列表（含严重性和缓解建议）、风险分析描述"
+      required: true
+      dimensions: ["risk"]
+    - id: "dependency_analysis"
+      title: "依赖分析"
+      description: "分析系统模块间、第三方服务和外部接口的依赖关系和潜在影响。"
+      requirements: "包含依赖图谱、关键路径识别和断裂风险评估"
+      required: false
+      dimensions: ["impact", "risk"]
+    - id: "decision_summary"
+      title: "决策建议"
+      description: "基于分析结果给出可操作的决策建议。包括优先级、实施方向和验证要点。"
+      requirements: "包含决策要点、实施建议、验证要点、待解决问题"
+      required: true
+      dimensions: ["decision", "verification"]
+    - id: "implementation_plan"
+      title: "实施计划"
+      description: "提供分阶段的实施路线图建议，包含工作量估算和里程碑。"
+      requirements: "分阶段描述，每个阶段包含目标、任务和工作量估计"
+      required: false
+      dimensions: ["decision", "change"]
+    - id: "evidence"
+      title: "证据支撑"
+      description: "列出支撑所有结论的证据。每条证据标明来源、类型和可信度。"
+      requirements: "表格形式，覆盖所有其他章节的结论"
+      required: true
+      dimensions: ["evidence"]
+    - id: "appendix"
+      title: "附录"
+      description: "项目画像、术语表、相似历史需求等辅助信息。"
+      requirements: "结构化展示项目知识上下文"
+      required: false
+      dimensions: []

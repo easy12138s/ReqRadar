@@ -1,6 +1,9 @@
 import { Suspense, lazy, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { ConfigProvider, theme as antTheme, App as AntApp } from 'antd';
+import { useTranslation } from 'react-i18next';
+import zhCN from 'antd/locale/zh_CN';
+import enUS from 'antd/locale/en_US';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import AppShell from './components/AppShell';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -103,9 +106,18 @@ function RouteSync() {
   return null;
 }
 
+function LocaleConfig({ children }: { children: React.ReactNode }) {
+  const { i18n } = useTranslation();
+  return (
+    <ConfigProvider theme={darkTheme} locale={i18n.language === 'zh-CN' ? zhCN : enUS}>
+      {children}
+    </ConfigProvider>
+  );
+}
+
 export default function App() {
   return (
-    <ConfigProvider theme={darkTheme}>
+    <LocaleConfig>
       <AntApp>
         <AuthProvider>
           <BrowserRouter basename="/app">
@@ -140,6 +152,6 @@ export default function App() {
           </BrowserRouter>
         </AuthProvider>
       </AntApp>
-    </ConfigProvider>
+    </LocaleConfig>
   );
 }

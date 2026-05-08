@@ -24,6 +24,7 @@ RUN poetry config virtualenvs.create false && \
     poetry install --no-interaction --no-ansi --only main
 
 COPY src/ src/
+COPY alembic.ini alembic/ /app/
 COPY --from=frontend-builder /frontend/dist/ src/reqradar/web/static/
 
 COPY alembic.ini alembic/ ./
