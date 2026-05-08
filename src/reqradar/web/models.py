@@ -167,6 +167,10 @@ class AnalysisTask(Base):
     )
     current_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     depth: Mapped[str] = mapped_column(String(20), default="standard", nullable=False)
+    template_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("report_templates.id"), nullable=True
+    )
+    focus_areas: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     project: Mapped["Project"] = relationship(back_populates="analysis_tasks")
     user: Mapped["User"] = relationship(back_populates="analysis_tasks")

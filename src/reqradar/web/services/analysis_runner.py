@@ -246,31 +246,37 @@ class AnalysisRunner:
 
         return tool_registry, llm_client
 
-    async def _load_template(self, config: Config, db: AsyncSession):
+    async def _load_template(self, task: AnalysisTask, config: Config, db: AsyncSession):
         from reqradar.web.models import ReportTemplate
 
-        template_loader = TemplateLoader()
-        template_def = None
-        template_id = config.reporting.default_template_id if hasattr(config, "reporting") else None
-        if template_id:
-            tmpl_result = await db.execute(
-                select(ReportTemplate).where(ReportTemplate.id == template_id)
+        template_id = task.template_id
+        if template_id is None:
+            result = await db.execute(select(Project).where(Project.id == task.project_id))
+            project = result.scalar_one_or_none()
+            if project and hasattr(project, "default_template_id") and project.default_template_id:
+                template_id = project.default_template_id
+        if template_id is None:
+            template_id = (
+                config.reporting.default_template_id
+                if hasattr(config.reporting, "default_template_id")
+                else None
             )
-            tmpl_obj = tmpl_result.scalar_one_or_none()
-            if tmpl_obj:
-                template_def = template_loader.load_from_db_data(
-                    tmpl_obj.definition, tmpl_obj.render_template
-                )
 
-        if template_def is None:
-            try:
-                template_def = template_loader.load_definition(
-                    template_loader.get_default_template_path()
-                )
-            except Exception:
-                template_def = None
+        result = await db.execute(select(ReportTemplate).where(ReportTemplate.id == template_id))
+        template = result.scalar_one_or_none()
+        if not template:
+            result = await db.execute(
+                select(ReportTemplate).where(ReportTemplate.is_default == True)
+            )
+            template = result.scalar_one_or_none()
 
-        return template_def
+        if template:
+            template_loader = TemplateLoader()
+            template_def = template_loader.load_from_db_data(
+                template.definition, template.render_template
+            )
+            return template_def, template.render_template
+        return None, None
 
     async def _save_report(
         self,
@@ -330,7 +336,7 @@ class AnalysisRunner:
             tool_registry, llm_client = await self._init_tools(
                 agent, task, project, config, db, cm, memory_data
             )
-            template_def = await self._load_template(config, db)
+            template_def, render_template_str = await self._load_template(task, config, db)
 
             section_descriptions = None
             if template_def:
@@ -364,7 +370,11 @@ class AnalysisRunner:
                 project_memory=analysis_memory.project_memory if analysis_memory else None,
             )
 
-            renderer = ReportRenderer(config, template_definition=template_def)
+            renderer = ReportRenderer(
+                config=config,
+                template_definition=template_def,
+                render_template_str=render_template_str,
+            )
             report_data.setdefault("timestamp", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
             report_data.setdefault("requirement_path", agent.requirement_text[:50])
             report_data.setdefault("impact_scope", "")

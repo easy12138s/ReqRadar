@@ -26,24 +26,28 @@ def _risk_level_to_badge(risk_level: str) -> str:
 
 
 class ReportRenderer:
-
-    def __init__(self, config: Optional[Config] = None, template_definition=None):
+    def __init__(self, config=None, template_definition=None, render_template_str=None):
         self.config = config
         self.template_definition = template_definition
-        template_path = DEFAULT_TEMPLATE_PATH
-        if config and config.output.report_template and config.output.report_template != "default":
-            custom_path = Path(config.output.report_template)
-            if custom_path.exists():
-                template_path = custom_path
-            else:
-                logger.warning("Custom template not found: %s, using default", custom_path)
+        if render_template_str:
+            from jinja2 import Template as JinjaTemplate
 
-        try:
-            with open(template_path, encoding="utf-8") as f:
-                self.template = Template(f.read())
-        except FileNotFoundError:
-            logger.warning("Template file not found: %s, using inline fallback", template_path)
-            self.template = Template(_INLINE_FALLBACK_TEMPLATE)
+            self.template = JinjaTemplate(render_template_str)
+        else:
+            template_path = DEFAULT_TEMPLATE_PATH
+            if (
+                config
+                and hasattr(config, "output")
+                and config.output.report_template
+                and config.output.report_template != "default"
+            ):
+                custom_path = Path(config.output.report_template)
+                if custom_path.exists():
+                    template_path = custom_path
+            with open(template_path, "r", encoding="utf-8") as f:
+                from jinja2 import Template as JinjaTemplate
+
+                self.template = JinjaTemplate(f.read())
 
     def render_from_data(self, report_data: dict) -> str:
         template_data = dict(report_data)

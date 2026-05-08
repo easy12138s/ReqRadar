@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import os
 import uuid
@@ -151,6 +152,8 @@ async def submit_analysis(req: AnalysisSubmit, current_user: CurrentUser, db: Db
         requirement_name=req.get_name(),
         requirement_text=requirement_text,
         depth=req.depth,
+        template_id=req.template_id,
+        focus_areas=json.dumps(req.focus_areas) if req.focus_areas else None,
         status=TaskStatus.PENDING,
     )
     db.add(task)
@@ -170,6 +173,9 @@ async def submit_analysis_upload(
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    depth: str = Form("standard"),
+    template_id: Optional[int] = Form(None),
+    focus_areas: Optional[str] = Form(None),
 ):
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
@@ -209,6 +215,9 @@ async def submit_analysis_upload(
         user_id=current_user.id,
         requirement_name=requirement_name or filename.rsplit(".", 1)[0],
         requirement_text=content.decode("utf-8", errors="replace"),
+        depth=depth,
+        template_id=template_id,
+        focus_areas=focus_areas,
         status=TaskStatus.PENDING,
     )
     db.add(task)
