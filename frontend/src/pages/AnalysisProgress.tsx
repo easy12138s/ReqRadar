@@ -33,7 +33,6 @@ export function AnalysisProgress() {
   const [task, setTask] = useState<AnalysisTask | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [agentThinking, setAgentThinking] = useState('');
   const [stepProgressMessage, setStepProgressMessage] = useState('连接中...');
 
   const fetchTask = async () => {
@@ -67,7 +66,6 @@ export function AnalysisProgress() {
       if (msg.type === 'analysis_started') {
         setStepProgressMessage('分析已启动');
       } else if (msg.type === 'agent_thinking') {
-        setAgentThinking(msg.message || '思考中...');
         setStepProgressMessage(msg.message || '思考中...');
       } else if (msg.type === 'analysis_complete') {
         setStepProgressMessage('分析完成');

@@ -95,7 +95,7 @@ export interface AnalysisTask {
   requirement_text: string;
   status: AnalysisStatus;
   depth?: string;
-  risk_level?: string;
+  risk_level?: RiskLevel;
   risk_score?: number;
   error_message?: string;
   created_at: string;
