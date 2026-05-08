@@ -415,8 +415,6 @@ async def analysis_websocket(websocket: WebSocket, task_id: int, token: str = Qu
                     pass
             except WebSocketDisconnect:
                 break
-    except WebSocketDisconnect:
-        pass
     finally:
         ws_manager.unsubscribe(task_id, websocket)
 

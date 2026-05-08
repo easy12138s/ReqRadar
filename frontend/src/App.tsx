@@ -1,10 +1,11 @@
-import { Suspense, lazy } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { Suspense, lazy, useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { ConfigProvider, theme as antTheme, App as AntApp } from 'antd';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import AppShell from './components/AppShell';
 import ErrorBoundary from './components/ErrorBoundary';
 import PageLoader from './components/PageLoader';
+import { setNavigate } from './api/client';
 
 const Login = lazy(() => import('./pages/Login').then(m => ({ default: m.Login })));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -96,12 +97,19 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function RouteSync() {
+  const navigate = useNavigate();
+  useEffect(() => { setNavigate(navigate); }, [navigate]);
+  return null;
+}
+
 export default function App() {
   return (
     <ConfigProvider theme={darkTheme}>
       <AntApp>
         <AuthProvider>
           <BrowserRouter basename="/app">
+            <RouteSync />
             <Suspense fallback={<PageLoader />}>
               <ErrorBoundary>
                 <Routes>

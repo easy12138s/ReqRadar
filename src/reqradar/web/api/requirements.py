@@ -49,6 +49,7 @@ class PreprocessResponse(BaseModel):
 
 class UpdateRequirementRequest(BaseModel):
     consolidated_text: str = Field(..., description="编辑后的 Markdown 文档")
+    title: str | None = None
 
 
 @router.post("/preprocess", response_model=PreprocessResponse)
@@ -171,7 +172,10 @@ async def update_requirement(
         raise HTTPException(404, "Requirement document not found")
 
     doc.consolidated_text = body.consolidated_text
+    doc.version = (doc.version or 0) + 1
     doc.updated_at = datetime.now(timezone.utc)
+    if body.title is not None:
+        doc.title = body.title
     await db.commit()
     return {"id": doc.id, "updated": True}
 

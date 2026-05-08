@@ -3,6 +3,11 @@ import { message } from 'antd';
 
 const API_BASE_URL = '/api';
 
+let navigateFn: ((path: string) => void) | null = null;
+export function setNavigate(nav: (path: string) => void) {
+  navigateFn = nav;
+}
+
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
   headers: {
@@ -32,7 +37,11 @@ apiClient.interceptors.response.use(
         message.warning('会话已过期，请重新登录');
       }
       localStorage.removeItem('access_token');
-      window.location.href = '/app/login';
+      if (navigateFn) {
+        navigateFn('/login');
+      } else {
+        window.location.href = '/app/login';
+      }
     } else if (status === 403) {
       message.error('没有权限执行此操作');
     } else if (status === 422) {
