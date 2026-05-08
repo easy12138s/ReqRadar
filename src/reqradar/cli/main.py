@@ -196,9 +196,14 @@ def index(ctx, repo_path, docs_path, output, do_build_profile):
             async def build_profile():
                 from reqradar.agent.project_profile import step_build_project_profile
                 from reqradar.modules.llm_client import create_llm_client
-                from reqradar.modules.memory import MemoryManager
+                from reqradar.modules.project_memory import ProjectMemory
 
-                memory_manager = MemoryManager(storage_path=config.memory.storage_path)
+                memory_storage = (
+                    config.memory.project_storage_path
+                    if hasattr(config, "memory")
+                    else ".reqradar/memories"
+                )
+                project_memory = ProjectMemory(storage_path=str(memory_storage), project_id=0)
 
                 llm_client = create_llm_client(
                     config.llm.provider,
@@ -212,7 +217,7 @@ def index(ctx, repo_path, docs_path, output, do_build_profile):
                 result = await step_build_project_profile(
                     code_graph=code_graph,
                     llm_client=llm_client,
-                    memory_manager=memory_manager,
+                    project_memory=project_memory,
                     repo_path=repo_path,
                 )
 

@@ -314,9 +314,11 @@ def project_index(ctx, project_id, build_profile):
                 console.print("[yellow]构建项目画像...[/yellow]")
                 from reqradar.agent.project_profile import step_build_project_profile
                 from reqradar.modules.llm_client import create_llm_client
-                from reqradar.modules.memory import MemoryManager
+                from reqradar.modules.project_memory import ProjectMemory
 
-                memory_manager = MemoryManager(storage_path=config.memory.storage_path)
+                memory_path = file_svc.get_memory_path(p.name)
+                project_memory = ProjectMemory(storage_path=str(memory_path), project_id=p.id)
+
                 llm_client = create_llm_client(
                     config.llm.provider,
                     api_key=config.llm.api_key,
@@ -330,7 +332,7 @@ def project_index(ctx, project_id, build_profile):
                     res = await step_build_project_profile(
                         code_graph=code_graph,
                         llm_client=llm_client,
-                        memory_manager=memory_manager,
+                        project_memory=project_memory,
                         repo_path=str(code_root),
                     )
                     if res:

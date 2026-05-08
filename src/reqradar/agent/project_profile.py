@@ -17,6 +17,7 @@ from reqradar.agent.prompts import (
     PROJECT_PROFILE_PROMPT,
 )
 from reqradar.agent.llm_utils import _call_llm_structured
+from reqradar.modules.project_memory import ProjectMemory
 
 logger = logging.getLogger("reqradar.agent")
 
@@ -24,7 +25,8 @@ logger = logging.getLogger("reqradar.agent")
 async def step_build_project_profile(
     code_graph,
     llm_client,
-    memory_manager,
+    memory_manager=None,
+    project_memory: ProjectMemory | None = None,
     repo_path: str = ".",
 ) -> dict:
     """构建项目画像并存入记忆"""
@@ -64,7 +66,16 @@ async def step_build_project_profile(
                 "source": "llm_inferred",
             }
 
-            memory_manager.update_project_profile(profile)
+            if project_memory is not None:
+                project_memory.update_name(str(profile["name"]))
+                project_memory.update_overview(str(profile["description"]))
+                ts = profile.get("tech_stack", {})
+                for category, items in ts.items():
+                    if isinstance(items, list) and items:
+                        project_memory.add_tech_stack(category, items)
+            elif memory_manager is not None:
+                memory_manager.update_project_profile(profile)
+
             logger.info("Project profile updated: %s", profile.get("description", ""))
 
             modules_with_code = []
@@ -87,34 +98,57 @@ async def step_build_project_profile(
                                 }
                             )
                         else:
-                            module_info_list.append((module_name, responsibility))
+                            module_info_list.append((module_name, responsibility, module))
                     else:
-                        module_info_list.append((module_name, responsibility))
+                        module_info_list.append((module_name, responsibility, module))
 
             batch_summaries = await _generate_batch_module_summaries(modules_with_code, llm_client)
 
-            for module_name, responsibility in module_info_list:
-                memory_manager.add_module(
-                    name=module_name,
-                    responsibility=responsibility,
-                    path=_infer_module_path(module_name, code_graph),
-                    code_summary=f"模块 {module_name}：{responsibility}",
-                )
+            if project_memory is not None:
+                for module_name, responsibility, mod_dict in module_info_list:
+                    project_memory.add_module(
+                        name=module_name,
+                        responsibility=responsibility,
+                        key_classes=mod_dict.get("key_classes", []),
+                    )
 
-            for item in modules_with_code:
-                module_name = item["module_name"]
-                responsibility = item["responsibility"]
-                code_summary = batch_summaries.get(
-                    module_name, f"模块 {module_name}：{responsibility}"
-                )
-                memory_manager.add_module(
-                    name=module_name,
-                    responsibility=responsibility,
-                    path=_infer_module_path(module_name, code_graph),
-                    code_summary=code_summary,
-                )
+                for item in modules_with_code:
+                    module_name = item["module_name"]
+                    responsibility = item["responsibility"]
+                    code_summary = batch_summaries.get(
+                        module_name, f"模块 {module_name}：{responsibility}"
+                    )
+                    project_memory.add_module(
+                        name=module_name,
+                        responsibility=responsibility,
+                    )
+            elif memory_manager is not None:
+                for module_name, responsibility, _mod_dict in module_info_list:
+                    memory_manager.add_module(
+                        name=module_name,
+                        responsibility=responsibility,
+                        path=_infer_module_path(module_name, code_graph),
+                        code_summary=f"模块 {module_name}：{responsibility}",
+                    )
 
-            memory_manager.save()
+                for item in modules_with_code:
+                    module_name = item["module_name"]
+                    responsibility = item["responsibility"]
+                    code_summary = batch_summaries.get(
+                        module_name, f"模块 {module_name}：{responsibility}"
+                    )
+                    memory_manager.add_module(
+                        name=module_name,
+                        responsibility=responsibility,
+                        path=_infer_module_path(module_name, code_graph),
+                        code_summary=code_summary,
+                    )
+
+            if project_memory is not None:
+                project_memory.save()
+            elif memory_manager is not None:
+                memory_manager.save()
+
             logger.info("Project profile saved to memory")
 
             return {

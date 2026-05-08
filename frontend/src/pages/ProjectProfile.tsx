@@ -2,9 +2,10 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   Card, message, Spin, Empty, Typography, Tabs, Descriptions, Tag,
+  Form, Input, Button,
 } from 'antd';
 import {
-  getProjectProfile,
+  getProjectProfile, updateProjectProfile,
   getPendingChanges, acceptPendingChange, rejectPendingChange,
 } from '@/api/profile';
 import { PendingChangeCard } from '@/components/PendingChangeCard';
@@ -18,8 +19,10 @@ export function ProjectProfile() {
   const [profile, setProfile] = useState<ProjectProfile | null>(null);
   const [pendingChanges, setPendingChanges] = useState<PendingChange[]>([]);
   const [loading, setLoading] = useState(true);
+  const [editOverview, setEditOverview] = useState('');
+  const [editing, setEditing] = useState(false);
 
-  async function loadData() {
+  async function fetchProfile() {
     if (!projectId) return;
     setLoading(true);
     try {
@@ -29,20 +32,34 @@ export function ProjectProfile() {
       ]);
       setProfile(p);
       setPendingChanges(c.filter(x => x.status === 'pending'));
+      setEditOverview(p?.data?.overview || '');
     } catch { message.error('加载失败'); }
     finally { setLoading(false); }
   }
 
-  useEffect(() => { loadData(); }, [projectId]);
+  useEffect(() => { fetchProfile(); }, [projectId]);
+
+  const handleSave = async () => {
+    if (!projectId) return;
+    setEditing(true);
+    try {
+      await updateProjectProfile(projectId, {
+        data: { ...(profile?.data || {}), overview: editOverview },
+      });
+      message.success('Profile updated');
+      fetchProfile();
+    } catch { message.error('Failed to update profile'); }
+    setEditing(false);
+  };
 
   const handleAccept = async (id: string) => {
     if (!projectId) return;
-    try { await acceptPendingChange(projectId, id); message.success('已接受'); loadData(); }
+    try { await acceptPendingChange(projectId, id); message.success('已接受'); fetchProfile(); }
     catch { message.error('操作失败'); }
   };
   const handleReject = async (id: string) => {
     if (!projectId) return;
-    try { await rejectPendingChange(projectId, id); message.success('已拒绝'); loadData(); }
+    try { await rejectPendingChange(projectId, id); message.success('已拒绝'); fetchProfile(); }
     catch { message.error('操作失败'); }
   };
 
@@ -78,7 +95,7 @@ export function ProjectProfile() {
                     {Object.entries(d.tech_stack).map(([cat, items]) => (
                       <div key={cat} style={{ marginBottom: 8 }}>
                         <Text strong>{cat}: </Text>
-                        {items.map(item => <Tag key={item} color="blue">{item}</Tag>)}
+                        {items.map((item: string) => <Tag key={item} color="blue">{item}</Tag>)}
                       </div>
                     ))}
                   </Card>
@@ -112,6 +129,31 @@ export function ProjectProfile() {
                     </div>
                   </Card>
                 ) : null}
+              </Card>
+            ) : <Empty description="暂无画像数据" />,
+          },
+          {
+            key: 'edit',
+            label: '编辑画像',
+            children: d ? (
+              <Card>
+                <Form layout="vertical">
+                  <Form.Item label="项目名称">
+                    <Input value={d.name || ''} disabled />
+                  </Form.Item>
+                  <Form.Item label="项目概述">
+                    <Input.TextArea
+                      value={editOverview}
+                      onChange={e => setEditOverview(e.target.value)}
+                      rows={6}
+                    />
+                  </Form.Item>
+                  <Form.Item>
+                    <Button type="primary" onClick={handleSave} loading={editing}>
+                      保存
+                    </Button>
+                  </Form.Item>
+                </Form>
               </Card>
             ) : <Empty description="暂无画像数据" />,
           },

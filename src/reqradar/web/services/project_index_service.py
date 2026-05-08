@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -31,6 +32,11 @@ class ProjectIndexService:
             await self._build_vector_store(project, config, svc, index_path)
 
             await self._build_git_index(project, config, svc, index_path)
+
+            if getattr(config, "memory", None) and getattr(
+                config.memory, "build_profile_on_index", True
+            ):
+                await self._build_profile(project, config, svc, repo_path, index_path)
 
             await self._load_memory(project, project_id, cm, svc, config)
 
@@ -163,6 +169,54 @@ class ProjectIndexService:
         vs.add_documents(documents)
         vs.persist()
         logger.info("Indexed %d commits for project %s", len(commits), project.id)
+
+    async def _build_profile(
+        self,
+        project: Project,
+        config: Config,
+        svc: ProjectFileService,
+        repo_path,
+        index_path,
+    ) -> None:
+        if not config.llm.api_key:
+            logger.info(
+                "No LLM API key configured, skipping profile build for project %d", project.id
+            )
+            return
+
+        from reqradar.agent.project_profile import step_build_project_profile
+        from reqradar.modules.code_parser import PythonCodeParser
+        from reqradar.modules.llm_client import create_llm_client
+        from reqradar.modules.project_memory import ProjectMemory
+
+        try:
+            code_graph = await asyncio.to_thread(PythonCodeParser().parse_directory, repo_path)
+        except Exception:
+            logger.info("Code parsing skipped for profile build of project %d", project.id)
+            return
+
+        llm_client = create_llm_client(
+            config.llm.provider,
+            api_key=config.llm.api_key,
+            model=config.llm.model,
+            base_url=config.llm.base_url or "https://api.openai.com/v1",
+            timeout=config.llm.timeout,
+            max_retries=config.llm.max_retries,
+        )
+
+        memory_path = svc.get_memory_path(project.name)
+        project_memory = ProjectMemory(storage_path=str(memory_path), project_id=project.id)
+
+        try:
+            await step_build_project_profile(
+                code_graph=code_graph,
+                llm_client=llm_client,
+                project_memory=project_memory,
+                repo_path=str(repo_path),
+            )
+            logger.info("Profile built successfully for project %d", project.id)
+        except Exception as e:
+            logger.warning("Profile build failed for project %d: %s", project.id, e)
 
     async def _load_memory(
         self,

@@ -6,7 +6,10 @@ export async function getProjectProfile(projectId: string): Promise<ProjectProfi
   return response.data;
 }
 
-export async function updateProjectProfile(projectId: string, profile: ProjectProfile): Promise<ProjectProfile> {
+export async function updateProjectProfile(
+  projectId: string,
+  profile: { content?: string; data?: Record<string, unknown> },
+): Promise<ProjectProfile> {
   const response = await apiClient.put<ProjectProfile>(`/projects/${projectId}/profile`, profile);
   return response.data;
 }

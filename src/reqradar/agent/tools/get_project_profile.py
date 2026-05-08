@@ -23,11 +23,24 @@ class GetProjectProfileTool(BaseTool):
 
         profile = self.memory_data.get("project_profile", {})
         if not profile or not profile.get("description"):
-            return ToolResult(success=True, data="项目画像尚未建立，请先运行 reqradar index")
+            overview = self.memory_data.get("overview", "")
+            if not overview:
+                return ToolResult(success=True, data="项目画像尚未建立，请先运行 reqradar index")
+            profile = self.memory_data
 
-        lines = [f"项目名称: {profile.get('name', '未知')}"]
-        lines.append(f"描述: {profile.get('description', '未知')}")
-        lines.append(f"架构风格: {profile.get('architecture_style', '未知')}")
+        lines = []
+        name = profile.get("name", "")
+        overview = profile.get("description", "") or profile.get("overview", "")
+        architecture = profile.get("architecture_style", "")
+
+        if name:
+            lines.append(f"项目名称: {name}")
+        else:
+            lines.append(f"项目名称: 未知")
+        if overview:
+            lines.append(f"描述: {overview}")
+        if architecture:
+            lines.append(f"架构风格: {architecture}")
 
         tech_stack = profile.get("tech_stack", {})
         if tech_stack:
