@@ -7,14 +7,14 @@ export interface User {
 }
 
 export interface Project {
-  id: string;
+  id: number;
   name: string;
   description: string;
   source_type: 'zip' | 'git' | 'local';
   source_url: string;
   created_at: string;
   updated_at: string;
-  owner_id: string;
+  owner_id: number;
 }
 
 export interface ProjectCreateFromLocal {
@@ -83,14 +83,7 @@ export interface HistoryEntry {
   timestamp: string;
 }
 
-export type AnalysisStatus =
-  | 'pending'
-  | 'queued'
-  | 'extracting_requirements'
-  | 'analyzing_risks'
-  | 'generating_report'
-  | 'completed'
-  | 'failed';
+export type AnalysisStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
 
 export type RiskLevel = 'low' | 'medium' | 'high' | 'critical';
 
@@ -101,10 +94,10 @@ export interface AnalysisTask {
   requirement_name: string;
   requirement_text: string;
   status: AnalysisStatus;
-  risk_level?: RiskLevel;
+  depth?: string;
+  risk_level?: string;
   risk_score?: number;
   error_message?: string;
-  depth?: AnalysisDepth;
   created_at: string;
   started_at?: string;
   completed_at?: string;
@@ -192,7 +185,8 @@ export interface ReportTemplate {
   name: string;
   description: string;
   is_default: boolean;
-  definition_yaml: string;
+  definition: string;
+  render_template: string;
   created_at: string;
   updated_at: string;
 }
@@ -200,7 +194,8 @@ export interface ReportTemplate {
 export interface ReportTemplateCreate {
   name: string;
   description: string;
-  definition_yaml: string;
+  definition: string;
+  render_template: string;
 }
 
 export interface ReportVersion {
@@ -219,10 +214,11 @@ export interface ReportVersionDetail extends ReportVersion {
 
 export interface ChatMessage {
   id: number | string;
-  role: 'user' | 'assistant' | 'agent';
+  role: 'user' | 'agent';
   content: string;
   version_number?: number;
   intent_type?: string;
+  evidence_refs?: any[];
   created_at: string;
 }
 
@@ -236,7 +232,8 @@ export interface ChatResponse {
   intent_type: string;
   updated: boolean;
   new_version?: number;
-  report_preview?: string;
+  report_preview?: Record<string, any> | null;
+  chat_id?: number;
 }
 
 export interface EvidenceItem {
@@ -250,12 +247,14 @@ export interface EvidenceItem {
 }
 
 export interface PendingChange {
-  id: string;
-  type: 'profile' | 'synonym';
-  description: string;
-  old_value?: string;
-  new_value?: string;
-  status: 'pending' | 'accepted' | 'rejected';
+  id: number;
+  change_type: string;
+  target_id: string;
+  old_value: string;
+  new_value: string;
+  diff: string;
+  source: string;
+  status: string;
   created_at: string;
 }
 

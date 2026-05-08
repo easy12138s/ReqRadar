@@ -20,7 +20,7 @@ export function TemplateManager() {
 
   useEffect(() => { loadTemplates(); }, []);
 
-  const handleSave = async (values: { name: string; description: string; definition_yaml: string }) => {
+  const handleSave = async (values: { name: string; description: string; definition: string; render_template: string }) => {
     try {
       if (editingTemplate) { await updateTemplate(editingTemplate.id, values); message.success('模板已更新'); }
       else { await createTemplate(values); message.success('模板已创建'); }
@@ -63,8 +63,11 @@ export function TemplateManager() {
         <Form form={form} layout="vertical" onFinish={handleSave}>
           <Form.Item name="name" label="模板名称" rules={[{ required: true }]}><Input /></Form.Item>
           <Form.Item name="description" label="描述"><Input.TextArea rows={2} /></Form.Item>
-          <Form.Item name="definition_yaml" label="模板定义 (YAML)" rules={[{ required: true }]}>
-            <Input.TextArea rows={12} placeholder="输入 Jinja2 模板 YAML..." />
+          <Form.Item name="definition" label="模板定义 (YAML)" rules={[{ required: true }]}>
+            <Input.TextArea rows={12} placeholder="输入模板定义 YAML..." />
+          </Form.Item>
+          <Form.Item name="render_template" label="渲染模板" rules={[{ required: true }]}>
+            <Input.TextArea rows={12} placeholder="输入 Jinja2 渲染模板..." />
           </Form.Item>
         </Form>
       </Modal>

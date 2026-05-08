@@ -18,7 +18,7 @@ import {
   ArrowLeftOutlined,
   StopOutlined,
 } from '@ant-design/icons';
-import type { AnalysisTask, AnalysisStatus } from '@/types/api';
+import type { AnalysisTask } from '@/types/api';
 import { getAnalysis, retryAnalysis, cancelAnalysis } from '@/api/analyses';
 import { StepProgress } from '@/components/StepProgress';
 import { DimensionProgress } from '@/components/DimensionProgress';
@@ -33,11 +33,8 @@ export function AnalysisProgress() {
   const [task, setTask] = useState<AnalysisTask | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [dimensions, setDimensions] = useState<Record<string, string>>({});
-  const [evidenceCount, setEvidenceCount] = useState(0);
-  const [currentStep, setCurrentStep] = useState(0);
+  const [agentThinking, setAgentThinking] = useState('');
   const [stepProgressMessage, setStepProgressMessage] = useState('连接中...');
-  const [maxSteps, setMaxSteps] = useState(15);
 
   const fetchTask = async () => {
     if (!id) return;
@@ -67,34 +64,20 @@ export function AnalysisProgress() {
     url: wsUrl,
     enabled: !!wsUrl,
     onMessage: (msg: any) => {
-      if (msg.type === 'dimension_progress') {
-        setDimensions(msg.dimensions || {});
-        setEvidenceCount(msg.evidence_count || 0);
-        setCurrentStep(msg.step || 0);
-        setMaxSteps(msg.max_steps || 15);
-      } else if (msg.type === 'status') {
-        const data = msg.data as { status: AnalysisStatus; message?: string };
-        if (data.status === 'completed') {
-          setCurrentStep(5);
-          setStepProgressMessage(data.message || '分析完成');
-          fetchTask();
-        } else if (data.status === 'failed') {
-          setStepProgressMessage(data.message || '分析失败');
-          fetchTask();
-        } else {
-          setStepProgressMessage(data.message || `状态: ${data.status}`);
-        }
-      } else if (msg.type === 'progress') {
-        const data = msg.data as { step: number; total_steps: number; step_name: string; message: string };
-        setCurrentStep(data.step);
-        setStepProgressMessage(data.message || data.step_name);
-      } else if (msg.type === 'complete') {
-        setCurrentStep(5);
+      if (msg.type === 'analysis_started') {
+        setStepProgressMessage('分析已启动');
+      } else if (msg.type === 'agent_thinking') {
+        setAgentThinking(msg.message || '思考中...');
+        setStepProgressMessage(msg.message || '思考中...');
+      } else if (msg.type === 'analysis_complete') {
         setStepProgressMessage('分析完成');
         fetchTask();
-      } else if (msg.type === 'error') {
-        const data = msg.data as { message: string };
-        setStepProgressMessage(`错误: ${data.message}`);
+      } else if (msg.type === 'analysis_cancelled') {
+        setStepProgressMessage('分析已取消');
+        fetchTask();
+      } else if (msg.type === 'analysis_failed') {
+        setStepProgressMessage(`错误: ${msg.error || '分析失败'}`);
+        fetchTask();
       }
     },
   });
@@ -206,17 +189,17 @@ export function AnalysisProgress() {
           </div>
           <Card style={{ marginBottom: 24 }}>
             <DimensionProgress
-              dimensions={dimensions}
-              evidenceCount={evidenceCount}
-              step={currentStep}
-              maxSteps={maxSteps}
+              dimensions={{}}
+              evidenceCount={0}
+              step={0}
+              maxSteps={0}
             />
           </Card>
-            <StepProgress
-              currentStep={currentStep}
-              progressMessage={stepProgressMessage}
-              status={task.status}
-            />
+          <StepProgress
+            currentStep={0}
+            progressMessage={stepProgressMessage}
+            status={task.status}
+          />
           <div style={{ marginTop: 16 }}>
             <Button danger icon={<StopOutlined />} onClick={async () => {
               try { await cancelAnalysis(id); message.success('已停止分析'); }

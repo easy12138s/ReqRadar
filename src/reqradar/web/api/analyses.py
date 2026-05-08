@@ -82,7 +82,10 @@ class AnalysisResponse(BaseModel):
     requirement_name: str
     requirement_text: str
     status: str
+    depth: Optional[str] = None
     error_message: Optional[str] = None
+    risk_level: Optional[str] = None
+    risk_score: Optional[float] = None
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     created_at: datetime
@@ -259,7 +262,10 @@ async def list_analyses(
             "requirement_name": t.requirement_name,
             "requirement_text": t.requirement_text,
             "status": t.status.value if hasattr(t.status, "value") else str(t.status),
+            "depth": t.depth,
             "error_message": t.error_message,
+            "risk_level": t.context_json.get("risk_level") if t.context_json else None,
+            "risk_score": t.context_json.get("risk_score") if t.context_json else None,
             "started_at": t.started_at.isoformat() if t.started_at else None,
             "completed_at": t.completed_at.isoformat() if t.completed_at else None,
             "created_at": t.created_at.isoformat() if t.created_at else None,

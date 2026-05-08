@@ -4,8 +4,8 @@ import type { PendingChange } from '@/types/api';
 
 interface PendingChangeCardProps {
   change: PendingChange;
-  onAccept: (id: string) => void;
-  onReject: (id: string) => void;
+  onAccept: (id: number) => void;
+  onReject: (id: number) => void;
 }
 
 export function PendingChangeCard({ change, onAccept, onReject }: PendingChangeCardProps) {
@@ -16,10 +16,10 @@ export function PendingChangeCard({ change, onAccept, onReject }: PendingChangeC
     ]}>
       <Space direction="vertical" style={{ width: '100%' }}>
         <Space>
-          <Tag color={change.type === 'profile' ? 'blue' : 'green'}>{change.type === 'profile' ? '画像' : '同义词'}</Tag>
+          <Tag color={change.change_type === 'profile' ? 'blue' : 'green'}>{change.change_type === 'profile' ? '画像' : '同义词'}</Tag>
           <Typography.Text type="secondary">{new Date(change.created_at).toLocaleString()}</Typography.Text>
         </Space>
-        <Typography.Paragraph>{change.description}</Typography.Paragraph>
+        <Typography.Paragraph>{change.diff}</Typography.Paragraph>
         {change.old_value && change.new_value && (
           <Space direction="vertical" style={{ width: '100%' }}>
             <Typography.Text type="secondary" delete style={{ fontSize: 12 }}>{change.old_value.slice(0, 200)}</Typography.Text>
