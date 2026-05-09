@@ -1,6 +1,7 @@
 """配置管理 - Pydantic 模型 + YAML 解析"""
 
 import os
+import platform
 import re
 from pathlib import Path
 from typing import Optional
@@ -68,8 +69,20 @@ class LoaderConfig(BaseModel):
     chat_enabled: bool = Field(default=True, description="Enable chat loader")
 
 
+EMBEDDING_MODELS = {
+    "BAAI/bge-large-zh": {"dimensions": 1024, "size_mb": 1200, "description": "Large model, best accuracy (default)"},
+    "BAAI/bge-base-zh": {"dimensions": 768, "size_mb": 390, "description": "Base model, good accuracy/performance balance"},
+    "BAAI/bge-small-zh": {"dimensions": 512, "size_mb": 95, "description": "Small model, fast inference, lower resource usage"},
+    "BAAI/bge-m3": {"dimensions": 1024, "size_mb": 1100, "description": "Multilingual model, supports 100+ languages"},
+}
+
+
 class IndexConfig(BaseModel):
-    embedding_model: str = Field(default="BAAI/bge-large-zh")
+    embedding_model: str = Field(
+        default="BAAI/bge-large-zh",
+        description="Embedding model name. Options: "
+        + ", ".join(f"{k} ({v['description']})" for k, v in EMBEDDING_MODELS.items()),
+    )
     chunk_size: int = Field(default=300)
     chunk_overlap: int = Field(default=50)
     storage_path: str = Field(default=".reqradar/index")
@@ -216,7 +229,17 @@ def _resolve_dict_env_vars(d: dict) -> dict:
 
 
 def load_config(config_path: Optional[Path] = None) -> Config:
-    """加载配置文件，支持回退路径"""
+    """加载配置文件，支持 .env 文件和回退路径"""
+    from dotenv import load_dotenv
+
+    env_paths = [
+        Path.cwd() / ".env",
+        Path.home() / ".reqradar" / ".env",
+    ]
+    for env_path in env_paths:
+        if env_path.exists():
+            load_dotenv(env_path, override=False)
+
     if config_path is None:
         config_path = Path.cwd() / ".reqradar.yaml"
         if not config_path.exists():

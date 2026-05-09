@@ -209,8 +209,17 @@ def test_clone_git_rejects_disallowed_url_scheme(service, tmp_path):
 
 
 def test_validate_local_path_accepts_allowed_prefix(service):
-    result = service.validate_local_path("/tmp")
-    assert result.is_dir()
+    import platform
+    if platform.system() == "Windows":
+        user_profile = os.environ.get("USERPROFILE", "")
+        if user_profile and os.path.isdir(user_profile):
+            result = service.validate_local_path(user_profile)
+            assert result.is_dir()
+        else:
+            pytest.skip("No USERPROFILE directory available")
+    else:
+        result = service.validate_local_path("/tmp")
+        assert result.is_dir()
 
 
 def test_validate_local_path_rejects_nonexistent(service):
@@ -219,5 +228,10 @@ def test_validate_local_path_rejects_nonexistent(service):
 
 
 def test_validate_local_path_rejects_disallowed_prefix(service):
-    with pytest.raises(ValueError, match="must be under one of"):
-        service.validate_local_path("/etc")
+    import platform
+    if platform.system() == "Windows":
+        with pytest.raises(ValueError, match="must be under one of"):
+            service.validate_local_path("C:\\Windows\\System32")
+    else:
+        with pytest.raises(ValueError, match="must be under one of"):
+            service.validate_local_path("/etc")

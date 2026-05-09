@@ -94,6 +94,12 @@ class VectorStore(ABC):
         pass
 
 
+def _estimate_model_size_mb(model_name: str) -> int:
+    from reqradar.infrastructure.config import EMBEDDING_MODELS
+    info = EMBEDDING_MODELS.get(model_name)
+    return info["size_mb"] if info else 400
+
+
 class ChromaVectorStore(VectorStore):
     """Chroma 持久化向量存储"""
 
@@ -128,6 +134,8 @@ class ChromaVectorStore(VectorStore):
                 f"Original error: {e}"
             ) from e
 
+        logger.info("Loading embedding model '%s' (first run will download ~%d MB)...",
+                     embedding_model, _estimate_model_size_mb(embedding_model))
         self.embedding_model = sentence_transformers.SentenceTransformer(embedding_model)
 
         self.collection = self.client.get_or_create_collection(

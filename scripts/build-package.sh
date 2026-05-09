@@ -12,10 +12,10 @@ npm run build
 echo "==> Verifying static assets..."
 STATIC_DIR="$PROJECT_ROOT/src/reqradar/web/static"
 if [ ! -f "$STATIC_DIR/index.html" ]; then
-  echo "ERROR: Frontend build failed — index.html not found in $STATIC_DIR"
-  exit 1
+    echo "ERROR: Frontend build failed — index.html not found in $STATIC_DIR"
+    exit 1
 fi
-echo "    Static assets: $(find "$STATIC_DIR" -type file | wc -l) files"
+echo "    Static assets: $(find "$STATIC_DIR" -type f | wc -l) files"
 
 echo "==> Building Python package..."
 cd "$PROJECT_ROOT"

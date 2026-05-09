@@ -1,5 +1,6 @@
 import logging
 import os
+import platform
 import re
 import shutil
 import subprocess
@@ -146,7 +147,32 @@ class ProjectFileService:
 
         return _build_tree(base)
 
-    ALLOWED_LOCAL_PREFIXES = ("/home/", "/opt/", "/srv/", "/data/", "/var/lib/", "/Users/", "/workspace/", "/tmp")
+    ALLOWED_LOCAL_PREFIXES = (
+        "/home/",
+        "/opt/",
+        "/srv/",
+        "/data/",
+        "/var/lib/",
+        "/Users/",
+        "/workspace/",
+        "/tmp",
+    )
+
+    @classmethod
+    def _get_allowed_local_prefixes(cls) -> tuple[str, ...]:
+        prefixes = list(cls.ALLOWED_LOCAL_PREFIXES)
+        if platform.system() == "Windows":
+            user_profile = os.environ.get("USERPROFILE", "")
+            if user_profile:
+                prefixes.append(user_profile.replace("\\", "/") + "/")
+            home_drive = os.environ.get("HOMEDRIVE", "")
+            if home_drive:
+                prefixes.append(home_drive.replace("\\", "/"))
+            for drive in ("C:", "D:", "E:"):
+                prefixes.append(f"/{drive}/")
+                prefixes.append(f"{drive}/")
+            prefixes.append("/Users/")
+        return tuple(prefixes)
 
     def validate_local_path(self, local_path: str) -> Path:
         p = Path(local_path).resolve()
@@ -154,10 +180,11 @@ class ProjectFileService:
             raise ValueError(f"Local path does not exist: {local_path}")
         if not p.is_dir():
             raise ValueError(f"Local path is not a directory: {local_path}")
-        resolved_str = str(p) + "/"
-        if not any(resolved_str.startswith(prefix) for prefix in self.ALLOWED_LOCAL_PREFIXES):
+        resolved_str = str(p).replace("\\", "/") + "/"
+        allowed_prefixes = self._get_allowed_local_prefixes()
+        if not any(resolved_str.startswith(prefix) for prefix in allowed_prefixes):
             raise ValueError(
-                f"Local path must be under one of: {', '.join(self.ALLOWED_LOCAL_PREFIXES)}. Got: {local_path}"
+                f"Local path must be under one of: {', '.join(allowed_prefixes)}. Got: {local_path}"
             )
         return p
 
