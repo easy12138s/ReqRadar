@@ -57,10 +57,9 @@ async def lifespan(app: FastAPI):
     app.state.secret_key = web_config.secret_key
 
     if web_config.secret_key == "change-me-in-production" and not web_config.debug:
-        raise RuntimeError(
-            "FATAL: Default JWT secret key detected in production mode. "
-            "Set web.secret_key in .reqradar.yaml or REQRADAR_SECRET_KEY env var. "
-            "Refusing to start with insecure default key."
+        logger.warning(
+            "Using default JWT secret key — not secure for production! "
+            "Set REQRADAR_SECRET_KEY env var or web.secret_key in .reqradar.yaml"
         )
 
     from sqlalchemy import inspect

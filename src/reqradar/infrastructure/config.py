@@ -181,9 +181,13 @@ class Config(BaseModel):
             and not self.web.debug
             and not os.getenv("REQRADAR_TESTING")
         ):
-            raise ValueError(
-                "web.secret_key must be changed from default in production mode. "
-                "Set REQRADAR_SECRET_KEY env var or web.secret_key in .reqradar.yaml"
+            import warnings
+
+            warnings.warn(
+                "ReqRadar is using the default JWT secret key. "
+                "For production, set REQRADAR_SECRET_KEY env var or web.secret_key in .reqradar.yaml",
+                UserWarning,
+                stacklevel=2,
             )
         return self
 
@@ -212,7 +216,10 @@ def _resolve_dict_env_vars(d: dict) -> dict:
 
 def load_config(config_path: Optional[Path] = None) -> Config:
     """加载配置文件，支持 .env 文件和回退路径"""
+    import logging
     from dotenv import load_dotenv
+
+    _logger = logging.getLogger("reqradar.config")
 
     env_paths = [
         Path.cwd() / ".env",
@@ -230,8 +237,10 @@ def load_config(config_path: Optional[Path] = None) -> Config:
                 config_path = fallback
 
     if not config_path.exists():
+        _logger.debug("No config file found, using defaults")
         return Config()
 
+    _logger.debug("Loading config from %s", config_path)
     with open(config_path) as f:
         raw_config = yaml.safe_load(f) or {}
 

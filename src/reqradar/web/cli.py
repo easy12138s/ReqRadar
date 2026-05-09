@@ -13,13 +13,44 @@ from reqradar.cli.main import cli
 @click.pass_context
 def serve(ctx, host, port, reload):
     """Start the ReqRadar web server"""
+    from reqradar import __version__
+
     config = ctx.obj["config"]
     web_config = config.web
 
     serve_host = host or web_config.host
     serve_port = port or web_config.port
 
-    click.echo(f"Starting ReqRadar on {serve_host}:{serve_port}")
+    lines = [
+        "",
+        "\033[36m\033[1m" + f"  ReqRadar v{__version__}" + "\033[0m",
+        "\033[36m" + "  " + "=" * 40 + "\033[0m",
+        f"  Web UI:  http://{serve_host}:{serve_port}/app/",
+        f"  API:     http://{serve_host}:{serve_port}/docs",
+    ]
+
+    if web_config.secret_key == "change-me-in-production":
+        lines.append(
+            "\033[33m  WARNING: Using default JWT secret key\033[0m"
+        )
+        lines.append(
+            "  Set REQRADAR_SECRET_KEY env var for production"
+        )
+
+    if not config.llm.api_key:
+        lines.append(
+            "\033[33m  NOTE: No LLM API key configured\033[0m"
+        )
+        lines.append(
+            "  Configure via Web UI (Settings > LLM) or .reqradar.yaml"
+        )
+
+    lines.append(
+        "  Default admin: admin@reqradar.io / Admin12138%"
+    )
+    lines.append("")
+
+    click.echo("\n".join(lines))
 
     uvicorn.run(
         "reqradar.web.app:create_app",
