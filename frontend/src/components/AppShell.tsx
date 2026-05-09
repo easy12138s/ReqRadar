@@ -1,6 +1,12 @@
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Layout, Button, Dropdown, Avatar, Breadcrumb, theme } from 'antd';
+import { Layout, Button, Dropdown, Avatar, Breadcrumb, theme, Badge, Popover, List, Typography } from 'antd';
 import { useAuth } from '../context/AuthContext';
+import { useThemeContext } from '../context/ThemeContext';
+import { AnimatePresence } from 'framer-motion';
+import PageTransition from './PageTransition';
+import { useQuery } from '@tanstack/react-query';
+import { getAnalyses } from '../api/analyses';
+import type { AnalysisTask } from '../types/api';
 import {
   DashboardOutlined,
   ProjectOutlined,
@@ -9,15 +15,20 @@ import {
   LogoutOutlined,
   UserOutlined,
   HomeOutlined,
+  BulbOutlined,
+  BellOutlined,
+  LoadingOutlined,
 } from '@ant-design/icons';
 import PageLoader from './PageLoader';
 
 const { Header, Content } = Layout;
+const { Text } = Typography;
 
 export default function AppShell() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, isAuthenticated, isLoading, logout } = useAuth();
+  const { themeMode, toggleTheme } = useThemeContext();
   const { token } = theme.useToken();
 
   const navItems = [
@@ -81,20 +92,64 @@ export default function AppShell() {
     },
   };
 
+  // 轮询获取进行中的任务
+  const { data: analyses = [] } = useQuery({
+    queryKey: ['analyses-running'],
+    queryFn: getAnalyses,
+    refetchInterval: 5000, // 每5秒轮询一次
+    enabled: isAuthenticated, // 只有登录后才轮询
+  });
+
+  const runningTasks = analyses.filter((t: AnalysisTask) => t.status === 'pending' || t.status === 'running');
+
+  const notificationContent = (
+    <div style={{ width: 300, maxHeight: 400, overflow: 'auto' }}>
+      <div style={{ padding: '8px 0', borderBottom: `1px solid ${token.colorBorderSecondary}`, marginBottom: 8 }}>
+        <Text strong>进行中的分析 ({runningTasks.length})</Text>
+      </div>
+      {runningTasks.length === 0 ? (
+        <div style={{ padding: '24px 0', textAlign: 'center', color: token.colorTextSecondary }}>
+          暂无进行中的任务
+        </div>
+      ) : (
+        <List
+          dataSource={runningTasks}
+          renderItem={(item: AnalysisTask) => (
+            <List.Item
+              style={{ cursor: 'pointer', padding: '12px 8px', borderRadius: 8, transition: 'background 0.2s' }}
+              onClick={() => navigate(`/analyses/${item.id}`)}
+              className="notification-item"
+            >
+              <List.Item.Meta
+                avatar={<LoadingOutlined style={{ color: token.colorPrimary }} />}
+                title={<Text ellipsis style={{ width: 200 }}>{String(item.requirement_name || `分析 #${String(item.id).slice(0,8)}`)}</Text>}
+                description={<Text type="secondary" style={{ fontSize: 12 }}>正在分析中...</Text>}
+              />
+            </List.Item>
+          )}
+        />
+      )}
+      <style>{`
+        .notification-item:hover {
+          background: rgba(0, 184, 212, 0.08);
+        }
+      `}</style>
+    </div>
+  );
+
   return (
     <Layout style={{ minHeight: '100vh', background: token.colorBgBase }}>
       <Header
-        className="flat-header"
+        className="glass-header"
         style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           padding: '0 24px',
-          height: 56,
+          height: 60,
           position: 'sticky',
           top: 0,
           zIndex: 100,
-          borderBottom: `1px solid ${token.colorBorder}`,
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 32 }}>
@@ -129,28 +184,46 @@ export default function AppShell() {
           </nav>
         </div>
 
-        <Dropdown menu={userMenu} placement="bottomRight">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
-            <span style={{ fontSize: 13, color: token.colorTextSecondary, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {user?.email || ''}
-            </span>
-            <Avatar
-              size={32}
-              icon={<UserOutlined />}
-              style={{ background: token.colorPrimary }}
-            />
-          </div>
-        </Dropdown>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <Popover content={notificationContent} placement="bottomRight" trigger="click" arrow={false}>
+            <Badge count={runningTasks.length} size="small" offset={[-4, 4]}>
+              <Button 
+                type="text" 
+                icon={<BellOutlined />} 
+                style={{ color: token.colorTextSecondary }}
+              />
+            </Badge>
+          </Popover>
+          <Button 
+            type="text" 
+            icon={<BulbOutlined />} 
+            onClick={toggleTheme}
+            style={{ color: token.colorTextSecondary }}
+            title={themeMode === 'dark' ? '切换到亮色模式' : '切换到暗色模式'}
+          />
+          <Dropdown menu={userMenu} placement="bottomRight">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+              <span style={{ fontSize: 13, color: token.colorTextSecondary, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {user?.email || ''}
+              </span>
+              <Avatar
+                size={32}
+                icon={<UserOutlined />}
+                style={{ background: token.colorPrimary }}
+              />
+            </div>
+          </Dropdown>
+        </div>
       </Header>
 
-      <Content style={{ padding: 24, maxWidth: 1280, margin: '0 auto', width: '100%' }}>
+      <Content style={{ padding: '24px 32px', maxWidth: 1280, margin: '0 auto', width: '100%' }}>
         {pathParts.length > 0 && (
-          <div style={{ marginBottom: 16 }}>
+          <div style={{ marginBottom: 24 }}>
             <Breadcrumb
               className="breadcrumb-flat"
               items={breadcrumbItems.map(item => ({
                 title: item.path === location.pathname ? item.title : (
-                  <a onClick={() => navigate(item.path)} style={{ color: '#64748b', cursor: 'pointer' }}>
+                  <a onClick={() => navigate(item.path)} style={{ cursor: 'pointer' }}>
                     {item.title}
                   </a>
                 ),
@@ -158,7 +231,11 @@ export default function AppShell() {
             />
           </div>
         )}
-        <Outlet />
+        <AnimatePresence mode="wait">
+          <PageTransition key={location.pathname}>
+            <Outlet />
+          </PageTransition>
+        </AnimatePresence>
       </Content>
     </Layout>
   );

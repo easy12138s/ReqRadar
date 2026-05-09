@@ -6,13 +6,16 @@ import {
   Spin,
   Empty,
   message,
+  Dropdown,
 } from 'antd';
-import { ArrowLeftOutlined, DownloadOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined, DownloadOutlined, FilePdfOutlined, FileMarkdownOutlined } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
+import html2pdf from 'html2pdf.js';
 import type { Report } from '@/types/api';
 import { getReport } from '@/api/reports';
 import { RiskBadge } from '@/components/RiskBadge';
 import { ChatPanel } from '@/components/ChatPanel';
+import { theme } from 'antd';
 
 const { Title } = Typography;
 
@@ -22,6 +25,8 @@ export function ReportView() {
   const [report, setReport] = useState<Report | null>(null);
   const [loading, setLoading] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const reportRef = useRef<HTMLDivElement>(null);
+  const { token } = theme.useToken();
 
   useEffect(() => {
     if (!taskId) return;
@@ -38,7 +43,7 @@ export function ReportView() {
     })();
   }, [taskId]);
 
-  const handleDownload = () => {
+  const handleDownloadMD = () => {
     if (!report?.content_markdown) return;
     const blob = new Blob([report.content_markdown], { type: 'text/markdown' });
     const url = URL.createObjectURL(blob);
@@ -47,6 +52,48 @@ export function ReportView() {
     a.download = `report-${taskId}.md`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const handleDownloadPDF = () => {
+    if (!reportRef.current) return;
+    
+    message.loading({ content: '正在生成 PDF...', key: 'pdf-gen' });
+    
+    // 配置 html2pdf
+    const opt = {
+      margin:       15,
+      filename:     `ReqRadar-Report-${taskId}.pdf`,
+      image:        { type: 'jpeg' as const, quality: 0.98 },
+      html2canvas:  { scale: 2, useCORS: true, letterRendering: true },
+      jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' as const }
+    };
+    
+    // 生成并下载
+    html2pdf().set(opt).from(reportRef.current).save()
+      .then(() => {
+        message.success({ content: 'PDF 导出成功', key: 'pdf-gen' });
+      })
+      .catch((err: any) => {
+        console.error('PDF generation failed:', err);
+        message.error({ content: 'PDF 导出失败', key: 'pdf-gen' });
+      });
+  };
+
+  const downloadMenu = {
+    items: [
+      {
+        key: 'pdf',
+        label: '导出 PDF',
+        icon: <FilePdfOutlined />,
+        onClick: handleDownloadPDF,
+      },
+      {
+        key: 'md',
+        label: '下载 Markdown',
+        icon: <FileMarkdownOutlined />,
+        onClick: handleDownloadMD,
+      },
+    ]
   };
 
   if (!taskId) {
@@ -73,9 +120,9 @@ export function ReportView() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '12px 20px',
-          background: '#111827',
-          borderBottom: '1px solid #1e293b',
+          padding: '12px 24px',
+          background: token.colorBgContainer,
+          borderBottom: `1px solid ${token.colorBorderSecondary}`,
           flexShrink: 0,
         }}
       >
@@ -92,9 +139,11 @@ export function ReportView() {
           </div>
           <RiskBadge level={report.risk_level as any} />
         </div>
-        <Button icon={<DownloadOutlined />} onClick={handleDownload}>
-          下载 MD
-        </Button>
+        <Dropdown menu={downloadMenu} placement="bottomRight">
+          <Button type="primary" icon={<DownloadOutlined />}>
+            导出报告
+          </Button>
+        </Dropdown>
       </div>
 
       {/* scrollable report content */}
@@ -105,12 +154,12 @@ export function ReportView() {
           flex: 1,
           overflow: 'auto',
           padding: '32px 24px',
-          background: '#0d1117',
+          background: token.colorBgBase,
         }}
       >
         <div style={{ maxWidth: 860, margin: '0 auto' }}>
           {report.content_markdown ? (
-            <div className="markdown-body">
+            <div className="markdown-body" ref={reportRef} style={{ background: token.colorBgContainer, padding: '40px 48px', borderRadius: token.borderRadiusLG, border: `1px solid ${token.colorBorderSecondary}` }}>
               <ReactMarkdown>{report.content_markdown}</ReactMarkdown>
             </div>
           ) : (

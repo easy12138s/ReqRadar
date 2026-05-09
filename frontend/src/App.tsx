@@ -1,8 +1,9 @@
 import { Suspense, lazy, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
-import { ConfigProvider, theme as antTheme, App as AntApp } from 'antd';
-import zhCN from 'antd/locale/zh_CN';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
+import { App as AntApp } from 'antd';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { ThemeProvider } from './context/ThemeContext';
 import AppShell from './components/AppShell';
 import ErrorBoundary from './components/ErrorBoundary';
 import PageLoader from './components/PageLoader';
@@ -25,64 +26,15 @@ const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const UserManagement = lazy(() => import('./pages/UserManagement'));
 const RequirementEdit = lazy(() => import('./pages/RequirementEdit'));
 
-const darkTheme = {
-  algorithm: antTheme.darkAlgorithm,
-  token: {
-    colorPrimary: '#00b8d4',
-    colorBgBase: '#0d1117',
-    colorBgContainer: '#1c2333',
-    colorBgElevated: '#222b3a',
-    colorBorder: '#363b48',
-    colorBorderSecondary: '#363b48',
-    colorText: '#e6edf3',
-    colorTextSecondary: '#8b949e',
-    borderRadius: 8,
-    fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif",
-  },
-  components: {
-    Layout: {
-      headerBg: 'transparent',
-      bodyBg: '#0d1117',
-      siderBg: '#0d1117',
-    },
-    Card: {
-      colorBgContainer: '#1c2333',
-      borderRadiusLG: 12,
-      colorBorderSecondary: '#363b48',
-    },
-    Menu: {
-      darkItemBg: 'transparent',
-      darkItemSelectedBg: 'rgba(0,184,212,0.15)',
-    },
-    Table: {
-      colorBgContainer: '#1c2333',
-      borderColor: '#363b48',
-      headerBg: '#222b3a',
-      rowHoverBg: 'rgba(0,184,212,0.06)',
-    },
-    Input: {
-      colorBgContainer: '#222b3a',
-      activeBorderColor: '#00b8d4',
-    },
-    Select: {
-      colorBgContainer: '#222b3a',
-      optionSelectedBg: 'rgba(0,184,212,0.15)',
-      colorBgElevated: '#222b3a',
-    },
-    Tag: {
-      defaultBg: 'rgba(0,184,212,0.12)',
-      defaultColor: '#00b8d4',
-    },
-    Button: {
-      primaryShadow: '0 0 0 2px rgba(0,212,255,0.15)',
-    },
-    Tabs: {
-      inkBarColor: '#00d4ff',
-      itemActiveColor: '#00d4ff',
-      itemSelectedColor: '#00d4ff',
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      refetchOnWindowFocus: false, // 避免频繁请求
+      retry: 1,
+      staleTime: 1000 * 60 * 5, // 5 分钟数据不过期
     },
   },
-};
+});
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
@@ -104,15 +56,21 @@ function RouteSync() {
   return null;
 }
 
+function LocationErrorBoundary({ children }: { children: React.ReactNode }) {
+  const location = useLocation();
+  return <ErrorBoundary key={location.pathname}>{children}</ErrorBoundary>;
+}
+
 export default function App() {
   return (
-    <ConfigProvider theme={darkTheme} locale={zhCN}>
-      <AntApp>
-        <AuthProvider>
-          <BrowserRouter basename="/app">
-            <RouteSync />
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider>
+        <AntApp>
+          <AuthProvider>
+            <BrowserRouter basename="/app">
+              <RouteSync />
             <Suspense fallback={<PageLoader />}>
-              <ErrorBoundary>
+              <LocationErrorBoundary>
                 <Routes>
                   <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
 
@@ -134,13 +92,14 @@ export default function App() {
                     <Route path="requirements/:id" element={<RequirementEdit />} />
                   </Route>
 
-                  <Route path="*" element={<Navigate to="/" replace />} />
-                </Routes>
-              </ErrorBoundary>
-            </Suspense>
-          </BrowserRouter>
-        </AuthProvider>
-      </AntApp>
-    </ConfigProvider>
+                    <Route path="*" element={<Navigate to="/" replace />} />
+                  </Routes>
+                </LocationErrorBoundary>
+              </Suspense>
+            </BrowserRouter>
+          </AuthProvider>
+        </AntApp>
+      </ThemeProvider>
+    </QueryClientProvider>
   );
 }

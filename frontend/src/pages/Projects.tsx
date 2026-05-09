@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import {
   Card,
   Row,
@@ -50,6 +50,7 @@ export function Projects() {
   const [gitForm] = Form.useForm();
   const [localForm] = Form.useForm();
   const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false);
   const [zipFile, setZipFile] = useState<File | null>(null);
   const [searchText, setSearchText] = useState('');
   const navigate = useNavigate();
@@ -84,6 +85,7 @@ export function Projects() {
       message.error('请选择 ZIP 文件');
       return;
     }
+    submittingRef.current = true;
     setSubmitting(true);
     try {
       await createFromZip(values.name, values.description, zipFile);
@@ -93,13 +95,15 @@ export function Projects() {
       setZipFile(null);
       fetchProjects();
     } catch {
-      message.error('创建项目失败');
+      // 错误消息已由 apiClient 拦截器统一处理
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   };
 
   const handleCreateFromGit = async (values: ProjectCreateFromGit) => {
+    submittingRef.current = true;
     setSubmitting(true);
     try {
       await createFromGit(values);
@@ -108,13 +112,15 @@ export function Projects() {
       gitForm.resetFields();
       fetchProjects();
     } catch {
-      message.error('创建项目失败');
+      // 错误消息已由 apiClient 拦截器统一处理
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   };
 
   const handleCreateFromLocal = async (values: ProjectCreateFromLocal) => {
+    submittingRef.current = true;
     setSubmitting(true);
     try {
       await createFromLocal(values);
@@ -123,8 +129,9 @@ export function Projects() {
       localForm.resetFields();
       fetchProjects();
     } catch {
-      message.error('创建项目失败');
+      // 错误消息已由 apiClient 拦截器统一处理
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   };
@@ -262,8 +269,11 @@ export function Projects() {
       <Modal
         title="上传 ZIP 创建项目"
         open={zipModalVisible}
-        onCancel={() => { setZipModalVisible(false); zipForm.resetFields(); setZipFile(null); }}
+        onCancel={() => { if (submittingRef.current) return; setZipModalVisible(false); zipForm.resetFields(); setZipFile(null); }}
         footer={null}
+        maskClosable={!submitting}
+        closable={!submitting}
+        keyboard={!submitting}
       >
         <Form form={zipForm} onFinish={handleCreateFromZip} layout="vertical">
           <Form.Item
@@ -306,8 +316,11 @@ export function Projects() {
       <Modal
         title="Git 克隆创建项目"
         open={gitModalVisible}
-        onCancel={() => { setGitModalVisible(false); gitForm.resetFields(); }}
+        onCancel={() => { if (submittingRef.current) return; setGitModalVisible(false); gitForm.resetFields(); }}
         footer={null}
+        maskClosable={!submitting}
+        closable={!submitting}
+        keyboard={!submitting}
       >
         <Form form={gitForm} onFinish={handleCreateFromGit} layout="vertical">
           <Form.Item
@@ -344,8 +357,11 @@ export function Projects() {
       <Modal
         title="本地路径创建项目"
         open={localModalVisible}
-        onCancel={() => { setLocalModalVisible(false); localForm.resetFields(); }}
+        onCancel={() => { if (submittingRef.current) return; setLocalModalVisible(false); localForm.resetFields(); }}
         footer={null}
+        maskClosable={!submitting}
+        closable={!submitting}
+        keyboard={!submitting}
       >
         <Form form={localForm} onFinish={handleCreateFromLocal} layout="vertical">
           <Form.Item
