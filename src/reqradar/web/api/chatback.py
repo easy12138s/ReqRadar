@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -27,12 +27,17 @@ class SaveRequest(BaseModel):
     version_number: int
 
 
+def _get_report_storage(request: Request):
+    return getattr(request.app.state, "report_storage", None)
+
+
 @router.post("/chat")
 async def chat(
     task_id: int,
     req: ChatRequest,
     db: DbSession,
     current_user: CurrentUser,
+    request: Request,
 ):
     task_result = await db.execute(
         select(AnalysisTask).where(
@@ -84,9 +89,13 @@ async def chat(
         max_retries=config.llm.max_retries,
     )
 
-    version_service = VersionService(db)
+    report_storage = _get_report_storage(request)
+    version_service = VersionService(db, report_storage=report_storage)
     chatback_service = ChatbackService(
-        version_service=version_service, llm_client=llm_client, config=config
+        version_service=version_service,
+        llm_client=llm_client,
+        config=config,
+        report_storage=report_storage,
     )
     result = await chatback_service.chat(
         task_id=task_id,
@@ -103,6 +112,7 @@ async def chat_stream(
     req: ChatRequest,
     db: DbSession,
     current_user: CurrentUser,
+    request: Request,
 ):
     import json as _json
     from reqradar.agent.prompts.chatback_phase import build_chatback_system_prompt
@@ -155,7 +165,8 @@ async def chat_stream(
         max_retries=config.llm.max_retries,
     )
 
-    version_service = VersionService(db)
+    report_storage = _get_report_storage(request)
+    version_service = VersionService(db, report_storage=report_storage)
     intent = classify_intent(req.message)
 
     chat_record = ReportChat(
@@ -177,7 +188,7 @@ async def chat_stream(
             return
 
         async with dep_module.async_session_factory() as stream_db:
-            stream_version_service = VersionService(stream_db)
+            stream_version_service = VersionService(stream_db, report_storage=report_storage)
             collected = []
             try:
                 version = await stream_version_service.get_version(task_id, version_number)
@@ -226,6 +237,7 @@ async def get_chat_history(
     task_id: int,
     db: DbSession,
     current_user: CurrentUser,
+    request: Request,
     version_number: int | None = Query(default=None),
 ):
     task_result = await db.execute(
@@ -237,8 +249,11 @@ async def get_chat_history(
     if task is None:
         raise HTTPException(status_code=404, detail="Analysis task not found")
 
-    version_service = VersionService(db)
-    chatback_service = ChatbackService(version_service=version_service)
+    version_service = VersionService(db, report_storage=_get_report_storage(request))
+    chatback_service = ChatbackService(
+        version_service=version_service,
+        report_storage=_get_report_storage(request),
+    )
     messages = await chatback_service.get_chat_history(task_id, version_number)
     return {"messages": messages}
 
@@ -249,6 +264,7 @@ async def save_chat_version(
     req: SaveRequest,
     db: DbSession,
     current_user: CurrentUser,
+    request: Request,
 ):
     task_result = await db.execute(
         select(AnalysisTask).where(
@@ -260,8 +276,11 @@ async def save_chat_version(
         raise HTTPException(status_code=404, detail="Analysis task not found")
 
     user_id = current_user.id
-    version_service = VersionService(db)
-    chatback_service = ChatbackService(version_service=version_service)
+    report_storage = _get_report_storage(request)
+    version_service = VersionService(db, report_storage=report_storage)
+    chatback_service = ChatbackService(
+        version_service=version_service, report_storage=report_storage
+    )
     result = await chatback_service.save_as_new_version(
         task_id=task_id,
         version_number=req.version_number,

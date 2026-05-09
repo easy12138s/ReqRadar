@@ -1,7 +1,7 @@
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,6 +15,10 @@ logger = logging.getLogger("reqradar.api.versions")
 router = APIRouter(prefix="/api/analyses/{task_id}/reports", tags=["versions"])
 
 
+def _get_report_storage(request: Request):
+    return getattr(request.app.state, "report_storage", None)
+
+
 class RollbackRequest(BaseModel):
     version_number: int
 
@@ -25,7 +29,11 @@ async def list_versions(
     db: DbSession,
     current_user: CurrentUser,
 ):
-    task_result = await db.execute(select(AnalysisTask).where(AnalysisTask.id == task_id, AnalysisTask.user_id == current_user.id))
+    task_result = await db.execute(
+        select(AnalysisTask).where(
+            AnalysisTask.id == task_id, AnalysisTask.user_id == current_user.id
+        )
+    )
     task = task_result.scalar_one_or_none()
     if task is None:
         raise HTTPException(status_code=404, detail="Analysis task not found")
@@ -52,7 +60,11 @@ async def get_version(
     db: DbSession,
     current_user: CurrentUser,
 ):
-    task_result = await db.execute(select(AnalysisTask).where(AnalysisTask.id == task_id, AnalysisTask.user_id == current_user.id))
+    task_result = await db.execute(
+        select(AnalysisTask).where(
+            AnalysisTask.id == task_id, AnalysisTask.user_id == current_user.id
+        )
+    )
     task = task_result.scalar_one_or_none()
     if task is None:
         raise HTTPException(status_code=404, detail="Analysis task not found")
@@ -84,13 +96,18 @@ async def rollback_version(
     req: RollbackRequest,
     db: DbSession,
     current_user: CurrentUser,
+    request: Request,
 ):
-    task_result = await db.execute(select(AnalysisTask).where(AnalysisTask.id == task_id, AnalysisTask.user_id == current_user.id))
+    task_result = await db.execute(
+        select(AnalysisTask).where(
+            AnalysisTask.id == task_id, AnalysisTask.user_id == current_user.id
+        )
+    )
     task = task_result.scalar_one_or_none()
     if task is None:
         raise HTTPException(status_code=404, detail="Analysis task not found")
 
-    service = VersionService(db)
+    service = VersionService(db, report_storage=_get_report_storage(request))
     user_id = current_user.id if hasattr(current_user, "id") else 1
     new_version = await service.rollback(task_id, req.version_number, user_id=user_id)
     if new_version is None:

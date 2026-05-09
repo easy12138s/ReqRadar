@@ -99,9 +99,15 @@ class AnalysisRunner:
                     logger.exception("Agent analysis task %d failed", task_id)
 
     async def _init_agent(
-        self, task: AnalysisTask, project: Project, config: Config, db: AsyncSession
+        self,
+        task: AnalysisTask,
+        project: Project,
+        config: Config,
+        db: AsyncSession,
+        paths: dict | None = None,
     ) -> tuple[AnalysisAgent, AnalysisMemoryManager, ConfigManager, object | None]:
         from reqradar.modules.memory import MemoryManager
+        from reqradar.infrastructure.paths import get_paths
 
         depth = task.depth if hasattr(task, "depth") and task.depth else "standard"
         agent = AnalysisAgent(
@@ -112,8 +118,10 @@ class AnalysisRunner:
         )
         agent.state = AgentState.ANALYZING
 
-        file_svc = ProjectFileService(config.web)
-        memory_path = str(file_svc.get_memory_path(project.name))
+        if paths is None:
+            paths = get_paths(config)
+
+        memory_path = str(paths["memories"])
 
         memory_manager = MemoryManager(storage_path=memory_path)
         memory_data = memory_manager.load() if config.memory.enabled else None
@@ -142,6 +150,7 @@ class AnalysisRunner:
         db: AsyncSession,
         cm: ConfigManager,
         memory_data,
+        paths: dict | None = None,
     ) -> tuple[ToolRegistry, object]:
         from reqradar.modules.llm_client import create_llm_client
         from reqradar.modules.git_analyzer import GitAnalyzer
@@ -157,6 +166,11 @@ class AnalysisRunner:
             GetTerminologyTool,
         )
         from reqradar.agent.tools.security import PathSandbox, SensitiveFileFilter
+
+        if paths is None:
+            from reqradar.infrastructure.paths import get_paths
+
+            paths = get_paths(config)
 
         provider = await cm.get_str(
             "llm.provider", user_id=task.user_id, project_id=project.id, default=config.llm.provider
@@ -212,7 +226,13 @@ class AnalysisRunner:
         llm_client._current_task_id = task.id
 
         file_svc = ProjectFileService(config.web)
-        repo_path = str(file_svc.detect_code_root(project.name))
+        projects_path = paths["projects"]
+        project_dir = projects_path / project.name
+        repo_path = (
+            str(file_svc.detect_code_root(project.name))
+            if project_dir.exists()
+            else str(project_dir / "project_code")
+        )
         index_path = str(file_svc.get_index_path(project.name))
 
         code_graph = await project_store.get_code_graph(project.id, index_path)
@@ -304,6 +324,7 @@ class AnalysisRunner:
         report_markdown: str,
         report_html: str,
         db: AsyncSession,
+        report_storage=None,
     ):
         from reqradar.web.services.version_service import VersionService
 
@@ -318,15 +339,22 @@ class AnalysisRunner:
         task.status = TaskStatus.COMPLETED
         task.completed_at = datetime.now(timezone.utc)
 
+        md_path = ""
+        html_path = ""
+        if report_storage is not None:
+            md_path, html_path = await report_storage.save_report(
+                task.id, report_markdown, report_html, context=snapshot
+            )
+
         db.add(
             Report(
                 task_id=task.id,
-                content_markdown=report_markdown,
-                content_html=report_html,
+                markdown_path=md_path,
+                html_path=html_path,
             )
         )
 
-        version_service = VersionService(db)
+        version_service = VersionService(db, report_storage=report_storage)
         context_snapshot = agent.get_context_snapshot()
         await version_service.create_version(
             task_id=task.id,
@@ -348,6 +376,12 @@ class AnalysisRunner:
         db: AsyncSession,
         ws_manager: ConnectionManager | None = None,
     ):
+        from reqradar.infrastructure.paths import get_paths
+        from reqradar.web.services.report_storage import ReportStorage
+
+        paths = get_paths(config)
+        report_storage = ReportStorage(paths["reports"])
+
         result = await db.execute(select(AnalysisTask).where(AnalysisTask.id == task_id))
         task = result.scalar_one_or_none()
         if task is None:
@@ -362,10 +396,10 @@ class AnalysisRunner:
 
         try:
             agent, analysis_memory, cm, memory_data = await self._init_agent(
-                task, project, config, db
+                task, project, config, db, paths=paths
             )
             tool_registry, llm_client = await self._init_tools(
-                agent, task, project, config, db, cm, memory_data
+                agent, task, project, config, db, cm, memory_data, paths=paths
             )
             template_def, render_template_str = await self._load_template(task, config, db)
 
@@ -432,7 +466,15 @@ class AnalysisRunner:
             )
             risk_level = report_data.get("risk_level", "unknown")
 
-            await self._save_report(task, agent, report_data, report_markdown, report_html, db)
+            await self._save_report(
+                task,
+                agent,
+                report_data,
+                report_markdown,
+                report_html,
+                db,
+                report_storage=report_storage,
+            )
 
             if ws_manager:
                 await ws_manager.broadcast(

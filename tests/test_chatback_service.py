@@ -34,7 +34,16 @@ def test_chatback_service_fallback_reply():
     reply = service._generate_fallback_reply(
         report_data={"risk_level": "high", "requirement_title": "Add SSO"},
         context_snapshot={
-            "evidence_list": [{"id": "ev-001", "type": "code", "source": "src/auth.py", "content": "Auth module", "confidence": "high", "dimensions": ["impact"]}],
+            "evidence_list": [
+                {
+                    "id": "ev-001",
+                    "type": "code",
+                    "source": "src/auth.py",
+                    "content": "Auth module",
+                    "confidence": "high",
+                    "dimensions": ["impact"],
+                }
+            ],
             "dimension_status": {"impact": "sufficient"},
             "visited_files": ["src/auth.py"],
             "tool_calls": [],
@@ -49,7 +58,12 @@ def test_chatback_service_fallback_correct():
     service = ChatbackService(version_service=AsyncMock())
     reply = service._generate_fallback_reply(
         report_data={"risk_level": "medium"},
-        context_snapshot={"evidence_list": [], "dimension_status": {}, "visited_files": [], "tool_calls": []},
+        context_snapshot={
+            "evidence_list": [],
+            "dimension_status": {},
+            "visited_files": [],
+            "tool_calls": [],
+        },
         user_message="遗漏了 xx 模块",
         intent="correct",
     )
@@ -60,8 +74,24 @@ def test_chatback_service_fallback_explore():
     service = ChatbackService(version_service=AsyncMock())
     reply = service._generate_fallback_reply(
         report_data={"risk_level": "low"},
-        context_snapshot={"evidence_list": [], "dimension_status": {}, "visited_files": ["src/app.py", "src/models.py"], "tool_calls": []},
+        context_snapshot={
+            "evidence_list": [],
+            "dimension_status": {},
+            "visited_files": ["src/app.py", "src/models.py"],
+            "tool_calls": [],
+        },
         user_message="去看看 auth",
         intent="explore",
     )
     assert "src/app.py" in reply or "文件" in reply
+
+
+def test_chatback_service_accepts_report_storage():
+    storage = MagicMock()
+    service = ChatbackService(version_service=AsyncMock(), report_storage=storage)
+    assert service.report_storage is storage
+
+
+def test_chatback_service_report_storage_defaults_none():
+    service = ChatbackService(version_service=AsyncMock())
+    assert service.report_storage is None

@@ -38,11 +38,13 @@ class ChatbackService:
         llm_client=None,
         tool_registry=None,
         config=None,
+        report_storage=None,
     ):
         self.version_service = version_service
         self.llm_client = llm_client
         self.tool_registry = tool_registry
         self.config = config
+        self.report_storage = report_storage
 
     async def chat(
         self,
@@ -169,14 +171,22 @@ class ChatbackService:
 
         report_data = updated_report_data or current_version.report_data or {}
         context_snapshot = await self.version_service.get_context_snapshot(task_id, version_number)
+
         content_md = updated_content_markdown or current_version.content_markdown
+        content_html = current_version.content_html
+        if self.report_storage is not None and updated_content_markdown is None:
+            file_md, file_html = await self.report_storage.read_version(task_id, version_number)
+            if file_md is not None:
+                content_md = file_md
+            if file_html is not None:
+                content_html = file_html
 
         new_version = await self.version_service.create_version(
             task_id=task_id,
             report_data=report_data,
             context_snapshot=context_snapshot or {},
             content_markdown=content_md,
-            content_html=current_version.content_html,
+            content_html=content_html,
             trigger_type="global_chat",
             trigger_description=f"User chat lead to update from version {version_number}",
             created_by=user_id,

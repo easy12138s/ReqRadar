@@ -77,7 +77,7 @@ class TestMemoryConfig:
 
         config = MemoryConfig()
         assert config.enabled is True
-        assert config.storage_path == ".reqradar/memory"
+        assert config.storage_path == ""
 
 
 class TestLoaderConfig:
