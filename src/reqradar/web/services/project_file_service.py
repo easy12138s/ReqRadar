@@ -7,7 +7,6 @@ import subprocess
 import zipfile
 from pathlib import Path
 
-from reqradar.infrastructure.config import WebConfig
 
 logger = logging.getLogger("reqradar.web.services.project_file_service")
 
@@ -18,8 +17,8 @@ ALLOWED_GIT_URL_SCHEMES = {"https://", "ssh://", "git@", "http://"}
 
 
 class ProjectFileService:
-    def __init__(self, web_config: WebConfig):
-        self._data_root = Path(os.path.expanduser(web_config.data_root))
+    def __init__(self, projects_path: Path):
+        self._data_root = Path(projects_path).expanduser()
 
     def _validate_project_name(self, name: str) -> None:
         if not PROJECT_NAME_RE.match(name):
@@ -32,15 +31,12 @@ class ProjectFileService:
     def get_index_path(self, name: str) -> Path:
         return self.get_project_path(name) / "index"
 
-    def get_memory_path(self, name: str) -> Path:
-        return self.get_project_path(name) / "memory"
-
     def get_requirements_path(self, name: str) -> Path:
         return self.get_project_path(name) / "requirements"
 
     def create_project_dirs(self, name: str) -> None:
         base = self.get_project_path(name)
-        for subdir in ("project_code", "requirements", "index", "memory"):
+        for subdir in ("project_code", "requirements", "index"):
             (base / subdir).mkdir(parents=True, exist_ok=True)
 
     def extract_zip(self, name: str, zip_bytes: bytes) -> None:
@@ -52,7 +48,9 @@ class ProjectFileService:
         with zipfile.ZipFile(zip_backup) as zf:
             total_size = sum(info.file_size for info in zf.infolist())
             if total_size > MAX_EXTRACTED_SIZE:
-                raise ValueError(f"Zip contents too large: {total_size} bytes (max {MAX_EXTRACTED_SIZE})")
+                raise ValueError(
+                    f"Zip contents too large: {total_size} bytes (max {MAX_EXTRACTED_SIZE})"
+                )
 
             for member in zf.infolist():
                 target = (code_dir / member.filename).resolve()

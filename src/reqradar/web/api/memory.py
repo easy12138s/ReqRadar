@@ -1,22 +1,21 @@
 import logging
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from reqradar.infrastructure.config import load_config
 from reqradar.web.dependencies import CurrentUser, DbSession
 from reqradar.web.models import AnalysisTask, Project
 
 logger = logging.getLogger("reqradar.web.api.memory")
 
 
-def _get_project_memory(project: Project) -> "ProjectMemory":
+def _get_project_memory(project: Project, request: Request) -> "ProjectMemory":
     from reqradar.modules.project_memory import ProjectMemory
-    from reqradar.web.services.project_file_service import ProjectFileService
-    config = load_config()
-    file_svc = ProjectFileService(config.web)
-    return ProjectMemory(storage_path=str(file_svc.get_memory_path(project.name)), project_id=project.id)
+
+    memories_path = request.app.state.paths["memories"]
+    return ProjectMemory(storage_path=str(memories_path), project_id=project.id)
+
 
 router = APIRouter(prefix="/api/projects", tags=["memory"])
 
@@ -47,7 +46,9 @@ class HistoryItem(BaseModel):
 
 
 @router.get("/{project_id}/terminology", response_model=list[TermItem])
-async def get_terminology(project_id: int, current_user: CurrentUser, db: DbSession):
+async def get_terminology(
+    project_id: int, current_user: CurrentUser, db: DbSession, request: Request
+):
     result = await db.execute(
         select(Project).where(Project.id == project_id, Project.owner_id == current_user.id)
     )
@@ -55,18 +56,21 @@ async def get_terminology(project_id: int, current_user: CurrentUser, db: DbSess
     if project is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
-    memory = _get_project_memory(project)
+    memory = _get_project_memory(project, request)
     data = memory.load()
     terms = data.get("terms", [])
-    return [TermItem(
-        term=t.get("term", ""),
-        definition=t.get("definition", ""),
-        domain=t.get("domain", ""),
-    ) for t in terms]
+    return [
+        TermItem(
+            term=t.get("term", ""),
+            definition=t.get("definition", ""),
+            domain=t.get("domain", ""),
+        )
+        for t in terms
+    ]
 
 
 @router.get("/{project_id}/modules", response_model=list[ModuleItem])
-async def get_modules(project_id: int, current_user: CurrentUser, db: DbSession):
+async def get_modules(project_id: int, current_user: CurrentUser, db: DbSession, request: Request):
     result = await db.execute(
         select(Project).where(Project.id == project_id, Project.owner_id == current_user.id)
     )
@@ -74,18 +78,21 @@ async def get_modules(project_id: int, current_user: CurrentUser, db: DbSession)
     if project is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
-    memory = _get_project_memory(project)
+    memory = _get_project_memory(project, request)
     data = memory.load()
     modules = data.get("modules", [])
-    return [ModuleItem(
-        name=m.get("name", ""),
-        responsibility=m.get("responsibility", ""),
-        key_classes=m.get("key_classes", []),
-    ) for m in modules]
+    return [
+        ModuleItem(
+            name=m.get("name", ""),
+            responsibility=m.get("responsibility", ""),
+            key_classes=m.get("key_classes", []),
+        )
+        for m in modules
+    ]
 
 
 @router.get("/{project_id}/team", response_model=list[ContributorItem])
-async def get_team(project_id: int, current_user: CurrentUser, db: DbSession):
+async def get_team(project_id: int, current_user: CurrentUser, db: DbSession, request: Request):
     result = await db.execute(
         select(Project).where(Project.id == project_id, Project.owner_id == current_user.id)
     )
@@ -97,7 +104,7 @@ async def get_team(project_id: int, current_user: CurrentUser, db: DbSession):
 
 
 @router.get("/{project_id}/history", response_model=list[HistoryItem])
-async def get_history(project_id: int, current_user: CurrentUser, db: DbSession):
+async def get_history(project_id: int, current_user: CurrentUser, db: DbSession, request: Request):
     result = await db.execute(
         select(Project).where(Project.id == project_id, Project.owner_id == current_user.id)
     )
@@ -128,11 +135,13 @@ async def get_history(project_id: int, current_user: CurrentUser, db: DbSession)
             except AttributeError:
                 pass
 
-        history.append(HistoryItem(
-            requirement_id=task.requirement_name,
-            timestamp=task.created_at.isoformat() if task.created_at else "",
-            risk_level=risk_level,
-            summary=summary,
-        ))
+        history.append(
+            HistoryItem(
+                requirement_id=task.requirement_name,
+                timestamp=task.created_at.isoformat() if task.created_at else "",
+                risk_level=risk_level,
+                summary=summary,
+            )
+        )
 
     return history

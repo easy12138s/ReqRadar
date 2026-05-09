@@ -225,7 +225,7 @@ class AnalysisRunner:
         )
         llm_client._current_task_id = task.id
 
-        file_svc = ProjectFileService(config.web)
+        file_svc = ProjectFileService(paths["projects"])
         projects_path = paths["projects"]
         project_dir = projects_path / project.name
         repo_path = (

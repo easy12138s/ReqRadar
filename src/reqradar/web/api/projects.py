@@ -5,12 +5,11 @@ import shutil
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, Form, status
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from reqradar.infrastructure.config import load_config
 from reqradar.web.dependencies import CurrentUser, DbSession, get_current_user, get_db
 from reqradar.web.models import PendingChange, Project, User
 from reqradar.web.services.project_file_service import ProjectFileService
@@ -23,9 +22,8 @@ router = APIRouter(prefix="/api/projects", tags=["projects"])
 PROJECT_NAME_PATTERN = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
 
 
-def _get_file_service() -> ProjectFileService:
-    config = load_config()
-    return ProjectFileService(config.web)
+def _get_file_service(request: Request) -> ProjectFileService:
+    return ProjectFileService(request.app.state.paths["projects"])
 
 
 class ProjectResponse(BaseModel):
@@ -117,7 +115,7 @@ class ProjectDashboardSummary(BaseModel):
 
 
 @router.get("/dashboard-summaries", response_model=list[ProjectDashboardSummary])
-async def get_dashboard_summaries(current_user: CurrentUser, db: DbSession):
+async def get_dashboard_summaries(current_user: CurrentUser, db: DbSession, request: Request):
     result = await db.execute(
         select(Project)
         .where(Project.owner_id == current_user.id)
@@ -139,18 +137,16 @@ async def get_dashboard_summaries(current_user: CurrentUser, db: DbSession):
     )
     pending_counts = dict(pending_counts_result.all())
 
-    config = load_config()
-    file_svc = ProjectFileService(config.web)
+    from reqradar.modules.project_memory import ProjectMemory
+
+    memories_path = request.app.state.paths["memories"]
 
     summaries: list[ProjectDashboardSummary] = []
     for p in projects:
         terms_count = 0
         modules_count = 0
         try:
-            from reqradar.modules.project_memory import ProjectMemory
-
-            memory_path = file_svc.get_memory_path(p.name)
-            pm = ProjectMemory(storage_path=str(memory_path), project_id=p.id)
+            pm = ProjectMemory(storage_path=str(memories_path), project_id=p.id)
             data = pm.load()
             terms_count = len(data.get("terms", []))
             modules_count = len(data.get("modules", []))
@@ -172,8 +168,10 @@ async def get_dashboard_summaries(current_user: CurrentUser, db: DbSession):
 
 
 @router.post("/from-local", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
-async def create_from_local(req: ProjectFromLocal, current_user: CurrentUser, db: DbSession):
-    svc = _get_file_service()
+async def create_from_local(
+    req: ProjectFromLocal, current_user: CurrentUser, db: DbSession, request: Request
+):
+    svc = _get_file_service(request)
     try:
         local_path = svc.validate_local_path(req.local_path)
     except ValueError as e:
@@ -216,6 +214,7 @@ async def create_from_local(req: ProjectFromLocal, current_user: CurrentUser, db
 
 @router.post("/from-zip", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
 async def create_from_zip(
+    request: Request,
     name: str = Form(...),
     description: str = Form(""),
     file: UploadFile = File(...),
@@ -228,7 +227,7 @@ async def create_from_zip(
             detail=f"Project name must match {PROJECT_NAME_PATTERN.pattern}",
         )
 
-    svc = _get_file_service()
+    svc = _get_file_service(request)
     project = await _create_project_record(
         name, description, "zip", file.filename or "upload.zip", current_user.id, db
     )
@@ -241,8 +240,10 @@ async def create_from_zip(
 
 
 @router.post("/from-git", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
-async def create_from_git(req: ProjectFromGit, current_user: CurrentUser, db: DbSession):
-    svc = _get_file_service()
+async def create_from_git(
+    req: ProjectFromGit, current_user: CurrentUser, db: DbSession, request: Request
+):
+    svc = _get_file_service(request)
     if not svc.is_git_available():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -301,7 +302,9 @@ async def update_project(
 
 
 @router.delete("/{project_id}")
-async def delete_project(project_id: int, current_user: CurrentUser, db: DbSession):
+async def delete_project(
+    project_id: int, current_user: CurrentUser, db: DbSession, request: Request
+):
     result = await db.execute(
         select(Project).where(Project.id == project_id, Project.owner_id == current_user.id)
     )
@@ -309,19 +312,29 @@ async def delete_project(project_id: int, current_user: CurrentUser, db: DbSessi
     if project is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
-    svc = _get_file_service()
+    svc = _get_file_service(request)
     project_name = project.name
     try:
         svc.delete_project_files(project_name)
     except Exception:
         logger.exception("Failed to delete files for project '%s'", project_name)
+
+    report_storage = getattr(request.app.state, "report_storage", None)
+    if report_storage is not None:
+        try:
+            await report_storage.delete_project_reports(project.id, db)
+        except Exception:
+            logger.exception("Failed to delete reports for project %d", project.id)
+
     await db.delete(project)
     await db.commit()
     return {"success": True, "message": f"Project '{project_name}' deleted"}
 
 
 @router.get("/{project_id}/files", response_model=list[FileTreeNode])
-async def get_project_files(project_id: int, current_user: CurrentUser, db: DbSession):
+async def get_project_files(
+    project_id: int, current_user: CurrentUser, db: DbSession, request: Request
+):
     result = await db.execute(
         select(Project).where(Project.id == project_id, Project.owner_id == current_user.id)
     )
@@ -329,13 +342,15 @@ async def get_project_files(project_id: int, current_user: CurrentUser, db: DbSe
     if project is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
-    svc = _get_file_service()
+    svc = _get_file_service(request)
     tree = svc.get_file_tree(project.name)
     return tree
 
 
 @router.post("/{project_id}/index", status_code=status.HTTP_202_ACCEPTED)
-async def trigger_index(project_id: int, current_user: CurrentUser, db: DbSession):
+async def trigger_index(
+    project_id: int, current_user: CurrentUser, db: DbSession, request: Request
+):
     result = await db.execute(
         select(Project).where(Project.id == project_id, Project.owner_id == current_user.id)
     )
@@ -343,8 +358,13 @@ async def trigger_index(project_id: int, current_user: CurrentUser, db: DbSessio
     if project is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
+    from reqradar.infrastructure.config import load_config
+
     config = load_config()
-    index_service = ProjectIndexService(config.web)
+    index_service = ProjectIndexService(
+        projects_path=request.app.state.paths["projects"],
+        memories_path=request.app.state.paths["memories"],
+    )
     asyncio.create_task(index_service.build_index(project, db, config))
 
     return {"message": "Index build started", "project_id": project_id}

@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, Form
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, Field
@@ -14,7 +14,6 @@ from reqradar.modules.llm_client import LiteLLMClient
 from reqradar.web.dependencies import get_current_user, get_db
 from reqradar.web.models import RequirementDocument, Project, User
 from reqradar.web.enums import PreprocessStatus
-from reqradar.infrastructure.config import load_config
 
 router = APIRouter(prefix="/api/requirements", tags=["requirements"])
 
@@ -60,6 +59,7 @@ class UpdateRequirementRequest(BaseModel):
 
 @router.post("/preprocess", response_model=PreprocessResponse)
 async def preprocess_requirements_endpoint(
+    request: Request,
     project_id: int = Form(...),
     files: list[UploadFile] = File(...),
     title: str = Form(""),
@@ -72,11 +72,11 @@ async def preprocess_requirements_endpoint(
     if not project:
         raise HTTPException(404, "Project not found")
 
+    from reqradar.infrastructure.config import load_config
+
     config = load_config()
-    data_root = (
-        Path(config.web.data_root) if hasattr(config, "web") else Path.home() / ".reqradar" / "data"
-    )
-    req_dir = data_root / project.name / "requirements"
+    projects_path = request.app.state.paths["projects"]
+    req_dir = projects_path / project.name / "requirements"
     req_dir.mkdir(parents=True, exist_ok=True)
 
     saved_paths = []

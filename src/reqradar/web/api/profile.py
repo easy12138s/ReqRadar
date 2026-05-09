@@ -1,10 +1,9 @@
 import logging
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from reqradar.infrastructure.config import load_config
 from reqradar.modules.pending_changes import PendingChangeManager
 from reqradar.modules.project_memory import ProjectMemory
 from reqradar.web.dependencies import CurrentUser, DbSession
@@ -52,19 +51,15 @@ async def _get_project(project_id: int, user_id: int, db: DbSession) -> Project:
     return project
 
 
-def _build_project_memory(project: Project) -> ProjectMemory:
-    config = load_config()
-    from reqradar.web.services.project_file_service import ProjectFileService
-
-    file_svc = ProjectFileService(config.web)
-    memory_path = file_svc.get_memory_path(project.name)
-    return ProjectMemory(storage_path=str(memory_path), project_id=project.id)
+def _build_project_memory(project: Project, request: Request) -> ProjectMemory:
+    memories_path = request.app.state.paths["memories"]
+    return ProjectMemory(storage_path=str(memories_path), project_id=project.id)
 
 
 @router.get("/{project_id}/profile", response_model=ProfileResponse)
-async def get_profile(project_id: int, current_user: CurrentUser, db: DbSession):
+async def get_profile(project_id: int, current_user: CurrentUser, db: DbSession, request: Request):
     project = await _get_project(project_id, current_user.id, db)
-    pm = _build_project_memory(project)
+    pm = _build_project_memory(project, request)
     data = pm.load()
 
     content = (
@@ -82,9 +77,10 @@ async def update_profile(
     req: ProfileUpdateRequest,
     current_user: CurrentUser,
     db: DbSession,
+    request: Request,
 ):
     project = await _get_project(project_id, current_user.id, db)
-    pm = _build_project_memory(project)
+    pm = _build_project_memory(project, request)
 
     if req.data:
         existing = pm.load()
@@ -127,6 +123,7 @@ async def accept_pending_change(
     change_id: int,
     current_user: CurrentUser,
     db: DbSession,
+    request: Request,
 ):
     project = await _get_project(project_id, current_user.id, db)
 
@@ -142,7 +139,7 @@ async def accept_pending_change(
             status_code=status.HTTP_404_NOT_FOUND, detail="Pending change not found"
         )
 
-    pm = _build_project_memory(project)
+    pm = _build_project_memory(project, request)
 
     if change.change_type == "overview_updated":
         pm.update_overview(change.new_value)

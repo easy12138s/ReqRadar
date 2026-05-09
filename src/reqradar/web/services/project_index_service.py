@@ -4,7 +4,7 @@ from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from reqradar.infrastructure.config import Config, WebConfig, load_config
+from reqradar.infrastructure.config import Config, load_config
 from reqradar.infrastructure.config_manager import ConfigManager
 from reqradar.web.models import Project
 from reqradar.web.services.project_file_service import ProjectFileService
@@ -13,8 +13,9 @@ logger = logging.getLogger("reqradar.web.services.project_index_service")
 
 
 class ProjectIndexService:
-    def __init__(self, web_config: WebConfig):
-        self._file_service = ProjectFileService(web_config)
+    def __init__(self, projects_path: Path, memories_path: Path):
+        self._file_service = ProjectFileService(projects_path)
+        self._memories_path = memories_path
 
     async def build_index(self, project: Project, db: AsyncSession, config: Config) -> None:
         from reqradar.web.services.project_store import project_store
@@ -220,7 +221,7 @@ class ProjectIndexService:
             max_retries=config.llm.max_retries,
         )
 
-        memory_path = svc.get_memory_path(project.name)
+        memory_path = self._memories_path
         project_memory = ProjectMemory(storage_path=str(memory_path), project_id=project.id)
 
         try:
@@ -248,6 +249,6 @@ class ProjectIndexService:
         if memory_enabled:
             from reqradar.modules.memory import MemoryManager
 
-            memory_path = svc.get_memory_path(project.name)
+            memory_path = self._memories_path
             memory_manager = MemoryManager(storage_path=str(memory_path))
             memory_manager.load()

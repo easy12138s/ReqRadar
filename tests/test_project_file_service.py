@@ -5,15 +5,13 @@ from pathlib import Path
 
 import pytest
 
-from reqradar.infrastructure.config import WebConfig
 from reqradar.web.services.project_file_service import ProjectFileService
 
 
 @pytest.fixture
 def service(tmp_path):
-    data_root = str(tmp_path / "data")
-    config = WebConfig(data_root=data_root)
-    return ProjectFileService(config)
+    data_root = tmp_path / "data"
+    return ProjectFileService(data_root)
 
 
 def test_get_project_path(service, tmp_path):
@@ -27,7 +25,6 @@ def test_create_project_dirs(service, tmp_path):
     assert (base / "project_code").is_dir()
     assert (base / "requirements").is_dir()
     assert (base / "index").is_dir()
-    assert (base / "memory").is_dir()
 
 
 def test_create_project_dirs_idempotent(service, tmp_path):
@@ -138,15 +135,13 @@ def test_get_file_tree(service, tmp_path):
 
 
 def test_is_git_available():
-    config = WebConfig()
-    svc = ProjectFileService(config)
+    svc = ProjectFileService(Path("/tmp"))
     result = svc.is_git_available()
     assert isinstance(result, bool)
 
 
 def test_get_project_path_tilde_expansion():
-    config = WebConfig(data_root="~/reqradar_test_data")
-    svc = ProjectFileService(config)
+    svc = ProjectFileService(Path("~/reqradar_test_data"))
     path = svc.get_project_path("test")
     assert "~" not in str(path)
     assert str(path).endswith("test")
@@ -162,12 +157,6 @@ def test_get_index_path(service, tmp_path):
     service.create_project_dirs("idx-proj")
     result = service.get_index_path("idx-proj")
     assert result == tmp_path / "data" / "idx-proj" / "index"
-
-
-def test_get_memory_path(service, tmp_path):
-    service.create_project_dirs("mem-proj")
-    result = service.get_memory_path("mem-proj")
-    assert result == tmp_path / "data" / "mem-proj" / "memory"
 
 
 def test_get_requirements_path(service, tmp_path):
@@ -210,6 +199,7 @@ def test_clone_git_rejects_disallowed_url_scheme(service, tmp_path):
 
 def test_validate_local_path_accepts_allowed_prefix(service):
     import platform
+
     if platform.system() == "Windows":
         user_profile = os.environ.get("USERPROFILE", "")
         if user_profile and os.path.isdir(user_profile):
@@ -229,6 +219,7 @@ def test_validate_local_path_rejects_nonexistent(service):
 
 def test_validate_local_path_rejects_disallowed_prefix(service):
     import platform
+
     if platform.system() == "Windows":
         with pytest.raises(ValueError, match="must be under one of"):
             service.validate_local_path("C:\\Windows\\System32")
