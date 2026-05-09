@@ -16,7 +16,6 @@ import {
   Space,
   Dropdown,
 } from 'antd';
-import { useTranslation } from 'react-i18next';
 import {
   CalendarOutlined,
   SyncOutlined,
@@ -38,8 +37,8 @@ const { Title, Text, Paragraph } = Typography;
 const SOURCE_TYPE_LABELS: Record<string, { text: string; color: string }> = {
   zip: { text: 'ZIP', color: 'orange' },
   git: { text: 'Git', color: 'green' },
-    local: { text: t('projects.localPathLabel'), color: 'blue' },
-  };
+  local: { text: '本地路径', color: 'blue' },
+};
 
 export function Projects() {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -54,7 +53,6 @@ export function Projects() {
   const [zipFile, setZipFile] = useState<File | null>(null);
   const [searchText, setSearchText] = useState('');
   const navigate = useNavigate();
-  const { t } = useTranslation();
 
   const fetchProjects = async () => {
     setLoading(true);
@@ -62,7 +60,7 @@ export function Projects() {
       const data = await getProjects();
       setProjects(data);
     } catch {
-      message.error(t('projects.loadError'));
+      message.error('加载项目列表失败');
     } finally {
       setLoading(false);
     }
@@ -75,27 +73,27 @@ export function Projects() {
   const handleRegenerateProfile = async (projectId: string) => {
     try {
       await apiClient.post(`/projects/${projectId}/index`);
-      message.success(t('projects.indexSuccess'));
+      message.success('画像更新已触发');
     } catch {
-      message.error(t('projects.indexError'));
+      message.error('画像更新失败');
     }
   };
 
   const handleCreateFromZip = async (values: { name: string; description: string }) => {
     if (!zipFile) {
-      message.error(t('projects.zipRequired'));
+      message.error('请选择 ZIP 文件');
       return;
     }
     setSubmitting(true);
     try {
       await createFromZip(values.name, values.description, zipFile);
-      message.success(t('projects.createSuccess'));
+      message.success('项目创建成功');
       setZipModalVisible(false);
       zipForm.resetFields();
       setZipFile(null);
       fetchProjects();
     } catch {
-      message.error(t('projects.createError'));
+      message.error('创建项目失败');
     } finally {
       setSubmitting(false);
     }
@@ -105,12 +103,12 @@ export function Projects() {
     setSubmitting(true);
     try {
       await createFromGit(values);
-      message.success(t('projects.createSuccess'));
+      message.success('项目创建成功');
       setGitModalVisible(false);
       gitForm.resetFields();
       fetchProjects();
     } catch {
-      message.error(t('projects.createError'));
+      message.error('创建项目失败');
     } finally {
       setSubmitting(false);
     }
@@ -120,12 +118,12 @@ export function Projects() {
     setSubmitting(true);
     try {
       await createFromLocal(values);
-      message.success(t('projects.createSuccess'));
+      message.success('项目创建成功');
       setLocalModalVisible(false);
       localForm.resetFields();
       fetchProjects();
     } catch {
-      message.error(t('projects.createError'));
+      message.error('创建项目失败');
     } finally {
       setSubmitting(false);
     }
@@ -133,21 +131,21 @@ export function Projects() {
 
   const onProfile = (p: Project) => navigate(`/projects/${p.id}/profile`);
   const onSynonyms = (p: Project) => navigate(`/projects/${p.id}/synonyms`);
-  const onRefreshProfile = (p: Project) => handleRegenerateProfile(p.id);
+  const onRefreshProfile = (p: Project) => handleRegenerateProfile(String(p.id));
   const onDelete = (p: Project) => {
     Modal.confirm({
-      title: t('projects.deleteConfirm'),
-      content: t('projects.deleteContent', { name: p.name }),
-      okText: t('common.delete'),
+      title: '确认删除',
+      content: `确定要删除项目「${p.name}」吗？此操作不可撤销。`,
+      okText: '删除',
       okType: 'danger',
-      cancelText: t('common.cancel'),
+      cancelText: '取消',
       onOk: async () => {
         try {
-          await deleteProject(p.id);
-          message.success(t('projects.deleteSuccess'));
+          await deleteProject(String(p.id));
+          message.success('项目已删除');
           fetchProjects();
         } catch {
-          message.error(t('projects.deleteError'));
+          message.error('删除失败');
         }
       },
     });
@@ -176,23 +174,23 @@ export function Projects() {
         }}
       >
         <Title level={3} style={{ margin: 0 }}>
-          {t('projects.title')}
+          项目
         </Title>
         <Space>
           <Button icon={<UploadOutlined />} onClick={() => setZipModalVisible(true)}>
-            {t('projects.uploadZip')}
+            上传 ZIP
           </Button>
           <Button icon={<GithubOutlined />} onClick={() => setGitModalVisible(true)}>
-            {t('projects.gitClone')}
+            Git 克隆
           </Button>
           <Button type="primary" icon={<FolderOpenOutlined />} onClick={() => setLocalModalVisible(true)}>
-            {t('projects.localPath')}
+            本地路径
           </Button>
         </Space>
       </div>
 
       <Input.Search
-        placeholder={t('projects.search')}
+        placeholder="搜索项目..."
         allowClear
         style={{ marginBottom: 16, maxWidth: 400 }}
         onChange={(e) => setSearchText(e.target.value)}
@@ -200,18 +198,18 @@ export function Projects() {
 
       {filtered.length === 0 ? (
         <Empty
-          description={t('projects.empty')}
+          description="暂无项目"
           image={Empty.PRESENTED_IMAGE_SIMPLE}
         >
           <Space>
             <Button icon={<UploadOutlined />} onClick={() => setZipModalVisible(true)}>
-              {t('projects.uploadZip')}
+              上传 ZIP
             </Button>
             <Button icon={<GithubOutlined />} onClick={() => setGitModalVisible(true)}>
-              {t('projects.gitClone')}
+              Git 克隆
             </Button>
             <Button type="primary" icon={<FolderOpenOutlined />} onClick={() => setLocalModalVisible(true)}>
-              {t('projects.localPath')}
+              本地路径
             </Button>
           </Space>
         </Empty>
@@ -226,11 +224,11 @@ export function Projects() {
                 extra={
                   <Dropdown menu={{
                     items: [
-                      { key: 'profile', icon: <IdcardOutlined />, label: t('projects.actions.profile') },
-                      { key: 'synonyms', icon: <SwapOutlined />, label: t('projects.actions.synonyms') },
-                      { key: 'index', icon: <SyncOutlined />, label: t('projects.actions.index') },
+                      { key: 'profile', icon: <IdcardOutlined />, label: '画像管理' },
+                      { key: 'synonyms', icon: <SwapOutlined />, label: '同义词管理' },
+                      { key: 'index', icon: <SyncOutlined />, label: '更新画像' },
                       { type: 'divider' },
-                      { key: 'delete', icon: <DeleteOutlined />, label: t('projects.actions.delete'), danger: true },
+                      { key: 'delete', icon: <DeleteOutlined />, label: '删除项目', danger: true },
                     ],
                     onClick: ({ key }) => {
                       if (key === 'profile') onProfile(project);
@@ -262,27 +260,27 @@ export function Projects() {
       )}
 
       <Modal
-        title={t('projects.zipTitle')}
+        title="上传 ZIP 创建项目"
         open={zipModalVisible}
         onCancel={() => { setZipModalVisible(false); zipForm.resetFields(); setZipFile(null); }}
         footer={null}
       >
         <Form form={zipForm} onFinish={handleCreateFromZip} layout="vertical">
           <Form.Item
-            label={t('projects.name')}
+            label="项目名称"
             name="name"
             rules={[
-              { required: true, message: t('projects.nameRequired') },
-              { pattern: /^[a-zA-Z0-9_-]{1,64}$/, message: t('projects.namePattern') },
+              { required: true, message: '请输入项目名称' },
+              { pattern: /^[a-zA-Z0-9_-]{1,64}$/, message: '仅支持字母、数字、下划线、连字符，1-64字符' },
             ]}
           >
             <Input placeholder="my-project" />
           </Form.Item>
-          <Form.Item label={t('projects.description')} name="description">
-            <Input.TextArea rows={3} placeholder={t('projects.descPlaceholder')} />
+          <Form.Item label="项目描述" name="description">
+            <Input.TextArea rows={3} placeholder="请输入项目描述" />
           </Form.Item>
           <Form.Item
-            label={t('projects.zipFile')}
+            label="ZIP 文件"
             required
           >
             <Upload
@@ -294,85 +292,85 @@ export function Projects() {
               maxCount={1}
               onRemove={() => setZipFile(null)}
             >
-              <Button icon={<UploadOutlined />}>{t('projects.selectZip')}</Button>
+              <Button icon={<UploadOutlined />}>选择 ZIP 文件</Button>
             </Upload>
           </Form.Item>
           <Form.Item>
             <Button type="primary" htmlType="submit" loading={submitting} block>
-              {t('projects.create')}
+              创建
             </Button>
           </Form.Item>
         </Form>
       </Modal>
 
       <Modal
-        title={t('projects.gitTitle')}
+        title="Git 克隆创建项目"
         open={gitModalVisible}
         onCancel={() => { setGitModalVisible(false); gitForm.resetFields(); }}
         footer={null}
       >
         <Form form={gitForm} onFinish={handleCreateFromGit} layout="vertical">
           <Form.Item
-            label={t('projects.name')}
+            label="项目名称"
             name="name"
             rules={[
-              { required: true, message: t('projects.nameRequired') },
-              { pattern: /^[a-zA-Z0-9_-]{1,64}$/, message: t('projects.namePattern') },
+              { required: true, message: '请输入项目名称' },
+              { pattern: /^[a-zA-Z0-9_-]{1,64}$/, message: '仅支持字母、数字、下划线、连字符，1-64字符' },
             ]}
           >
             <Input placeholder="my-project" />
           </Form.Item>
-          <Form.Item label={t('projects.description')} name="description">
-            <Input.TextArea rows={3} placeholder={t('projects.descPlaceholder')} />
+          <Form.Item label="项目描述" name="description">
+            <Input.TextArea rows={3} placeholder="请输入项目描述" />
           </Form.Item>
           <Form.Item
-            label={t('projects.gitUrl')}
+            label="Git 仓库地址"
             name="git_url"
-            rules={[{ required: true, message: t('projects.gitUrlRequired') }]}
+            rules={[{ required: true, message: '请输入 Git 仓库地址' }]}
           >
             <Input placeholder="https://github.com/user/repo.git" />
           </Form.Item>
-          <Form.Item label={t('projects.branch')} name="branch">
+          <Form.Item label="分支（可选）" name="branch">
             <Input placeholder="main" />
           </Form.Item>
           <Form.Item>
             <Button type="primary" htmlType="submit" loading={submitting} block>
-              {t('projects.cloneAndCreate')}
+              克隆并创建
             </Button>
           </Form.Item>
         </Form>
       </Modal>
 
       <Modal
-        title={t('projects.localTitle')}
+        title="本地路径创建项目"
         open={localModalVisible}
         onCancel={() => { setLocalModalVisible(false); localForm.resetFields(); }}
         footer={null}
       >
         <Form form={localForm} onFinish={handleCreateFromLocal} layout="vertical">
           <Form.Item
-            label={t('projects.name')}
+            label="项目名称"
             name="name"
             rules={[
-              { required: true, message: t('projects.nameRequired') },
-              { pattern: /^[a-zA-Z0-9_-]{1,64}$/, message: t('projects.namePattern') },
+              { required: true, message: '请输入项目名称' },
+              { pattern: /^[a-zA-Z0-9_-]{1,64}$/, message: '仅支持字母、数字、下划线、连字符，1-64字符' },
             ]}
           >
             <Input placeholder="my-project" />
           </Form.Item>
-          <Form.Item label={t('projects.description')} name="description">
-            <Input.TextArea rows={3} placeholder={t('projects.descPlaceholder')} />
+          <Form.Item label="项目描述" name="description">
+            <Input.TextArea rows={3} placeholder="请输入项目描述" />
           </Form.Item>
           <Form.Item
-            label={t('projects.localPathLabel')}
+            label="本地路径"
             name="local_path"
-            rules={[{ required: true, message: t('projects.localPathRequired') }]}
+            rules={[{ required: true, message: '请输入本地路径' }]}
           >
             <Input placeholder="/path/to/your/project" />
           </Form.Item>
           <Form.Item>
             <Button type="primary" htmlType="submit" loading={submitting} block>
-              {t('projects.create')}
+              创建
             </Button>
           </Form.Item>
         </Form>

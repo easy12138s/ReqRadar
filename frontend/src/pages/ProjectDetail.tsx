@@ -15,7 +15,6 @@ import {
   message,
   Modal,
   Tree,
-  theme,
 } from 'antd';
 import {
   EditOutlined,
@@ -46,19 +45,9 @@ const SOURCE_TYPE_LABELS: Record<string, { text: string; color: string }> = {
   local: { text: '本地路径', color: 'blue' },
 };
 
-function buildAntTree(nodes: FileTreeNode[]): import('antd').TreeDataNode[] {
-  return nodes.map((node) => ({
-    key: node.path,
-    title: node.name,
-    icon: node.type === 'directory' ? <FolderOutlined /> : <FileOutlined />,
-    children: node.children ? buildAntTree(node.children) : undefined,
-  }));
-}
-
 export function ProjectDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { token } = theme.useToken();
   const [project, setProject] = useState<Project | null>(null);
   const [memory, setMemory] = useState<ProjectMemory | null>(null);
   const [fileTree, setFileTree] = useState<FileTreeNode[]>([]);
@@ -341,4 +330,13 @@ export function ProjectDetail() {
       </Card>
     </div>
   );
+}
+
+function buildAntTree(nodes: FileTreeNode[]): import('antd').TreeDataNode[] {
+  return nodes.map((node) => ({
+    key: node.path,
+    title: node.name,
+    icon: node.type === 'directory' ? <FolderOutlined /> : <FileOutlined />,
+    children: node.children ? buildAntTree(node.children) : undefined,
+  }));
 }

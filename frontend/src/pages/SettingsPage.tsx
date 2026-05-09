@@ -1,6 +1,5 @@
 import { useNavigate } from 'react-router-dom';
 import { Card, Row, Col, Typography, theme } from 'antd';
-import { useTranslation } from 'react-i18next';
 import {
   RobotOutlined, FileTextOutlined, UserOutlined, TeamOutlined,
 } from '@ant-design/icons';
@@ -10,18 +9,17 @@ const { Title, Text } = Typography;
 export default function SettingsPage() {
   const navigate = useNavigate();
   const { token } = theme.useToken();
-  const { t } = useTranslation();
 
   const items = [
-    { key: '/settings/llm', icon: <RobotOutlined style={{ fontSize: 32, color: token.colorInfo }} />, title: t('settings.llm'), desc: t('settings.llmDesc') },
-    { key: '/settings/templates', icon: <FileTextOutlined style={{ fontSize: 32, color: token.colorPrimary }} />, title: t('settings.templates'), desc: t('settings.templatesDesc') },
-    { key: '/settings/preferences', icon: <UserOutlined style={{ fontSize: 32, color: token.colorSuccess }} />, title: t('settings.preferences'), desc: t('settings.preferencesDesc') },
-    { key: '/settings/users', icon: <TeamOutlined style={{ fontSize: 32, color: token.colorWarning }} />, title: t('settings.users'), desc: t('settings.usersDesc') },
+    { key: '/settings/llm', icon: <RobotOutlined style={{ fontSize: 32, color: token.colorInfo }} />, title: 'LLM 配置', desc: 'API 密钥、模型、参数' },
+    { key: '/settings/templates', icon: <FileTextOutlined style={{ fontSize: 32, color: token.colorPrimary }} />, title: '报告模板', desc: '管理分析报告模板' },
+    { key: '/settings/preferences', icon: <UserOutlined style={{ fontSize: 32, color: token.colorSuccess }} />, title: '偏好设置', desc: '分析与展示偏好' },
+    { key: '/settings/users', icon: <TeamOutlined style={{ fontSize: 32, color: token.colorWarning }} />, title: '用户管理', desc: '添加/管理用户与角色' },
   ];
 
   return (
     <div>
-      <Title level={4}>{t('settings.title')}</Title>
+      <Title level={4}>设置</Title>
       <Row gutter={[16, 16]}>
         {items.map(item => (
           <Col xs={24} sm={12} lg={12} xl={12} key={item.key}>

@@ -1,6 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { Button, Result } from 'antd';
-import i18n from '../i18n';
 
 interface Props {
   children: ReactNode;
@@ -29,11 +28,11 @@ export default class ErrorBoundary extends Component<Props, State> {
       return (
         <Result
           status="error"
-          title={i18n.t('components.error.title')}
+          title="页面出现异常"
           subTitle={import.meta.env.DEV ? this.state.error?.message : undefined}
           extra={
             <Button type="primary" onClick={() => window.location.reload()}>
-              {i18n.t('components.error.refresh')}
+              刷新页面
             </Button>
           }
         />

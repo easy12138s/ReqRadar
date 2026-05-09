@@ -36,7 +36,6 @@ export function AnalysisProgress() {
   const [stepProgressMessage, setStepProgressMessage] = useState('连接中...');
   const [dimensions, setDimensions] = useState<Record<string, string>>({});
   const [currentStep, setCurrentStep] = useState(0);
-  const [logs, setLogs] = useState<string[]>([]);
 
   const fetchTask = async () => {
     if (!id) return;
@@ -83,7 +82,7 @@ export function AnalysisProgress() {
         if (msg.dimensions) setDimensions(msg.dimensions);
         if (msg.step) setCurrentStep(msg.step);
       } else if (msg.type === 'agent_action') {
-        setLogs(prev => [...prev, `[工具调用] ${msg.message || msg.tool || ''}`]);
+        // tool call logged via progress message
       }
     },
   });
@@ -93,7 +92,7 @@ export function AnalysisProgress() {
     try {
       await retryAnalysis(id);
       setError(null);
-      message.success('正在重试');
+      message.success('正在重试分析');
       fetchTask();
     } catch {
       message.error('重试失败');
@@ -112,7 +111,7 @@ export function AnalysisProgress() {
     return (
       <Result
         status="error"
-        title="错误"
+        title="分析失败"
         subTitle={error}
         extra={
           <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/analyses')}>
@@ -189,8 +188,8 @@ export function AnalysisProgress() {
             {wsStatus === 'open'
               ? <span style={{ color: '#22c55e', fontSize: 13 }}>&#9679; 已连接</span>
               : wsStatus === 'reconnecting'
-              ? <span style={{ color: '#eab308', fontSize: 13 }}>&#9679; 重连中</span>
-              : <span style={{ color: '#ef4444', fontSize: 13 }}>&#9679; 断开</span>
+                ? <span style={{ color: '#eab308', fontSize: 13 }}>&#9679; 重连中</span>
+                : <span style={{ color: '#ef4444', fontSize: 13 }}>&#9679; 断开</span>
             }
           </div>
           <Card style={{ marginBottom: 24 }}>

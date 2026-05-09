@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import {
-  Card, message, Spin, Empty, Typography, Tabs, Descriptions, Tag,
+  message, Spin, Empty, Typography, Tabs, Tag,
   Form, Input, Button, Divider, Space, theme,
 } from 'antd';
 import {
@@ -53,14 +53,14 @@ export function ProjectProfile() {
     setEditing(false);
   };
 
-  const handleAccept = async (id: string) => {
+  const handleAccept = async (id: number) => {
     if (!projectId) return;
-    try { await acceptPendingChange(projectId, id); message.success('已接受'); fetchProfile(); }
+    try { await acceptPendingChange(projectId, String(id)); message.success('已接受'); fetchProfile(); }
     catch { message.error('操作失败'); }
   };
-  const handleReject = async (id: string) => {
+  const handleReject = async (id: number) => {
     if (!projectId) return;
-    try { await rejectPendingChange(projectId, id); message.success('已拒绝'); fetchProfile(); }
+    try { await rejectPendingChange(projectId, String(id)); message.success('已拒绝'); fetchProfile(); }
     catch { message.error('操作失败'); }
   };
 
@@ -123,7 +123,7 @@ export function ProjectProfile() {
                 <Title level={5}>约束条件</Title>
                 {d.constraints && d.constraints.length > 0
                   ? <ul style={{ paddingLeft: 20 }}>
-                    {d.constraints.map((c: string, i: number) => <li key={i} style={{ marginBottom: 4 }}>{c}</li>)}
+                    {d.constraints.map((c, i) => <li key={i} style={{ marginBottom: 4 }}>{c.description}</li>)}
                   </ul>
                   : <Text type="secondary">暂无</Text>}
 

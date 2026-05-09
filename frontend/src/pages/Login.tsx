@@ -7,7 +7,6 @@ import {
   Typography,
   message,
 } from 'antd';
-import { useTranslation } from 'react-i18next';
 import { LoginOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
@@ -22,7 +21,6 @@ export function Login() {
   const [displayedTagline, setDisplayedTagline] = useState('');
   const navigate = useNavigate();
   const { login: authLogin } = useAuth();
-  const { t } = useTranslation();
 
   useEffect(() => {
     let i = 0;
@@ -42,11 +40,11 @@ export function Login() {
     try {
       const response = await login(values);
       authLogin(response.access_token);
-      message.success(t('login.success'));
+      message.success('登录成功');
       navigate('/');
     } catch (e: unknown) {
       const err = e as { response?: { data?: { detail?: string; message?: string } }; message?: string };
-      message.error(err.response?.data?.detail || err.response?.data?.message || err.message || t('login.failed'));
+      message.error(err.response?.data?.detail || err.response?.data?.message || err.message || '登录失败');
     } finally {
       setLoading(false);
     }
@@ -85,25 +83,25 @@ export function Login() {
           size="large"
         >
           <Form.Item
-            label={<span style={{ color: '#94a3b8' }}>{t('login.email')}</span>}
+            label={<span style={{ color: '#94a3b8' }}>邮箱</span>}
             name="email"
             rules={[
-              { required: true, message: t('login.emailRequired') },
-              { type: 'email', message: t('login.emailInvalid') },
+              { required: true, message: '请输入邮箱' },
+              { type: 'email', message: '请输入有效的邮箱地址' },
             ]}
           >
-            <Input placeholder={t('login.emailPlaceholder')} />
+            <Input placeholder="请输入邮箱" />
           </Form.Item>
           <Form.Item
-            label={<span style={{ color: '#94a3b8' }}>{t('login.password')}</span>}
+            label={<span style={{ color: '#94a3b8' }}>密码</span>}
             name="password"
-            rules={[{ required: true, message: t('login.passwordRequired') }]}
+            rules={[{ required: true, message: '请输入密码' }]}
           >
-            <Input.Password placeholder={t('login.passwordPlaceholder')} />
+            <Input.Password placeholder="请输入密码" />
           </Form.Item>
           <Form.Item style={{ marginBottom: 12 }}>
             <Button type="primary" htmlType="submit" loading={loading} block size="large">
-              <LoginOutlined /> {t('login.submit')}
+              <LoginOutlined /> 登录
             </Button>
           </Form.Item>
         </Form>
