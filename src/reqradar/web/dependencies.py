@@ -5,20 +5,27 @@ from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
-from jose import JWTError, jwt
+from jose import JWTError, jwt  # type: ignore[attr-defined]
+from jose.exceptions import ExpiredSignatureError
 from sqlalchemy import delete, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from reqradar.web.models import User
 
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
-async_session_factory = None
+async_session_factory: async_sessionmaker[AsyncSession] | None = None
 
 
 async def get_db(request: Request):
-    session_factory = getattr(request.app.state, "session_factory", None) or async_session_factory
+    session_factory: async_sessionmaker[AsyncSession] | None = getattr(
+        request.app.state, "session_factory", None
+    )
+    if session_factory is None:
+        session_factory = async_session_factory
+    if session_factory is None:
+        raise RuntimeError("Database session factory not initialized")
     async with session_factory() as session:
         yield session
 
@@ -48,7 +55,7 @@ async def get_current_user(
         if user_id_raw is None:
             raise credentials_exception
         user_id: int = int(user_id_raw)
-    except jwt.ExpiredSignatureError:
+    except ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token has expired")
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid token")

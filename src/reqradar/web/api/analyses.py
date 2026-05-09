@@ -282,7 +282,7 @@ async def list_analyses(
             "user_id": t.user_id,
             "requirement_name": t.requirement_name,
             "requirement_text": t.requirement_text,
-            "status": t.status.value if hasattr(t.status, "value") else str(t.status),
+            "status": t.status.value if isinstance(t.status, TaskStatus) else str(t.status),
             "depth": t.depth,
             "error_message": t.error_message,
             "risk_level": t.context_json.get("risk_level") if t.context_json else None,
@@ -387,7 +387,7 @@ async def cancel_analysis(task_id: int, current_user: CurrentUser, db: DbSession
 async def analysis_websocket(websocket: WebSocket, task_id: int, token: str = Query(...)):
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        user_id = int(payload.get("sub"))
+        user_id = int(payload["sub"])
     except (JWTError, ValueError, TypeError):
         await websocket.close(code=4001, reason="Invalid token")
         return

@@ -187,7 +187,7 @@ class ChatbackService:
             "new_version": new_version.version_number,
         }
 
-    async def get_chat_history(self, task_id: int, version_number: int = None) -> list[dict]:
+    async def get_chat_history(self, task_id: int, version_number: int | None = None) -> list[dict]:
         db = self.version_service.db
         query = select(ReportChat).where(ReportChat.task_id == task_id)
         if version_number is not None:

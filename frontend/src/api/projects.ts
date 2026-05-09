@@ -17,6 +17,20 @@ export async function getProjects(): Promise<Project[]> {
   return response.data;
 }
 
+export interface ProjectDashboardSummary {
+  id: number;
+  name: string;
+  terms_count: number;
+  modules_count: number;
+  pending_changes_count: number;
+  updated_at: string;
+}
+
+export async function getDashboardSummaries(): Promise<ProjectDashboardSummary[]> {
+  const response = await apiClient.get<ProjectDashboardSummary[]>('/projects/dashboard-summaries');
+  return response.data;
+}
+
 export async function createFromLocal(data: ProjectCreateFromLocal): Promise<Project> {
   const response = await apiClient.post<Project>('/projects/from-local', data);
   return response.data;

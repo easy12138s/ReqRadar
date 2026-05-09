@@ -7,12 +7,12 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from reqradar.infrastructure.config import load_config
 from reqradar.web.dependencies import CurrentUser, DbSession, get_current_user, get_db
-from reqradar.web.models import Project, User
+from reqradar.web.models import PendingChange, Project, User
 from reqradar.web.services.project_file_service import ProjectFileService
 from reqradar.web.services.project_index_service import ProjectIndexService
 
@@ -100,9 +100,75 @@ async def _create_project_record(
 @router.get("", response_model=list[ProjectResponse])
 async def list_projects(current_user: CurrentUser, db: DbSession):
     result = await db.execute(
-        select(Project).where(Project.owner_id == current_user.id).order_by(Project.created_at.desc())
+        select(Project)
+        .where(Project.owner_id == current_user.id)
+        .order_by(Project.created_at.desc())
     )
     return list(result.scalars().all())
+
+
+class ProjectDashboardSummary(BaseModel):
+    id: int
+    name: str
+    terms_count: int = 0
+    modules_count: int = 0
+    pending_changes_count: int = 0
+    updated_at: str = ""
+
+
+@router.get("/dashboard-summaries", response_model=list[ProjectDashboardSummary])
+async def get_dashboard_summaries(current_user: CurrentUser, db: DbSession):
+    result = await db.execute(
+        select(Project)
+        .where(Project.owner_id == current_user.id)
+        .order_by(Project.created_at.desc())
+    )
+    projects = list(result.scalars().all())
+    if not projects:
+        return []
+
+    project_ids = [p.id for p in projects]
+
+    pending_counts_result = await db.execute(
+        select(PendingChange.project_id, func.count())
+        .where(
+            PendingChange.project_id.in_(project_ids),
+            PendingChange.status == "pending",
+        )
+        .group_by(PendingChange.project_id)
+    )
+    pending_counts = dict(pending_counts_result.all())
+
+    config = load_config()
+    file_svc = ProjectFileService(config.web)
+
+    summaries: list[ProjectDashboardSummary] = []
+    for p in projects:
+        terms_count = 0
+        modules_count = 0
+        try:
+            from reqradar.modules.project_memory import ProjectMemory
+
+            memory_path = file_svc.get_memory_path(p.name)
+            pm = ProjectMemory(storage_path=str(memory_path), project_id=p.id)
+            data = pm.load()
+            terms_count = len(data.get("terms", []))
+            modules_count = len(data.get("modules", []))
+        except Exception:
+            pass
+
+        summaries.append(
+            ProjectDashboardSummary(
+                id=p.id,
+                name=p.name,
+                terms_count=terms_count,
+                modules_count=modules_count,
+                pending_changes_count=pending_counts.get(p.id, 0),
+                updated_at=p.updated_at.isoformat() if p.updated_at else "",
+            )
+        )
+
+    return summaries
 
 
 @router.post("/from-local", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
@@ -116,7 +182,9 @@ async def create_from_local(req: ProjectFromLocal, current_user: CurrentUser, db
             detail=str(e),
         )
 
-    project = await _create_project_record(req.name, req.description, "local", req.local_path, current_user.id, db)
+    project = await _create_project_record(
+        req.name, req.description, "local", req.local_path, current_user.id, db
+    )
     svc.create_project_dirs(req.name)
 
     src_code = svc.get_project_path(req.name) / "project_code"
@@ -125,7 +193,9 @@ async def create_from_local(req: ProjectFromLocal, current_user: CurrentUser, db
         for item in local_path.iterdir():
             try:
                 if item.is_dir() and not item.is_symlink():
-                    await asyncio.to_thread(shutil.copytree, str(item), str(src_code / item.name), dirs_exist_ok=True)
+                    await asyncio.to_thread(
+                        shutil.copytree, str(item), str(src_code / item.name), dirs_exist_ok=True
+                    )
                 elif item.is_file() and not item.is_symlink():
                     await asyncio.to_thread(shutil.copy2, str(item), str(src_code / item.name))
             except (shutil.SpecialFileError, OSError) as e:
@@ -159,7 +229,9 @@ async def create_from_zip(
         )
 
     svc = _get_file_service()
-    project = await _create_project_record(name, description, "zip", file.filename or "upload.zip", current_user.id, db)
+    project = await _create_project_record(
+        name, description, "zip", file.filename or "upload.zip", current_user.id, db
+    )
     svc.create_project_dirs(name)
 
     zip_bytes = await file.read()
@@ -177,7 +249,9 @@ async def create_from_git(req: ProjectFromGit, current_user: CurrentUser, db: Db
             detail="Git is not available on this system. Use ZIP upload instead.",
         )
 
-    project = await _create_project_record(req.name, req.description, "git", req.git_url, current_user.id, db)
+    project = await _create_project_record(
+        req.name, req.description, "git", req.git_url, current_user.id, db
+    )
     svc.create_project_dirs(req.name)
 
     try:
@@ -206,7 +280,9 @@ async def get_project(project_id: int, current_user: CurrentUser, db: DbSession)
 
 
 @router.put("/{project_id}", response_model=ProjectResponse)
-async def update_project(project_id: int, req: ProjectUpdate, current_user: CurrentUser, db: DbSession):
+async def update_project(
+    project_id: int, req: ProjectUpdate, current_user: CurrentUser, db: DbSession
+):
     result = await db.execute(
         select(Project).where(Project.id == project_id, Project.owner_id == current_user.id)
     )

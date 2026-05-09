@@ -3,6 +3,10 @@
 import asyncio
 import json
 import logging
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from reqradar.web.websocket import ConnectionManager
 
 from reqradar.agent.analysis_agent import AgentState, AnalysisAgent
 from reqradar.agent.llm_utils import (
@@ -296,7 +300,7 @@ async def run_react_analysis(
     section_descriptions=None,
     project_memory=None,
     requirement_text: str | None = None,
-    ws_manager=None,
+    ws_manager: "ConnectionManager | None" = None,  # type: ignore[name-defined]
     task_id: int | None = None,
 ) -> dict:
     if requirement_text:

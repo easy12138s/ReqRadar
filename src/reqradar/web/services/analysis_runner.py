@@ -6,7 +6,7 @@ from pathlib import Path
 
 import markdown
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from reqradar.agent.analysis_agent import AnalysisAgent, AgentState
 from reqradar.agent.runner import run_react_analysis
@@ -20,7 +20,7 @@ from reqradar.web.models import AnalysisTask, Report, Project
 from reqradar.web.enums import TaskStatus
 from reqradar.web.services.project_file_service import ProjectFileService
 from reqradar.web.services.project_store import project_store
-from reqradar.web.websocket import manager as ws_manager
+from reqradar.web.websocket import ConnectionManager, manager as ws_manager
 
 logger = logging.getLogger("reqradar.web.services.analysis_runner")
 
@@ -77,12 +77,17 @@ class AnalysisRunner:
 
     async def _run_analysis(self, task_id: int, project: Project, config: Config):
         async with self._semaphore:
+            factory: async_sessionmaker[AsyncSession] | None
             if self.session_factory is None:
                 import reqradar.web.dependencies as dep_module
 
                 factory = dep_module.async_session_factory
             else:
                 factory = self.session_factory
+
+            if factory is None:
+                logger.error("No database session factory available for task %d", task_id)
+                return
 
             async with factory() as db:
                 try:
@@ -336,7 +341,12 @@ class AnalysisRunner:
         await db.commit()
 
     async def _execute_agent(
-        self, task_id: int, project: Project, config: Config, db: AsyncSession, ws_manager=None
+        self,
+        task_id: int,
+        project: Project,
+        config: Config,
+        db: AsyncSession,
+        ws_manager: ConnectionManager | None = None,
     ):
         result = await db.execute(select(AnalysisTask).where(AnalysisTask.id == task_id))
         task = result.scalar_one_or_none()
@@ -347,7 +357,8 @@ class AnalysisRunner:
         task.started_at = datetime.now(timezone.utc)
         await db.commit()
 
-        await ws_manager.broadcast(task_id, {"type": "analysis_started", "task_id": task_id})
+        if ws_manager:
+            await ws_manager.broadcast(task_id, {"type": "analysis_started", "task_id": task_id})
 
         try:
             agent, analysis_memory, cm, memory_data = await self._init_agent(
@@ -372,14 +383,15 @@ class AnalysisRunner:
                     for s in template_def.sections
                 ]
 
-            await ws_manager.broadcast(
-                task_id,
-                {
-                    "type": "agent_thinking",
-                    "task_id": task_id,
-                    "message": "开始分析需求...",
-                },
-            )
+            if ws_manager:
+                await ws_manager.broadcast(
+                    task_id,
+                    {
+                        "type": "agent_thinking",
+                        "task_id": task_id,
+                        "message": "开始分析需求...",
+                    },
+                )
 
             report_data = await run_react_analysis(
                 agent=agent,
@@ -422,20 +434,24 @@ class AnalysisRunner:
 
             await self._save_report(task, agent, report_data, report_markdown, report_html, db)
 
-            await ws_manager.broadcast(
-                task_id,
-                {
-                    "type": "analysis_complete",
-                    "task_id": task_id,
-                    "risk_level": risk_level,
-                },
-            )
+            if ws_manager:
+                await ws_manager.broadcast(
+                    task_id,
+                    {
+                        "type": "analysis_complete",
+                        "task_id": task_id,
+                        "risk_level": risk_level,
+                    },
+                )
 
         except asyncio.CancelledError:
             task.status = TaskStatus.CANCELLED
             task.completed_at = datetime.now(timezone.utc)
             await db.commit()
-            await ws_manager.broadcast(task_id, {"type": "analysis_cancelled", "task_id": task_id})
+            if ws_manager:
+                await ws_manager.broadcast(
+                    task_id, {"type": "analysis_cancelled", "task_id": task_id}
+                )
             raise
 
         except Exception as e:
@@ -443,14 +459,15 @@ class AnalysisRunner:
             task.error_message = str(e)[:2000]
             task.completed_at = datetime.now(timezone.utc)
             await db.commit()
-            await ws_manager.broadcast(
-                task_id,
-                {
-                    "type": "analysis_failed",
-                    "task_id": task_id,
-                    "error": str(e)[:500],
-                },
-            )
+            if ws_manager:
+                await ws_manager.broadcast(
+                    task_id,
+                    {
+                        "type": "analysis_failed",
+                        "task_id": task_id,
+                        "error": str(e)[:500],
+                    },
+                )
 
     def cancel(self, task_id: int):
         task = self._active_tasks.get(task_id)

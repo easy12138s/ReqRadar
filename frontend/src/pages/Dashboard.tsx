@@ -1,21 +1,19 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, Row, Col, Typography, Button, List, Tag, Space, theme } from 'antd';
-import { useTranslation } from 'react-i18next';
 import {
   ProjectOutlined, TagsOutlined, AppstoreOutlined,
   ExclamationCircleOutlined, PlusOutlined,
   FileTextOutlined, SendOutlined, RobotOutlined, TeamOutlined,
 } from '@ant-design/icons';
-import { getProjects, getProjectMemory } from '../api/projects';
-import { getProjectProfile, getPendingChanges } from '../api/profile';
+import { getDashboardSummaries, type ProjectDashboardSummary } from '../api/projects';
 import SkeletonStat from '../components/SkeletonStat';
 import SkeletonCard from '../components/SkeletonCard';
 
 const { Title, Text } = Typography;
 
 interface ProjectSummary {
-  id: string;
+  id: number;
   name: string;
   termsCount: number;
   modulesCount: number;
@@ -25,7 +23,6 @@ interface ProjectSummary {
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [error, setError] = useState(false);
@@ -34,44 +31,17 @@ export default function Dashboard() {
   useEffect(() => {
     async function load() {
       try {
-        const projectsData = await getProjects();
-        const summaries: ProjectSummary[] = [];
-
-        for (const p of projectsData) {
-          try {
-            const [memory, , pending] = await Promise.allSettled([
-              getProjectMemory(p.id),
-              getProjectProfile(p.id),
-              getPendingChanges(p.id),
-            ]);
-
-            const termsCount = memory.status === 'fulfilled' && memory.value?.terminology
-              ? (Array.isArray(memory.value.terminology) ? memory.value.terminology.length : 0)
-              : 0;
-            const modulesCount = memory.status === 'fulfilled' && memory.value?.modules
-              ? (Array.isArray(memory.value.modules) ? memory.value.modules.length : 0)
-              : 0;
-            const pendingChangesCount = pending.status === 'fulfilled' && Array.isArray(pending.value)
-              ? pending.value.filter(c => c.status === 'pending').length
-              : 0;
-
-            summaries.push({
-              id: p.id,
-              name: p.name,
-              termsCount,
-              modulesCount,
-              pendingChangesCount,
-              updatedAt: p.updated_at || p.created_at || '',
-            });
-          } catch {
-            summaries.push({
-              id: p.id, name: p.name,
-              termsCount: 0, modulesCount: 0, pendingChangesCount: 0,
-              updatedAt: p.updated_at || '',
-            });
-          }
-        }
-        setProjects(summaries);
+        const summaries = await getDashboardSummaries();
+        setProjects(
+          summaries.map((s: ProjectDashboardSummary) => ({
+            id: s.id,
+            name: s.name,
+            termsCount: s.terms_count,
+            modulesCount: s.modules_count,
+            pendingChangesCount: s.pending_changes_count,
+            updatedAt: s.updated_at,
+          }))
+        );
       } catch {
         setError(true);
       } finally {
@@ -100,12 +70,12 @@ export default function Dashboard() {
     return (
       <div style={{ textAlign: 'center', padding: '80px 20px' }}>
         <ProjectOutlined style={{ fontSize: 64, color: token.colorBorderSecondary, marginBottom: 16 }} />
-        <Title level={3} style={{ color: token.colorTextSecondary }}>{t('dashboard.empty')}</Title>
+        <Title level={3} style={{ color: token.colorTextSecondary }}>还没有项目</Title>
         <Text type="secondary" style={{ display: 'block', marginBottom: 24 }}>
-          {t('dashboard.emptyDesc')}
+          创建第一个项目开始使用需求分析
         </Text>
         <Button type="primary" icon={<PlusOutlined />} size="large" onClick={() => navigate('/projects')}>
-          {t('dashboard.newProject')}
+          新建项目
         </Button>
       </div>
     );
@@ -114,15 +84,15 @@ export default function Dashboard() {
   return (
     <div>
       <Title level={3} style={{ color: token.colorText, marginBottom: 4 }}>
-        {t('dashboard.welcome')}
+        欢迎回来
       </Title>
       <Text type="secondary" style={{ display: 'block', marginBottom: 24 }}>
-        {t('dashboard.overview')}
+        知识库总览
       </Text>
 
       {error && (
         <Text type="warning" style={{ display: 'block', marginBottom: 16 }}>
-          {t('dashboard.loadError')}
+          部分数据加载失败
         </Text>
       )}
 
@@ -132,7 +102,7 @@ export default function Dashboard() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <ProjectOutlined style={{ fontSize: 22, color: token.colorInfo }} />
               <div>
-                <div style={{ fontSize: 12, color: token.colorTextDescription }}>{t('dashboard.stats.projects')}</div>
+                <div style={{ fontSize: 12, color: token.colorTextDescription }}>项目</div>
                 <div style={{ fontSize: 28, fontWeight: 700, color: token.colorText }}>{projects.length}</div>
               </div>
             </div>
@@ -143,7 +113,7 @@ export default function Dashboard() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <TagsOutlined style={{ fontSize: 22, color: token.colorPrimary }} />
               <div>
-                <div style={{ fontSize: 12, color: token.colorTextDescription }}>{t('dashboard.stats.terms')}</div>
+                <div style={{ fontSize: 12, color: token.colorTextDescription }}>术语</div>
                 <div style={{ fontSize: 28, fontWeight: 700, color: token.colorText }}>{totalTerms}</div>
               </div>
             </div>
@@ -154,7 +124,7 @@ export default function Dashboard() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <AppstoreOutlined style={{ fontSize: 22, color: token.colorSuccess }} />
               <div>
-                <div style={{ fontSize: 12, color: token.colorTextDescription }}>{t('dashboard.stats.modules')}</div>
+                <div style={{ fontSize: 12, color: token.colorTextDescription }}>模块</div>
                 <div style={{ fontSize: 28, fontWeight: 700, color: token.colorText }}>{totalModules}</div>
               </div>
             </div>
@@ -165,7 +135,7 @@ export default function Dashboard() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <ExclamationCircleOutlined style={{ fontSize: 22, color: token.colorWarning }} />
               <div>
-                <div style={{ fontSize: 12, color: token.colorTextDescription }}>{t('dashboard.stats.pending')}</div>
+                <div style={{ fontSize: 12, color: token.colorTextDescription }}>待确认</div>
                 <div style={{ fontSize: 28, fontWeight: 700, color: token.colorText }}>{totalPending}</div>
               </div>
             </div>
@@ -173,7 +143,7 @@ export default function Dashboard() {
         </Col>
       </Row>
 
-      <Card title={t('dashboard.projectOverview')} className="flat-card" style={{ marginBottom: 24 }}>
+      <Card title="项目总览" className="flat-card" style={{ marginBottom: 24 }}>
         <List
           dataSource={projects}
           renderItem={(item) => (
@@ -185,10 +155,10 @@ export default function Dashboard() {
                 title={<span style={{ color: token.colorTextHeading }}>{item.name}</span>}
                 description={
                   <Space size="middle">
-                    <Tag color="blue">{item.termsCount}{t('dashboard.termsSuffix')}</Tag>
-                    <Tag color="green">{item.modulesCount}{t('dashboard.modulesSuffix')}</Tag>
+                    <Tag color="blue">{item.termsCount}术语</Tag>
+                    <Tag color="green">{item.modulesCount}模块</Tag>
                     {item.pendingChangesCount > 0 && (
-                      <Tag color="orange">{item.pendingChangesCount}{t('dashboard.pendingSuffix')}</Tag>
+                      <Tag color="orange">{item.pendingChangesCount}待确认</Tag>
                     )}
                   </Space>
                 }
@@ -198,25 +168,25 @@ export default function Dashboard() {
         />
       </Card>
 
-      <Card title={t('dashboard.quickActions')} className="flat-card">
+      <Card title="快捷操作" className="flat-card">
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
           <Space wrap>
             <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/projects')}>
-              {t('dashboard.newProject')}
+              新建项目
             </Button>
             <Button icon={<SendOutlined />} onClick={() => navigate('/analyses/submit')}>
-              {t('dashboard.submitAnalysis')}
+              提交分析
             </Button>
           </Space>
           <Space wrap>
             <Button icon={<RobotOutlined />} onClick={() => navigate('/settings/llm')}>
-              {t('dashboard.configLLM')}
+              配置 LLM
             </Button>
             <Button icon={<FileTextOutlined />} onClick={() => navigate('/settings/templates')}>
-              {t('dashboard.manageTemplates')}
+              管理模板
             </Button>
             <Button icon={<TeamOutlined />} onClick={() => navigate('/settings/users')}>
-              {t('dashboard.manageUsers')}
+              用户管理
             </Button>
           </Space>
         </Space>

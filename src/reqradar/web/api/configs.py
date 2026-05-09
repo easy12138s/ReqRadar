@@ -10,7 +10,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from reqradar.infrastructure.config import load_config
 from reqradar.infrastructure.config_manager import ConfigManager
-from reqradar.web.dependencies import CurrentUser, DbSession, get_current_user, get_db
+from reqradar.web.dependencies import (
+    CurrentUser,
+    DbSession,
+    get_db,
+)
 from reqradar.web.models import Project, ProjectConfig, SystemConfig, User, UserConfig
 
 logger = logging.getLogger("reqradar.web.api.configs")
@@ -46,17 +50,10 @@ class ConfigResolveResponse(BaseModel):
 # ------------------------------------------------------------------
 
 
-async def _get_admin_user(
-    token: str = Depends(lambda: None),
-    db: AsyncSession = Depends(get_db),
-) -> User:
-    user = await get_current_user(
-        token=token if token else "",
-        db=db,
-    )
-    if user.role != "admin":
+async def _get_admin_user(current_user: CurrentUser) -> User:
+    if current_user.role != "admin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
-    return user
+    return current_user
 
 
 AdminUser = Annotated[User, Depends(_get_admin_user)]
