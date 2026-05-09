@@ -203,8 +203,10 @@ class Report(Base):
     task_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("analysis_tasks.id"), unique=True, nullable=False
     )
-    content_markdown: Mapped[str] = mapped_column(Text, nullable=False)
+    content_markdown: Mapped[str] = mapped_column(Text, default="", nullable=False)
     content_html: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    markdown_path: Mapped[str] = mapped_column(String(512), default="", nullable=False)
+    html_path: Mapped[str] = mapped_column(String(512), default="", nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
     )
@@ -294,8 +296,10 @@ class ReportVersion(Base):
     version_number: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     report_data: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     context_snapshot: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
-    content_markdown: Mapped[str] = mapped_column(Text, nullable=False)
+    content_markdown: Mapped[str] = mapped_column(Text, default="", nullable=False)
     content_html: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    markdown_path: Mapped[str] = mapped_column(String(512), default="", nullable=False)
+    html_path: Mapped[str] = mapped_column(String(512), default="", nullable=False)
     trigger_type: Mapped[str] = mapped_column(String(50), default="initial", nullable=False)
     trigger_description: Mapped[str] = mapped_column(Text, default="", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
