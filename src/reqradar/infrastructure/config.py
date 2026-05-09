@@ -10,6 +10,20 @@ import yaml
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 
+class HomeConfig(BaseModel):
+    path: str = Field(
+        default="~/.reqradar",
+        description="ReqRadar root directory",
+    )
+
+    @field_validator("path", mode="before")
+    @classmethod
+    def expand_home(cls, v: Optional[str]) -> Optional[str]:
+        if v:
+            return str(Path(v).expanduser())
+        return v
+
+
 class LLMConfig(BaseModel):
     provider: str = Field(default="openai", description="LLM provider: openai or ollama")
     model: str = Field(default="gpt-4o-mini", description="Model name")
@@ -30,12 +44,9 @@ class LLMConfig(BaseModel):
 
 class MemoryConfig(BaseModel):
     enabled: bool = Field(default=True, description="Enable project memory")
-    storage_path: str = Field(default=".reqradar/memory", description="Memory storage directory")
-    project_storage_path: str = Field(
-        default=".reqradar/memories", description="Project memory storage path"
-    )
-    user_storage_path: str = Field(
-        default=".reqradar/user_memories", description="User memory storage path"
+    storage_path: str = Field(
+        default="",
+        description="Memory storage root directory, auto-derived from home if empty",
     )
 
 
@@ -53,10 +64,26 @@ class LoaderConfig(BaseModel):
 
 
 EMBEDDING_MODELS = {
-    "BAAI/bge-large-zh": {"dimensions": 1024, "size_mb": 1200, "description": "Large model, best accuracy (default)"},
-    "BAAI/bge-base-zh": {"dimensions": 768, "size_mb": 390, "description": "Base model, good accuracy/performance balance"},
-    "BAAI/bge-small-zh": {"dimensions": 512, "size_mb": 95, "description": "Small model, fast inference, lower resource usage"},
-    "BAAI/bge-m3": {"dimensions": 1024, "size_mb": 1100, "description": "Multilingual model, supports 100+ languages"},
+    "BAAI/bge-large-zh": {
+        "dimensions": 1024,
+        "size_mb": 1200,
+        "description": "Large model, best accuracy (default)",
+    },
+    "BAAI/bge-base-zh": {
+        "dimensions": 768,
+        "size_mb": 390,
+        "description": "Base model, good accuracy/performance balance",
+    },
+    "BAAI/bge-small-zh": {
+        "dimensions": 512,
+        "size_mb": 95,
+        "description": "Small model, fast inference, lower resource usage",
+    },
+    "BAAI/bge-m3": {
+        "dimensions": 1024,
+        "size_mb": 1100,
+        "description": "Multilingual model, supports 100+ languages",
+    },
 }
 
 
@@ -68,7 +95,11 @@ class IndexConfig(BaseModel):
     )
     chunk_size: int = Field(default=300)
     chunk_overlap: int = Field(default=50)
-    storage_path: str = Field(default=".reqradar/index")
+    storage_path: str = Field(default="")
+    model_cache: str = Field(
+        default="",
+        description="Embedding model cache directory, auto-derived from home if empty",
+    )
 
 
 class AnalysisConfig(BaseModel):
@@ -121,7 +152,8 @@ class WebConfig(BaseModel):
     host: str = Field(default="0.0.0.0", description="Web server bind host")
     port: int = Field(default=8000, description="Web server bind port")
     database_url: str = Field(
-        default="sqlite+aiosqlite:///./reqradar.db", description="Async database URL"
+        default="",
+        description="Database URL, auto-derived from home if empty",
     )
     secret_key: str = Field(default="change-me-in-production", description="JWT secret key")
     access_token_expire_minutes: int = Field(
@@ -147,8 +179,12 @@ class WebConfig(BaseModel):
         default=10, description="Max overflow connections beyond pool_size"
     )
     data_root: str = Field(
-        default="~/.reqradar/data",
-        description="Root directory for project file storage (supports ~ expansion)",
+        default="",
+        description="Project data root, auto-derived from home if empty",
+    )
+    reports_path: str = Field(
+        default="",
+        description="Report files root, auto-derived from home if empty",
     )
 
     @field_validator("secret_key", mode="before")
@@ -161,6 +197,7 @@ class WebConfig(BaseModel):
 
 
 class Config(BaseModel):
+    home: HomeConfig = Field(default_factory=HomeConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
     memory_evolution: MemoryEvolutionConfig = Field(default_factory=MemoryEvolutionConfig)

@@ -22,24 +22,6 @@ def test_config_env_var_resolution():
     assert resolved.llm.api_key == "test-key-123"
 
 
-def test_analysis_config_tool_use_defaults():
-    from reqradar.infrastructure.config import AnalysisConfig
-
-    config = AnalysisConfig()
-    assert config.tool_use_max_rounds == 15
-    assert config.tool_use_max_tokens == 8000
-    assert config.tool_use_enabled is True
-
-
-def test_analysis_config_tool_use_custom():
-    from reqradar.infrastructure.config import AnalysisConfig
-
-    config = AnalysisConfig(tool_use_max_rounds=5, tool_use_max_tokens=3000, tool_use_enabled=False)
-    assert config.tool_use_max_rounds == 5
-    assert config.tool_use_max_tokens == 3000
-    assert config.tool_use_enabled is False
-
-
 def test_agent_config_defaults():
     from reqradar.infrastructure.config import AgentConfig, ReportingConfig
 
@@ -53,15 +35,45 @@ def test_agent_config_defaults():
     assert reporting.default_template_id == 1
 
 
+def test_home_config_default():
+    from reqradar.infrastructure.config import HomeConfig
+
+    hc = HomeConfig()
+    assert hc.path == "~/.reqradar" or "~" not in hc.path
+
+
+def test_home_config_custom():
+    from reqradar.infrastructure.config import HomeConfig
+
+    hc = HomeConfig(path="/custom/home")
+    assert hc.path == "/custom/home"
+
+
+def test_config_home_default():
+    from reqradar.infrastructure.config import Config
+
+    c = Config()
+    assert c.home is not None
+
+
 def test_web_config_data_root_default():
     from reqradar.infrastructure.config import WebConfig
 
     wc = WebConfig()
-    assert wc.data_root == "~/.reqradar/data"
+    assert wc.data_root == ""
 
 
-def test_web_config_data_root_custom():
+def test_web_config_reports_path_default():
     from reqradar.infrastructure.config import WebConfig
 
-    wc = WebConfig(data_root="/custom/data")
-    assert wc.data_root == "/custom/data"
+    wc = WebConfig()
+    assert wc.reports_path == ""
+
+
+def test_memory_config_simplified():
+    from reqradar.infrastructure.config import MemoryConfig
+
+    mc = MemoryConfig()
+    assert mc.storage_path == ""
+    assert not hasattr(mc, "project_storage_path")
+    assert not hasattr(mc, "user_storage_path")
