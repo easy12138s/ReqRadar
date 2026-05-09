@@ -1,10 +1,14 @@
-version: '3.8'
+# ReqRadar 生产环境 docker-compose 覆盖层
+# 与 docker-compose.yml 或 docker/docker-compose.yml 配合使用：
+#   docker-compose -f docker/docker-compose.yml -f docker-compose.prod.yml up -d
 
 services:
   reqradar:
     build:
       context: .
       dockerfile: docker/Dockerfile
+      args:
+        - EMBEDDING_MODEL=${EMBEDDING_MODEL:-BAAI/bge-large-zh}
     environment:
       - REQRADAR_SECRET_KEY=${REQRADAR_SECRET_KEY}
     restart: always

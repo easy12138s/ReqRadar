@@ -42,7 +42,7 @@ Web 端通过 `analyze submit` 提交任务到后台执行。CLI 提供 `analyze
 
 ## 五、记忆系统
 
-项目记忆（术语、团队、分析历史、模块关联）自动积累，存储在 `.reqradar/memory/`。Web 模式支持项目级 + 用户级双层记忆。后续分析自动注入 LLM prompt。
+项目记忆（术语、团队、分析历史、模块关联）自动积累，存储在 `.reqradar/memories/`（项目级）和 `.reqradar/user_memories/`（用户级）。分析完成后自动触发记忆自演化（memory_evolution）。后续分析自动注入 LLM prompt。
 
 ---
 
@@ -55,15 +55,22 @@ Web 端通过 `analyze submit` 提交任务到后台执行。CLI 提供 `analyze
 - **配置**：三级优先级（User > Project > System）+ LLM 连通性缓存（5min TTL）
 - **数据库**：SQLite WAL / 通用池化 + auto_create_tables
 - **安全**：JWT + bcrypt、RevokedToken 表管理撤销、CORS 生产限制、上传扩展名白名单
-- **认证**：种子 admin 用户、密码修改端点、Token 撤销、登出失效
-- **报告**：版本管理 + 回滚 + Chatback SSE 流式追问 + 风险等级识别
+- **认证**：种子 admin 用户（admin@reqradar.io / Admin12138%）、密码修改端点、Token 撤销、登出失效
+- **需求预处理**：多文件上传 → MarkItDown 转 Markdown → LLM 合并为结构化需求文档
+- **报告**：版本管理 + 回滚 + Chatback SSE 流式追问 + 风险等级识别 + 证据链管理
+- **需求管理**：预处理需求 CRUD、分析任务关联需求文档
+- **证据 API**：证据条目标注、来源追踪
+- **用户 API**：用户列表/角色/删除、管理员管理
+- **同义词**：业务术语 ↔ 代码术语映射 CRUD（项目级/优先级/来源）
+- **LLM 配置**：多 provider 支持（OpenAI / Ollama / 兼容接口）、连通性测试、键值遮盖、缓存 TTL 管理
+- **Embedding 模型**：4 种内置模型可选（bge-large-zh / bge-base-zh / bge-small-zh / bge-m3）
 
 ---
 
 ## 七、CLI
 
-提供离线分析和项目管理命令：project create / analyze file / report get 等。Web 服务通过 `reqradar serve` 启动。
+提供离线分析和项目管理命令：project create / analyze file / report get / config set 等。Web 服务通过 `reqradar serve` 启动。完整命令列表见 `reqradar --help`。
 
 ---
 
-*最后更新：2026-05-08*
+*最后更新：2026-05-09*

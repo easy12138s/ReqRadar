@@ -16,7 +16,7 @@ Describe the tests you ran to verify your changes.
 
 - [ ] Unit tests pass
 - [ ] Integration tests pass
-- [ ] Manual testing with `reqradar index` and `reqradar analyze`
+- [ ] Manual testing with `reqradar serve` and Web UI
 
 ## Checklist
 

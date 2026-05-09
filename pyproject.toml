@@ -5,6 +5,9 @@ description = "需求透视 - 垂直领域需求分析 Agent"
 readme = "README.md"
 license = "MIT"
 authors = ["easy <easy@example.com>"]
+homepage = "https://github.com/easy12138s/ReqRadar"
+repository = "https://github.com/easy12138s/ReqRadar"
+keywords = ["requirements-analysis", "agent", "llm", "react", "fastapi"]
 packages = [{ include = "reqradar", from = "src" }]
 include = [{ path = "src/reqradar/web/static", format = ["sdist", "wheel"] }]
 

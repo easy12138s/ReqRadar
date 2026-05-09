@@ -12,7 +12,18 @@ Python / FastAPI + React / TypeScript / Ant Design + OpenAI-compatible LLM + Chr
 
 ## 快速开始
 
-### 方式一：一键部署脚本（推荐）
+### 方式一：pip 安装（最快）
+
+```bash
+pip install reqradar
+reqradar serve
+# 浏览器打开 http://localhost:8000/app/
+# 默认管理员：admin@reqradar.io / Admin12138%
+```
+
+> 首次启动会自动创建 SQLite 数据库和表，无需额外配置。
+
+### 方式二：一键部署脚本
 
 **Linux / macOS:**
 ```bash
@@ -31,10 +42,12 @@ cd reqradar
 脚本支持参数：
 - `--skip-frontend` / `-SkipFrontend` 跳过前端构建
 - `--skip-migrate` / `-SkipMigrate` 跳过数据库迁移
+- `--skip-config` / `-SkipConfig` 跳过配置初始化
 - `--dev` / `-Dev` 开发模式（热重载）
 - `--port 9000` / `-Port 9000` 自定义端口
+- `--host 127.0.0.1` / `-Host 127.0.0.1` 自定义绑定地址
 
-### 方式二：Docker
+### 方式三：Docker
 
 ```bash
 # 设置必需的环境变量
@@ -48,7 +61,7 @@ cd docker && docker-compose up -d
 # 访问 http://localhost:8000/app/
 ```
 
-### 方式三：手动安装
+### 方式四：手动安装
 
 ```bash
 git clone https://github.com/easy12138s/reqradar.git
@@ -108,6 +121,7 @@ ReqRadar 支持 5 级配置优先级：用户级 > 项目级 > 系统级 > YAML 
 
 ```bash
 reqradar serve                   # 启动 Web 服务
+reqradar createsuperuser         # 创建管理员账号
 reqradar project create ...      # 项目管理
 reqradar analyze submit ...      # 提交分析
 reqradar requirement preprocess  # 需求预处理

@@ -5,36 +5,80 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.6.1] - 2026-04-29
+## [0.8.0] - 2026-05-09
 
 ### Added
 
-- CLI 配置管理命令组 `reqradar config`：init / list / get / set / delete
-- `config get` 支持三级优先级解析（User > Project > System > File > Default）并显示来源
-- `config set` 支持 user/system 层级、值类型声明、敏感值标记
-- `config init` 从 `.reqradar.yaml.example` 生成默认配置文件（支持 `--force` 覆盖）
-- 前端构建产物打入 wheel/sdist，`reqradar serve` 开箱即可提供 Web UI
-- `scripts/build-package.sh` 一键构建脚本（前端 + 后端打包）
+- 零配置启动：`pip install reqradar` → `reqradar serve` 直接可用，不再因默认 secret key 崩溃
+- 启动横幅：显示版本号、Web UI/API 地址、默认管理员账号、LLM API Key 和密钥提示
+- Embedding 模型注册表：支持 4 种模型，Docker 通过 `EMBEDDING_MODEL` 构建参数切换
+- `python-dotenv` 支持：自动加载 `.env` 和 `~/.reqradar/.env`
+- 跨平台部署脚本：`scripts/deploy.sh`（Linux/macOS）+ `scripts/deploy.ps1`（Windows）
+- 轻量级 embedding 模型选项：`BAAI/bge-small-zh`（95MB）和 `BAAI/bge-base-zh`（390MB）
+- 多语言 embedding 模型：`BAAI/bge-m3`（100+ 语言支持）
+- Docker healthcheck `start-period: 60s` 为 embedding 模型加载留出时间
 
 ### Changed
 
-- `pyproject.toml` 添加 `include` 规则，将 `src/reqradar/web/static/` 纳入打包
+- `load_config()` 无配置文件时返回全默认值并记录 debug 日志
+- `_validate_critical_settings` 从 `raise ValueError` 改为 `warnings.warn`
+- `app.py` lifespan 中默认密钥检查从 `raise RuntimeError` 改为 `logger.warning`
+- Windows `ALLOWED_LOCAL_PREFIXES` 动态包含所有驱动器号和 `USERPROFILE`
+
+### Fixed
+
+- 无 `.reqradar.yaml` 时 `reqradar serve` 因 secret key 校验直接崩溃
+- CJK 兼容象形文字在标题分割中不被识别的问题
+
+### Removed
+
+- 前端 i18n 框架，所有 `t()` 调用替换为硬编码中文
+
+## [0.7.0] - 2026-05-06
 
 ### Added
 
-- CLI 项目管理命令组 `reqradar project`：create / list / show / delete / index
-- CLI 分析任务命令组 `reqradar analyze`：submit / list / status / cancel / file
-- CLI 报告命令组 `reqradar report`：get / versions / evidence
-- 项目支持从本地路径、Git 仓库、ZIP 文件三种来源创建
-- 报告导出支持 markdown / html / json 三种格式，可输出到文件
-- CLI 共享工具模块 `cli/utils.py`，统一数据库初始化逻辑
+- **ReAct Agent 重构**：单循环 CoT 引导架构，替代旧双循环模式
+- **记忆进化**：分析后自动触发记忆自演化（`MemoryEvolutionConfig`）
+- **Web UI 全面重设计**：深色主题、AppShell 布局、Dashboard 仪表盘
+- **SSE Chatback 流式对话**：实时 token 显示、`<think>` 标签折叠、意图分类
+- **报告视图重设计**：固定头部 + 滚动内容 + 固定底部追问面板
+- **需求预处理引擎**：多文件上传（PDF/DOCX/PPTX/XLSX/HTML/图片/EPUB），LLM 合并为结构化需求文档
+- **API 端点新增**：
+  - `/api/requirements`：需求文档 CRUD + 预处理提交
+  - `/api/evidence`：证据链管理
+  - `/api/users`：用户管理（列表/角色/删除）
+  - `/api/synonyms`：同义词映射 CRUD
+- **报告版本管理**：版本创建/列表/回滚/对比，版本数上限控制
+- **LLM 连通性缓存**（5min TTL）+ 分析/聊天前自动验证 + 测试连接端点
+- **LiteLLM 统一后端**：替代自定义 OpenAI/Ollama 客户端，支持 100+ 模型接口
+- **Microsoft MarkItDown**：统一文档加载器（替代 pdfplumber/python-docx 各自为政）
+- **Git 提交历史索引**：`SearchGitHistoryTool` 语义搜索提交记录
+- **Docker 多阶段构建**：`docker/entrypoint.sh` 自动生成配置 + 安全加固
+- **前端构建产物打入 wheel/sdist**
 
 ### Changed
 
-- 原 `reqradar analyze <file>` 迁移为 `reqradar analyze file <file>`，参数不变
-- `reqradar analyze` 从顶级命令变为命令组，新增 submit/list/status/cancel 子命令
-- 移除 Legacy 六步固定分析模式，ReAct Agent 为唯一执行引擎
-- 文档同步更新，去除对六步流程的描述
+- `run_react_analysis` 单循环架构：Agent → Tool → Observation → CoT → 维度追踪 → 终止判定
+- 前端从玻璃拟物风格改为扁平深色主题，统一颜色变量
+- `docker-compose.yml` 迁移至 `docker/` 子目录，支持 `EMBEDDING_MODEL` 构建参数
+- `ChromaVectorStore` 新增 `collection_name` 参数，支持多集合索引
+- 分析提交前端重构：Tab 切换（文本/文件/预处理需求）
+- 所有 60+ 前后端类型对齐
+
+### Fixed
+
+- 批量修复 8 轮：类型对齐、模板管理、WebSocket 重连、鉴权、项目画像、LLM 配置、死代码清理
+- `RiskBadge` 在 `risk_level` 为 `unknown` 字符串时崩溃
+- `task.id.slice` 崩溃和提交按钮防重复点击
+- `UnboundLocalError` in `get_analysis`
+- 首次启动缺少种子管理员用户
+- Docker 镜像中 curl 不可用导致 healthcheck 失败
+
+### Security
+
+- Docker 容器以非 root `appuser` 运行
+- 敏感文件过滤模式（`SensitiveFileFilter` + `PathSandbox`）
 
 ## [0.5.0] - 2026-04-24
 

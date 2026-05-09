@@ -22,6 +22,11 @@ vision:
 memory:
   enabled: true
   storage_path: .reqradar/memory
+  project_storage_path: .reqradar/memories
+  user_storage_path: .reqradar/user_memories
+
+memory_evolution:
+  enabled: true                              # 分析后自动记忆自演化
 
 loader:
   chunk_size: 300
@@ -47,6 +52,7 @@ analysis:
   max_similar_reqs: 5
   max_code_files: 10
   contributors_lookback_months: 6
+  tool_use_enabled: true                     # 启用 LLM 工具调用循环
 
 git:
   lookback_months: 6
@@ -65,6 +71,16 @@ agent:
   max_steps_standard: 15       # Standard analysis depth
   max_steps_deep: 25           # Deep analysis depth
   version_limit: 10            # Max report versions per task
+  sensitive_file_patterns:      # 敏感文件过滤模式
+    - .env
+    - .env.*
+    - *.key
+    - *.pem
+    - *.crt
+    - secrets/
+    - credentials/
+    - .aws/
+    - .ssh/
 
 web:
   host: 0.0.0.0

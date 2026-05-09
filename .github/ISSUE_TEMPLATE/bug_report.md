@@ -27,9 +27,10 @@ What actually happened.
 
 ## Environment
 
-- OS: [e.g. Ubuntu 22.04]
+- OS: [e.g. Ubuntu 22.04, Windows 11]
 - Python version: [e.g. 3.12.1]
-- ReqRadar version: [e.g. 0.1.0]
+- ReqRadar version: [e.g. 0.8.0]
+- Deployment: [pip / Docker / poetry]
 - LLM backend: [openai / ollama]
 
 ## Logs

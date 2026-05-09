@@ -1,36 +1,38 @@
-version: '3.8'
+# ReqRadar 根目录 docker-compose (简化版，供快速体验使用)
+# 生产环境建议使用 docker/docker-compose.yml（功能更完整）
 
 services:
   reqradar:
     build:
       context: .
       dockerfile: docker/Dockerfile
+      args:
+        - EMBEDDING_MODEL=${EMBEDDING_MODEL:-BAAI/bge-large-zh}
     container_name: reqradar
     ports:
-      - "8000:8000"
+      - "${REQRADAR_PORT:-8000}:8000"
     volumes:
       - reqradar_data:/app/data
       - reqradar_dotfiles:/app/.reqradar
     environment:
       - REQRADAR_SECRET_KEY=${REQRADAR_SECRET_KEY:-change-me-in-production}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-      - LLM_PROVIDER=${LLM_PROVIDER:-}
-      - LLM_MODEL=${LLM_MODEL:-}
       - OPENAI_BASE_URL=${OPENAI_BASE_URL:-}
+      - LLM_PROVIDER=${LLM_PROVIDER:-openai}
+      - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
       timeout: 10s
+      start-period: 60s
       retries: 3
     networks:
       - reqradar_net
 
 volumes:
   reqradar_data:
-    driver: local
   reqradar_dotfiles:
-    driver: local
 
 networks:
   reqradar_net:

@@ -222,8 +222,8 @@ if (-not $SkipMigrate) {
 
 if (-not $SkipSuperuser) {
     Write-Step "Superuser account"
-    Write-Host "    A default admin account will be created automatically on first start:"
-    Write-Host "    Email: admin@reqradar.io  |  See logs for default password" -ForegroundColor Yellow
+    Write-Host "    A default admin account will be created automatically on first start:" -ForegroundColor Yellow
+    Write-Host "    Email: admin@reqradar.io  |  Password: Admin12138%" -ForegroundColor Yellow
     Write-Host "    You can also create a custom admin with: poetry run reqradar createsuperuser"
 }
 
