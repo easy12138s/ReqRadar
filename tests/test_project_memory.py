@@ -13,6 +13,7 @@ def test_project_memory_creates_dir_and_file(tmp_memory_dir):
     data = pm.load()
     assert data["overview"] == ""
     assert pm.storage_path.exists()
+    assert "projects" in str(pm.storage_path)
 
 
 def test_project_memory_save_and_load(tmp_memory_dir):

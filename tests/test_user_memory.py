@@ -13,6 +13,7 @@ def test_user_memory_creates_dir_and_file(tmp_memory_dir):
     data = um.load()
     assert data["corrections"] == []
     assert um.file_path.parent.exists()
+    assert "users" in str(um.storage_path)
 
 
 def test_user_memory_add_correction(tmp_memory_dir):

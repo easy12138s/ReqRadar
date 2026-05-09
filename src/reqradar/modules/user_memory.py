@@ -13,7 +13,7 @@ class UserMemoryError(ReqRadarException):
 class UserMemory:
     def __init__(self, storage_path: str, user_id: int):
         self.user_id = user_id
-        self.storage_path = Path(storage_path) / str(user_id)
+        self.storage_path = Path(storage_path) / "users" / str(user_id)
         self.file_path = self.storage_path / "user.md"
         self._data: dict = {}
         self._loaded = False
@@ -54,15 +54,23 @@ class UserMemory:
         except OSError as e:
             raise UserMemoryError(f"Failed to save user memory: {e}") from e
 
-    def add_correction(self, business_term: str, code_terms: list[str], source: str = "user_correction", analysis_id: int | None = None) -> None:
+    def add_correction(
+        self,
+        business_term: str,
+        code_terms: list[str],
+        source: str = "user_correction",
+        analysis_id: int | None = None,
+    ) -> None:
         self.load()
-        self._data["corrections"].append({
-            "business_term": business_term,
-            "code_terms": code_terms,
-            "source": source,
-            "analysis_id": analysis_id,
-            "date": datetime.now().strftime("%Y-%m-%d"),
-        })
+        self._data["corrections"].append(
+            {
+                "business_term": business_term,
+                "code_terms": code_terms,
+                "source": source,
+                "analysis_id": analysis_id,
+                "date": datetime.now().strftime("%Y-%m-%d"),
+            }
+        )
         self.save()
 
     def set_preference(self, key: str, value: str) -> None:
@@ -117,13 +125,15 @@ class UserMemory:
                     bt = parts[0].strip().strip('"')
                     code_str = parts[1].strip().strip("[]")
                     code_terms = [c.strip() for c in code_str.split(",")]
-                    data["corrections"].append({
-                        "business_term": bt,
-                        "code_terms": code_terms,
-                        "source": "user_correction",
-                        "analysis_id": None,
-                        "date": "",
-                    })
+                    data["corrections"].append(
+                        {
+                            "business_term": bt,
+                            "code_terms": code_terms,
+                            "source": "user_correction",
+                            "analysis_id": None,
+                            "date": "",
+                        }
+                    )
                 elif current_section == "focus_areas" and ":" in text:
                     area, pri = text.split(":", 1)
                     data["focus_areas"].append({"area": area.strip(), "priority": pri.strip()})
@@ -137,7 +147,12 @@ class UserMemory:
                         parts = text.split(":", 1)
                     else:
                         continue
-                    data["term_preference"].append({"term": parts[0].strip().strip('"'), "definition": parts[1].strip().strip('"')})
+                    data["term_preference"].append(
+                        {
+                            "term": parts[0].strip().strip('"'),
+                            "definition": parts[1].strip().strip('"'),
+                        }
+                    )
         return data
 
     def _render_markdown(self, data: dict) -> str:
@@ -147,7 +162,13 @@ class UserMemory:
             lines.append("## Corrections")
             for c in corrections:
                 code_str = ", ".join(c.get("code_terms", []))
-                source_info = f" (source: {c.get('source', 'unknown')}" + (f", analysis #{c.get('analysis_id')}" if c.get('analysis_id') else "") + ")" if c.get("source") else ""
+                source_info = (
+                    f" (source: {c.get('source', 'unknown')}"
+                    + (f", analysis #{c.get('analysis_id')}" if c.get("analysis_id") else "")
+                    + ")"
+                    if c.get("source")
+                    else ""
+                )
                 lines.append(f'- "{c["business_term"]}" → [{code_str}]{source_info}')
             lines.append("")
         focus_areas = data.get("focus_areas", [])

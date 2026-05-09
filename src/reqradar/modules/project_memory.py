@@ -16,11 +16,9 @@ class ProjectMemoryError(ReqRadarException):
 
 
 class ProjectMemory:
-    STORAGE_DIR = "memories"
-
     def __init__(self, storage_path: str, project_id: int):
         self.project_id = project_id
-        self.storage_path = Path(storage_path) / str(project_id)
+        self.storage_path = Path(storage_path) / "projects" / str(project_id)
         self.file_path = self.storage_path / "project.md"
         self._data: dict = {}
         self._loaded = False

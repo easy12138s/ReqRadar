@@ -13,8 +13,8 @@ class AnalysisMemoryManager:
         self,
         project_id: int,
         user_id: int,
-        project_storage_path: str = ".reqradar/memories",
-        user_storage_path: str = ".reqradar/user_memories",
+        project_storage_path: str = "",
+        user_storage_path: str = "",
         repo_path: str = ".",
         memory_enabled: bool = True,
     ):

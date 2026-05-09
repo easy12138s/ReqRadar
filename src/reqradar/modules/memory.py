@@ -30,7 +30,7 @@ class MemoryManager:
     - analysis_history: record of past analyses and findings
     """
 
-    def __init__(self, storage_path: str = ".reqradar/memory"):
+    def __init__(self, storage_path: str = ""):
         warnings.warn(
             "MemoryManager is deprecated. Use ProjectMemory instead.",
             DeprecationWarning,
@@ -481,7 +481,9 @@ class MemoryManager:
                         self._data.setdefault("constraints", []).append(
                             {
                                 "description": c.description,
-                                "constraint_type": c.constraint_type if c.constraint_type else "other",
+                                "constraint_type": c.constraint_type
+                                if c.constraint_type
+                                else "other",
                                 "modules": [],
                                 "source": c.source if c.source else "requirement_extraction",
                             }
@@ -529,14 +531,16 @@ class MemoryManager:
                 if related_modules is not None:
                     existing_map[term]["related_modules"] = related_modules
             else:
-                terminology.append({
-                    "term": term,
-                    "definition": definition,
-                    "context": context,
-                    "domain": domain,
-                    "related_modules": related_modules or [],
-                    "source": "llm_extract",
-                })
+                terminology.append(
+                    {
+                        "term": term,
+                        "definition": definition,
+                        "context": context,
+                        "domain": domain,
+                        "related_modules": related_modules or [],
+                        "source": "llm_extract",
+                    }
+                )
         self.save()
 
     def batch_add_module_requirement_history(self, entries: list[dict]) -> None:

@@ -7,7 +7,7 @@ from reqradar.modules.memory_manager import AnalysisMemoryManager
 def tmp_storage(tmp_path):
     return {
         "project_path": str(tmp_path / "memories"),
-        "user_path": str(tmp_path / "user_memories"),
+        "user_path": str(tmp_path / "memories"),
     }
 
 
