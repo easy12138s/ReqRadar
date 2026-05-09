@@ -59,6 +59,7 @@ async def get_version(
     version_number: int,
     db: DbSession,
     current_user: CurrentUser,
+    request: Request,
 ):
     task_result = await db.execute(
         select(AnalysisTask).where(
@@ -78,10 +79,20 @@ async def get_version(
     if report_data is None:
         report_data = {}
 
+    content_md = version.content_markdown
+    content_html = version.content_html
+    report_storage = _get_report_storage(request)
+    if report_storage is not None:
+        file_md, file_html = await report_storage.read_version(task_id, version_number)
+        if file_md is not None:
+            content_md = file_md
+        if file_html is not None:
+            content_html = file_html
+
     return {
         "version_number": version.version_number,
-        "content_markdown": version.content_markdown,
-        "content_html": version.content_html,
+        "content_markdown": content_md,
+        "content_html": content_html,
         "report_data": report_data,
         "trigger_type": version.trigger_type,
         "trigger_description": version.trigger_description,
