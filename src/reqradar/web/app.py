@@ -40,12 +40,17 @@ async def lifespan(app: FastAPI):
     import reqradar.web.api.auth as auth_module
     import reqradar.web.dependencies as dep_module
     import reqradar.infrastructure.config as config_module
+    from reqradar.infrastructure.paths import get_paths, derive_database_url
+    from reqradar.web.services.report_storage import ReportStorage
 
     config = config_module.load_config()
     web_config = config.web
+    paths = get_paths(config)
+    database_url = derive_database_url(config)
+    report_storage = ReportStorage(paths["reports"])
 
     engine = create_engine(
-        web_config.database_url,
+        database_url,
         pool_size=web_config.db_pool_size,
         max_overflow=web_config.db_pool_max_overflow,
     )
@@ -65,6 +70,7 @@ async def lifespan(app: FastAPI):
     from sqlalchemy import inspect
 
     async with engine.begin() as conn:
+
         def _check_tables(sync_conn):
             inspector = inspect(sync_conn)
             return inspector.get_table_names()
@@ -72,8 +78,7 @@ async def lifespan(app: FastAPI):
         existing_tables = await conn.run_sync(_check_tables)
         if not existing_tables:
             logger.warning(
-                "Database tables not found — auto-creating. "
-                "Use Alembic migrations in production."
+                "Database tables not found — auto-creating. Use Alembic migrations in production."
             )
             await conn.run_sync(Base.metadata.create_all)
         elif web_config.auto_create_tables:
@@ -99,6 +104,8 @@ async def lifespan(app: FastAPI):
     app.state.engine = engine
     app.state.session_factory = session_factory
     app.state.config = config
+    app.state.paths = paths
+    app.state.report_storage = report_storage
 
     from reqradar.web.services.analysis_runner import runner
 

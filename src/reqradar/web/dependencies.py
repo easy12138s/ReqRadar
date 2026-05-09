@@ -79,3 +79,11 @@ async def get_current_user(
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
+
+
+def get_report_storage(request: Request):
+    return request.app.state.report_storage
+
+
+def get_paths(request: Request):
+    return request.app.state.paths
