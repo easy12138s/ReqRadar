@@ -40,12 +40,13 @@ async def lifespan(app: FastAPI):
     import reqradar.web.api.auth as auth_module
     import reqradar.web.dependencies as dep_module
     import reqradar.infrastructure.config as config_module
-    from reqradar.infrastructure.paths import get_paths, derive_database_url
+    from reqradar.infrastructure.paths import get_paths, derive_database_url, ensure_dirs
     from reqradar.web.services.report_storage import ReportStorage
 
     config = config_module.load_config()
     web_config = config.web
     paths = get_paths(config)
+    ensure_dirs(paths)
     database_url = derive_database_url(config)
     report_storage = ReportStorage(paths["reports"])
 

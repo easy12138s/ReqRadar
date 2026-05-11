@@ -47,8 +47,11 @@ def runner(db_url, monkeypatch, tmp_path):
 
     original_load = config_mod.load_config
 
+    home_dir = str(tmp_path / "home")
+
     def mock_config(path=None):
         cfg = original_load(path)
+        cfg.home.path = home_dir
         cfg.web.database_url = db_url
         data_root = str(tmp_path / "data")
         os.makedirs(data_root, exist_ok=True)

@@ -49,9 +49,10 @@ def project_create(ctx, name, description, local_path, git_url, branch, zip_file
         console.print("[red]错误: 项目名称只能包含字母、数字、下划线、连字符（1-64字符）[/red]")
         raise SystemExit(1)
 
+    from reqradar.infrastructure.paths import get_paths
     from reqradar.web.services.project_file_service import ProjectFileService
 
-    file_svc = ProjectFileService(config.web)
+    file_svc = ProjectFileService(get_paths(config)["projects"])
 
     async def _create():
         async with session_factory() as session:
@@ -226,9 +227,10 @@ def project_delete(ctx, project_id, force):
     config = ctx.obj["config"]
     engine, session_factory = get_db_session(config)
 
+    from reqradar.infrastructure.paths import get_paths
     from reqradar.web.services.project_file_service import ProjectFileService
 
-    file_svc = ProjectFileService(config.web)
+    file_svc = ProjectFileService(get_paths(config)["projects"])
 
     async def _delete():
         async with session_factory() as session:
@@ -277,9 +279,10 @@ def project_index(ctx, project_id, build_profile):
 
     async def _index():
         from reqradar.modules.code_parser import PythonCodeParser
+        from reqradar.infrastructure.paths import get_paths
         from reqradar.web.services.project_file_service import ProjectFileService
 
-        file_svc = ProjectFileService(config.web)
+        file_svc = ProjectFileService(get_paths(config)["projects"])
 
         async with session_factory() as session:
             result = await session.execute(select(Project).where(Project.id == project_id))
@@ -316,8 +319,8 @@ def project_index(ctx, project_id, build_profile):
                 from reqradar.modules.llm_client import create_llm_client
                 from reqradar.modules.project_memory import ProjectMemory
 
-                memory_path = file_svc.get_memory_path(p.name)
-                project_memory = ProjectMemory(storage_path=str(memory_path), project_id=p.id)
+                memory_path = str(get_paths(config)["memories"])
+                project_memory = ProjectMemory(storage_path=memory_path, project_id=p.id)
 
                 llm_client = create_llm_client(
                     model=config.llm.model,

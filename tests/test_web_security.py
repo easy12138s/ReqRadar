@@ -8,12 +8,11 @@ from reqradar.web.app import create_app
 from reqradar.web.database import Base, create_engine, create_session_factory
 
 
-TEST_DATABASE_URL = "sqlite+aiosqlite:///./test_reqradar_security.db"
 TEST_SECRET_KEY = "test-secret-key-for-security-tests"
 
 
 @pytest_asyncio.fixture
-async def setup_db():
+async def setup_db(tmp_path):
     import reqradar.web.api.auth as auth_module
     import reqradar.web.dependencies as dep_module
     import reqradar.infrastructure.config as config_module
@@ -23,18 +22,25 @@ async def setup_db():
     original_factory = dep_module.async_session_factory
     original_config = config_module.load_config
 
-    engine = create_engine(TEST_DATABASE_URL)
+    data_root = str(tmp_path / "data")
+    db_path = tmp_path / "test_reqradar_security.db"
+    test_database_url = f"sqlite+aiosqlite:///{db_path}"
+    engine = create_engine(test_database_url)
     session_factory = create_session_factory(engine)
 
     dep_module.async_session_factory = session_factory
     auth_module.SECRET_KEY = TEST_SECRET_KEY
     auth_module.ACCESS_TOKEN_EXPIRE_MINUTES = 1440
 
-    def _test_config():
-        c = original_config()
+    home_dir = str(tmp_path / "home")
+
+    def _test_config(path=None):
+        c = original_config(path)
+        c.home.path = home_dir
         c.web.auto_create_tables = True
         c.web.debug = True
-        c.web.database_url = TEST_DATABASE_URL
+        c.web.database_url = test_database_url
+        c.web.data_root = data_root
         return c
 
     config_module.load_config = _test_config
@@ -54,10 +60,6 @@ async def setup_db():
     auth_module.ACCESS_TOKEN_EXPIRE_MINUTES = original_expire
     config_module.load_config = original_config
 
-    db_path = "./test_reqradar_security.db"
-    if os.path.exists(db_path):
-        os.remove(db_path)
-
 
 async def _register_and_login(client: AsyncClient, email: str) -> str:
     await client.post(
@@ -72,17 +74,34 @@ async def _register_and_login(client: AsyncClient, email: str) -> str:
 
 
 @pytest.mark.asyncio
-async def test_upload_rejects_dangerous_extension(setup_db):
+async def test_upload_rejects_dangerous_extension(setup_db, tmp_path):
     import io
 
     app = create_app()
+
+    from reqradar.infrastructure.paths import get_paths
+    from reqradar.web.services.report_storage import ReportStorage
+
+    import reqradar.infrastructure.config as config_module
+
+    config = config_module.load_config()
+    paths = get_paths(config)
+    report_storage = ReportStorage(paths["reports"])
+    app.state.paths = paths
+    app.state.report_storage = report_storage
+
+    local_path = str(tmp_path / "source")
+    os.makedirs(local_path, exist_ok=True)
+    with open(os.path.join(local_path, "main.py"), "w") as f:
+        f.write("print('hello')")
+
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         token = await _register_and_login(client, "upload_sec@example.com")
 
         resp = await client.post(
             "/api/projects/from-local",
-            json={"name": "Upload-Sec-Project", "description": "test", "local_path": "/tmp"},
+            json={"name": "Upload-Sec-Project", "description": "test", "local_path": local_path},
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 201
@@ -100,17 +119,34 @@ async def test_upload_rejects_dangerous_extension(setup_db):
 
 
 @pytest.mark.asyncio
-async def test_upload_accepts_allowed_extension(setup_db):
+async def test_upload_accepts_allowed_extension(setup_db, tmp_path):
     import io
 
     app = create_app()
+
+    from reqradar.infrastructure.paths import get_paths
+    from reqradar.web.services.report_storage import ReportStorage
+
+    import reqradar.infrastructure.config as config_module
+
+    config = config_module.load_config()
+    paths = get_paths(config)
+    report_storage = ReportStorage(paths["reports"])
+    app.state.paths = paths
+    app.state.report_storage = report_storage
+
+    local_path = str(tmp_path / "source")
+    os.makedirs(local_path, exist_ok=True)
+    with open(os.path.join(local_path, "main.py"), "w") as f:
+        f.write("print('hello')")
+
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         token = await _register_and_login(client, "upload_ok@example.com")
 
         resp = await client.post(
             "/api/projects/from-local",
-            json={"name": "Upload-OK-Project", "description": "test", "local_path": "/tmp"},
+            json={"name": "Upload-OK-Project", "description": "test", "local_path": local_path},
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 201

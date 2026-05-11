@@ -1,14 +1,23 @@
 import os
 from pathlib import Path
 from reqradar.infrastructure.config import Config
-from reqradar.infrastructure.paths import get_paths, derive_database_url, resolve_home
+from reqradar.infrastructure.paths import get_paths, derive_database_url, resolve_home, ensure_dirs
 
 
-def test_resolve_home_creates_dir(tmp_path):
+def test_resolve_home_returns_path(tmp_path):
     config = Config(home={"path": str(tmp_path / "test_home")})
     home = resolve_home(config)
-    assert home.exists()
     assert home == (tmp_path / "test_home").resolve()
+
+
+def test_ensure_dirs_creates_directories(tmp_path):
+    config = Config(home={"path": str(tmp_path / "rh")})
+    paths = get_paths(config)
+    for key in ("projects", "memories", "reports", "models"):
+        assert not paths[key].exists()
+    ensure_dirs(paths)
+    for key in ("projects", "memories", "reports", "models", "log_dir"):
+        assert paths[key].exists()
 
 
 def test_get_paths_derives_from_home(tmp_path):
@@ -20,8 +29,6 @@ def test_get_paths_derives_from_home(tmp_path):
     assert paths["reports"] == (tmp_path / "rh" / "reports")
     assert paths["models"] == (tmp_path / "rh" / "models")
     assert paths["database"] == (tmp_path / "rh" / "reqradar.db")
-    for key in ("projects", "memories", "reports", "models"):
-        assert paths[key].exists()
 
 
 def test_get_paths_explicit_absolute_overrides(tmp_path):
@@ -44,13 +51,18 @@ def test_derive_database_url_empty_uses_home(tmp_path):
     assert url.startswith("sqlite+aiosqlite:///")
 
 
-def test_derive_database_url_explicit_non_sqlite():
-    config = Config(web={"database_url": "postgresql+asyncpg://user:pass@localhost/db"})
+def test_derive_database_url_explicit_non_sqlite(tmp_path):
+    config = Config(
+        home={"path": str(tmp_path / "rh")},
+        web={"database_url": "postgresql+asyncpg://user:pass@localhost/db"},
+    )
     url = derive_database_url(config)
     assert url == "postgresql+asyncpg://user:pass@localhost/db"
 
 
-def test_derive_database_url_memory():
-    config = Config(web={"database_url": "sqlite+aiosqlite:///:memory:"})
+def test_derive_database_url_memory(tmp_path):
+    config = Config(
+        home={"path": str(tmp_path / "rh")}, web={"database_url": "sqlite+aiosqlite:///:memory:"}
+    )
     url = derive_database_url(config)
     assert url == "sqlite+aiosqlite:///:memory:"

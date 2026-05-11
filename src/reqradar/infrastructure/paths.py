@@ -11,7 +11,6 @@ logger = logging.getLogger("reqradar.paths")
 
 def resolve_home(config: Config) -> Path:
     home = Path(os.path.expanduser(config.home.path)).resolve()
-    home.mkdir(parents=True, exist_ok=True)
     return home
 
 
@@ -20,12 +19,8 @@ def get_paths(config: Config) -> dict:
 
     def _resolve(configured: str, default: Path) -> Path:
         if configured and Path(configured).is_absolute():
-            p = Path(os.path.expanduser(configured))
-            p.mkdir(parents=True, exist_ok=True)
-            return p
-        p = default
-        p.mkdir(parents=True, exist_ok=True)
-        return p
+            return Path(os.path.expanduser(configured))
+        return default
 
     return {
         "home": home,
@@ -38,10 +33,18 @@ def get_paths(config: Config) -> dict:
     }
 
 
+def ensure_dirs(paths: dict) -> None:
+    for key in ("home", "projects", "memories", "reports", "models"):
+        paths[key].mkdir(parents=True, exist_ok=True)
+    paths["log_dir"].mkdir(parents=True, exist_ok=True)
+
+
 def derive_database_url(config: Config) -> str:
     if config.web.database_url:
         parsed = urlparse(config.web.database_url)
-        if ":memory:" not in config.web.database_url and parsed.scheme.startswith("sqlite"):
+        if ":memory:" in config.web.database_url:
+            return config.web.database_url
+        if parsed.scheme.startswith("sqlite"):
             db_path = Path(parsed.path.lstrip("/"))
             db_path.parent.mkdir(parents=True, exist_ok=True)
         return config.web.database_url

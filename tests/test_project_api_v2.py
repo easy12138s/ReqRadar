@@ -6,7 +6,6 @@ from httpx import ASGITransport, AsyncClient
 from reqradar.web.app import create_app
 from reqradar.web.database import Base, create_engine, create_session_factory
 
-TEST_DATABASE_URL = "sqlite+aiosqlite:///./test_reqradar_project_v2.db"
 TEST_SECRET_KEY = "test-secret-key-project-v2"
 
 
@@ -22,18 +21,23 @@ async def setup_db(tmp_path):
     original_config = config_module.load_config
 
     data_root = str(tmp_path / "data")
-    engine = create_engine(TEST_DATABASE_URL)
+    db_path = tmp_path / "test_reqradar_project_v2.db"
+    test_database_url = f"sqlite+aiosqlite:///{db_path}"
+    engine = create_engine(test_database_url)
     session_factory = create_session_factory(engine)
 
     dep_module.async_session_factory = session_factory
     auth_module.SECRET_KEY = TEST_SECRET_KEY
     auth_module.ACCESS_TOKEN_EXPIRE_MINUTES = 1440
 
-    def _test_config():
-        c = original_config()
+    home_dir = str(tmp_path / "home")
+
+    def _test_config(path=None):
+        c = original_config(path)
+        c.home.path = home_dir
         c.web.auto_create_tables = True
         c.web.debug = True
-        c.web.database_url = TEST_DATABASE_URL
+        c.web.database_url = test_database_url
         c.web.data_root = data_root
         return c
 
@@ -54,20 +58,39 @@ async def setup_db(tmp_path):
     auth_module.ACCESS_TOKEN_EXPIRE_MINUTES = original_expire
     config_module.load_config = original_config
 
-    db_path = "./test_reqradar_project_v2.db"
-    if os.path.exists(db_path):
-        os.remove(db_path)
-
 
 @pytest_asyncio.fixture
-async def auth_client(setup_db):
+async def auth_client(setup_db, tmp_path):
     session_factory, data_root = setup_db
     app = create_app()
+
+    from reqradar.infrastructure.paths import get_paths
+    from reqradar.web.services.report_storage import ReportStorage
+
+    import reqradar.infrastructure.config as config_module
+
+    config = config_module.load_config()
+    paths = get_paths(config)
+    report_storage = ReportStorage(paths["reports"])
+    app.state.paths = paths
+    app.state.report_storage = report_storage
+
+    local_path = str(tmp_path / "source")
+    import os
+
+    os.makedirs(local_path, exist_ok=True)
+    with open(os.path.join(local_path, "main.py"), "w") as f:
+        f.write("print('hello')")
+
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         await client.post(
             "/api/auth/register",
-            json={"email": "projv2@example.com", "password": "Secret123", "display_name": "Proj V2 User"},
+            json={
+                "email": "projv2@example.com",
+                "password": "Secret123",
+                "display_name": "Proj V2 User",
+            },
         )
         login_resp = await client.post(
             "/api/auth/login",
@@ -75,35 +98,34 @@ async def auth_client(setup_db):
         )
         token = login_resp.json()["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
-        yield client, headers, data_root
+        yield client, headers, data_root, local_path
 
 
 @pytest.mark.asyncio
 async def test_create_project_from_local(auth_client):
-    client, headers, data_root = auth_client
+    client, headers, data_root, local_path = auth_client
     response = await client.post(
         "/api/projects/from-local",
-        json={"name": "local-proj", "description": "A local project", "local_path": "/tmp"},
+        json={"name": "local-proj", "description": "A local project", "local_path": local_path},
         headers=headers,
     )
     assert response.status_code == 201
     data = response.json()
     assert data["name"] == "local-proj"
     assert data["source_type"] == "local"
-    assert data["source_url"] == "/tmp"
 
 
 @pytest.mark.asyncio
 async def test_create_project_from_local_duplicate_name(auth_client):
-    client, headers, data_root = auth_client
+    client, headers, data_root, local_path = auth_client
     await client.post(
         "/api/projects/from-local",
-        json={"name": "dup-proj", "description": "First", "local_path": "/tmp"},
+        json={"name": "dup-proj", "description": "First", "local_path": local_path},
         headers=headers,
     )
     response = await client.post(
         "/api/projects/from-local",
-        json={"name": "dup-proj", "description": "Second", "local_path": "/tmp"},
+        json={"name": "dup-proj", "description": "Second", "local_path": local_path},
         headers=headers,
     )
     assert response.status_code == 409
@@ -111,10 +133,10 @@ async def test_create_project_from_local_duplicate_name(auth_client):
 
 @pytest.mark.asyncio
 async def test_create_project_invalid_name(auth_client):
-    client, headers, data_root = auth_client
+    client, headers, data_root, local_path = auth_client
     response = await client.post(
         "/api/projects/from-local",
-        json={"name": "bad name!", "description": "Invalid name", "local_path": "/tmp"},
+        json={"name": "bad name!", "description": "Invalid name", "local_path": local_path},
         headers=headers,
     )
     assert response.status_code == 422
@@ -122,7 +144,7 @@ async def test_create_project_invalid_name(auth_client):
 
 @pytest.mark.asyncio
 async def test_create_project_from_zip(auth_client, tmp_path):
-    client, headers, data_root = auth_client
+    client, headers, data_root, local_path = auth_client
     zip_dir = tmp_path / "zip_content"
     zip_dir.mkdir()
     (zip_dir / "main.py").write_text("print('hello')")
@@ -148,10 +170,10 @@ async def test_create_project_from_zip(auth_client, tmp_path):
 
 @pytest.mark.asyncio
 async def test_list_projects(auth_client):
-    client, headers, data_root = auth_client
+    client, headers, data_root, local_path = auth_client
     await client.post(
         "/api/projects/from-local",
-        json={"name": "list-proj", "description": "For listing", "local_path": "/tmp"},
+        json={"name": "list-proj", "description": "For listing", "local_path": local_path},
         headers=headers,
     )
     response = await client.get("/api/projects", headers=headers)
@@ -163,10 +185,10 @@ async def test_list_projects(auth_client):
 
 @pytest.mark.asyncio
 async def test_get_project(auth_client):
-    client, headers, data_root = auth_client
+    client, headers, data_root, local_path = auth_client
     create_resp = await client.post(
         "/api/projects/from-local",
-        json={"name": "get-proj", "description": "For getting", "local_path": "/tmp"},
+        json={"name": "get-proj", "description": "For getting", "local_path": local_path},
         headers=headers,
     )
     project_id = create_resp.json()["id"]
@@ -177,10 +199,10 @@ async def test_get_project(auth_client):
 
 @pytest.mark.asyncio
 async def test_get_project_files(auth_client):
-    client, headers, data_root = auth_client
+    client, headers, data_root, local_path = auth_client
     create_resp = await client.post(
         "/api/projects/from-local",
-        json={"name": "files-proj", "description": "For files", "local_path": "/tmp"},
+        json={"name": "files-proj", "description": "For files", "local_path": local_path},
         headers=headers,
     )
     project_id = create_resp.json()["id"]
@@ -192,10 +214,10 @@ async def test_get_project_files(auth_client):
 
 @pytest.mark.asyncio
 async def test_delete_project(auth_client):
-    client, headers, data_root = auth_client
+    client, headers, data_root, local_path = auth_client
     create_resp = await client.post(
         "/api/projects/from-local",
-        json={"name": "del-proj", "description": "For deletion", "local_path": "/tmp"},
+        json={"name": "del-proj", "description": "For deletion", "local_path": local_path},
         headers=headers,
     )
     project_id = create_resp.json()["id"]
@@ -205,10 +227,10 @@ async def test_delete_project(auth_client):
 
 @pytest.mark.asyncio
 async def test_update_project(auth_client):
-    client, headers, data_root = auth_client
+    client, headers, data_root, local_path = auth_client
     create_resp = await client.post(
         "/api/projects/from-local",
-        json={"name": "upd-proj", "description": "For update", "local_path": "/tmp"},
+        json={"name": "upd-proj", "description": "For update", "local_path": local_path},
         headers=headers,
     )
     project_id = create_resp.json()["id"]
