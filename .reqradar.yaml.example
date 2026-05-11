@@ -3,11 +3,16 @@
 # Environment variables are supported via ${VAR_NAME} syntax.
 # You can also use a .env file in the project root for secrets.
 
+home:
+  path: ~/.reqradar  # Unified data directory (supports ~ expansion)
+  # All paths below default to subdirectories of this directory.
+  # Override only if you need non-standard layouts.
+
 llm:
-  provider: openai                           # openai | ollama
-  model: gpt-4o-mini                         # OpenAI: gpt-4o-mini, gpt-4o, gpt-3.5-turbo | Ollama: qwen2.5:14b
-  api_key: ${OPENAI_API_KEY}                 # Or set OPENAI_API_KEY in .env
-  base_url: https://api.openai.com/v1        # Change for compatible APIs (e.g. Azure, local proxy)
+  provider: openai # openai | ollama
+  model: gpt-4o-mini # OpenAI: gpt-4o-mini, gpt-4o, gpt-3.5-turbo | Ollama: qwen2.5:14b
+  api_key: ${OPENAI_API_KEY} # Or set OPENAI_API_KEY in .env
+  base_url: https://api.openai.com/v1 # Change for compatible APIs (e.g. Azure, local proxy)
   timeout: 60
   max_retries: 2
 
@@ -21,12 +26,12 @@ vision:
 
 memory:
   enabled: true
-  storage_path: .reqradar/memory
-  project_storage_path: .reqradar/memories
-  user_storage_path: .reqradar/user_memories
+  storage_path: ""  # Blank = auto-derive from home.path/memories
+  project_storage_path: ""  # Blank = auto-derive from home.path/memories
+  user_storage_path: ""  # Blank = auto-derive from home.path/memories
 
-memory_evolution:
-  enabled: true                              # 分析后自动记忆自演化
+  memory_evolution:
+    enabled: true  # Auto memory evolution after analysis
 
 loader:
   chunk_size: 300
@@ -39,20 +44,21 @@ loader:
 index:
   # Embedding model for vector search.
   # Available options (quality vs resource usage):
-  #   BAAI/bge-large-zh  - 1024 dims, ~1200 MB, best accuracy (default)
-  #   BAAI/bge-base-zh   -  768 dims, ~390 MB, good balance
-  #   BAAI/bge-small-zh  -  512 dims, ~95 MB, fast inference, low resource
-  #   BAAI/bge-m3        - 1024 dims, ~1100 MB, multilingual (100+ languages)
+  # BAAI/bge-large-zh - 1024 dims, ~1200 MB, best accuracy (default)
+  # BAAI/bge-base-zh - 768 dims, ~390 MB, good balance
+  # BAAI/bge-small-zh - 512 dims, ~95 MB, fast inference, low resource
+  # BAAI/bge-m3 - 1024 dims, ~1100 MB, multilingual (100+ languages)
   embedding_model: BAAI/bge-large-zh
   chunk_size: 300
   chunk_overlap: 50
-  storage_path: .reqradar/index
+  storage_path: ""  # Blank = auto-derive from home.path/index
+  model_cache: ""   # Blank = auto-derive from home.path/models
 
 analysis:
   max_similar_reqs: 5
   max_code_files: 10
   contributors_lookback_months: 6
-  tool_use_enabled: true                     # 启用 LLM 工具调用循环
+  tool_use_enabled: true  # Enable LLM tool call loop
 
 git:
   lookback_months: 6
@@ -62,16 +68,16 @@ output:
   format: markdown
 
 log:
-  level: INFO                  # DEBUG | INFO | WARNING | ERROR
-  format: console              # console (rich) | json (structured)
+  level: INFO # DEBUG | INFO | WARNING | ERROR
+  format: console # console (rich) | json (structured)
 
 agent:
   mode: react
-  max_steps_quick: 10          # Quick analysis depth
-  max_steps_standard: 15       # Standard analysis depth
-  max_steps_deep: 25           # Deep analysis depth
-  version_limit: 10            # Max report versions per task
-  sensitive_file_patterns:      # 敏感文件过滤模式
+  max_steps_quick: 10 # Quick analysis depth
+  max_steps_standard: 15 # Standard analysis depth
+  max_steps_deep: 25 # Deep analysis depth
+  version_limit: 10 # Max report versions per task
+  sensitive_file_patterns: # Sensitive file filter patterns
     - .env
     - .env.*
     - *.key
@@ -85,18 +91,19 @@ agent:
 web:
   host: 0.0.0.0
   port: 8000
-  database_url: sqlite+aiosqlite:///./reqradar.db
-  secret_key: ${REQRADAR_SECRET_KEY}   # Or set in .env; MUST change for production
+  database_url: ""  # Blank = auto-derive from home.path/db/reqradar.db
+  reports_path: ""  # Blank = auto-derive from home.path/reports
+  secret_key: ${REQRADAR_SECRET_KEY} # Or set in .env; MUST change for production
   access_token_expire_minutes: 1440
   max_concurrent_analyses: 2
-  max_upload_size: 50           # MB
-  cors_origins:                  # Empty = auto-detect (localhost in prod, * in debug)
+  max_upload_size: 50 # MB
+  cors_origins: # Empty = auto-detect (localhost in prod, * in debug)
   debug: false
-  auto_create_tables: false     # Prefer Alembic migrations in production
+  auto_create_tables: false # Prefer Alembic migrations in production
   allowed_upload_extensions: .txt,.md,.pdf,.docx,.xlsx,.csv,.json,.yaml,.yml,.html,.png,.jpg,.jpeg,.gif,.bmp
   db_pool_size: 5
   db_pool_max_overflow: 10
-  data_root: ~/.reqradar/data   # Project data storage root (supports ~ expansion)
+  data_root: ""  # Blank = auto-derive from home.path/projects
 
 reporting:
   default_template_id: 1

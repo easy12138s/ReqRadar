@@ -9,10 +9,9 @@ services:
     ports:
       - "${REQRADAR_PORT:-8000}:8000"
     volumes:
-      - reqradar_data:/app/.reqradar
-      - reqradar_db:/app/data
-      - model_cache:/home/appuser/.cache
+      - reqradar_home:/app/home
     environment:
+      - REQRADAR_HOME=/app/home
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - OPENAI_BASE_URL=${OPENAI_BASE_URL:-}
       - REQRADAR_SECRET_KEY=${REQRADAR_SECRET_KEY:-change-me-in-production}
@@ -39,6 +38,4 @@ services:
       retries: 3
 
 volumes:
-  reqradar_data:
-  reqradar_db:
-  model_cache:
+  reqradar_home:

@@ -34,13 +34,15 @@ RUN mkdir -p alembic/versions && \
 # Pre-download embedding model (respect EMBEDDING_MODEL build arg)
 ARG EMBEDDING_MODEL=BAAI/bge-large-zh
 ENV EMBEDDING_MODEL=${EMBEDDING_MODEL}
-RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('${EMBEDDING_MODEL}')" || \
+ENV SENTENCE_TRANSFORMERS_HOME=/app/home/models
+RUN mkdir -p /app/home/models && \
+    python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('${EMBEDDING_MODEL}')" || \
     echo "Warning: Failed to pre-download embedding model. It will be downloaded on first use."
 
 COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-RUN mkdir -p /app/.reqradar /app/data && chown -R appuser:appuser /app
+RUN mkdir -p /app/home && chown -R appuser:appuser /app
 
 USER appuser
 
