@@ -10,6 +10,7 @@ from rich.table import Table
 from sqlalchemy import select
 
 from reqradar.cli.utils import get_db_session, close_db
+from reqradar.infrastructure.paths import get_paths
 from reqradar.web.models import AnalysisTask, Report, ReportVersion
 
 console = Console()
@@ -39,6 +40,10 @@ def report_get(ctx, task_id, fmt, output):
     """获取分析报告"""
     config = ctx.obj["config"]
     engine, session_factory = get_db_session(config)
+    paths = get_paths(config)
+    from reqradar.web.services.report_storage import ReportStorage
+
+    report_storage = ReportStorage(paths["reports"])
 
     async def _get():
         async with session_factory() as session:
@@ -67,8 +72,14 @@ def report_get(ctx, task_id, fmt, output):
 
             if fmt == "markdown":
                 content = report.content_markdown
+                file_md, file_html = await report_storage.read_report(task_id)
+                if file_md is not None:
+                    content = file_md
             elif fmt == "html":
                 content = report.content_html
+                file_md, file_html = await report_storage.read_report(task_id)
+                if file_html is not None:
+                    content = file_html
             else:
                 content = json.dumps(task.context_json, ensure_ascii=False, indent=2)
 

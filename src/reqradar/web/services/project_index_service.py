@@ -13,9 +13,10 @@ logger = logging.getLogger("reqradar.web.services.project_index_service")
 
 
 class ProjectIndexService:
-    def __init__(self, projects_path: Path, memories_path: Path):
+    def __init__(self, projects_path: Path, memories_path: Path, model_cache_path: Path = None):
         self._file_service = ProjectFileService(projects_path)
         self._memories_path = memories_path
+        self._model_cache_path = model_cache_path
 
     async def build_index(self, project: Project, db: AsyncSession, config: Config) -> None:
         from reqradar.web.services.project_store import project_store
@@ -86,6 +87,7 @@ class ProjectIndexService:
                     vs = ChromaVectorStore(
                         persist_directory=str(vectorstore_path),
                         embedding_model=config.index.embedding_model,
+                        model_cache=str(self._model_cache_path) if self._model_cache_path else None,
                     )
 
                     for doc_path in req_dir.rglob("*"):
@@ -154,6 +156,7 @@ class ProjectIndexService:
             persist_directory=str(vectorstore_path),
             embedding_model=config.index.embedding_model,
             collection_name="commits",
+            model_cache=str(self._model_cache_path) if self._model_cache_path else None,
         )
 
         documents = []

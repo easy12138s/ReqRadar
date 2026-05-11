@@ -6,6 +6,7 @@ import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Optional
 
 logger = logging.getLogger("reqradar.vector_store")
 
@@ -96,6 +97,7 @@ class VectorStore(ABC):
 
 def _estimate_model_size_mb(model_name: str) -> int:
     from reqradar.infrastructure.config import EMBEDDING_MODELS
+
     info = EMBEDDING_MODELS.get(model_name)
     return info["size_mb"] if info else 400
 
@@ -108,6 +110,7 @@ class ChromaVectorStore(VectorStore):
         persist_directory: str = ".reqradar/vectorstore",
         embedding_model: str = "BAAI/bge-large-zh",
         collection_name: str = "requirements",
+        model_cache: Optional[str] = None,
     ):
         if not CHROMA_AVAILABLE:
             raise ImportError(
@@ -134,9 +137,17 @@ class ChromaVectorStore(VectorStore):
                 f"Original error: {e}"
             ) from e
 
-        logger.info("Loading embedding model '%s' (first run will download ~%d MB)...",
-                     embedding_model, _estimate_model_size_mb(embedding_model))
-        self.embedding_model = sentence_transformers.SentenceTransformer(embedding_model)
+        logger.info(
+            "Loading embedding model '%s' (first run will download ~%d MB)...",
+            embedding_model,
+            _estimate_model_size_mb(embedding_model),
+        )
+        st_kwargs = {}
+        if model_cache:
+            st_kwargs["cache_folder"] = model_cache
+        self.embedding_model = sentence_transformers.SentenceTransformer(
+            embedding_model, **st_kwargs
+        )
 
         self.collection = self.client.get_or_create_collection(
             name=collection_name, metadata={"hnsw:space": "cosine"}

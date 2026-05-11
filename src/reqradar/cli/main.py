@@ -14,6 +14,7 @@ from reqradar import __version__
 from reqradar.core.exceptions import LoaderException
 from reqradar.infrastructure.config import load_config
 from reqradar.infrastructure.logging import setup_logging
+from reqradar.infrastructure.paths import get_paths
 
 console = Console()
 
@@ -72,10 +73,14 @@ def index(ctx, repo_path, docs_path, output, do_build_profile):
     from reqradar.modules.vector_store import ChromaVectorStore
 
     config = ctx.obj["config"]
+    paths = get_paths(config)
 
     console.print("[cyan]开始构建索引...[/cyan]")
 
-    output_path = Path(output)
+    if output == ".reqradar/index":
+        output_path = paths["home"] / "index"
+    else:
+        output_path = Path(output)
     output_path.mkdir(parents=True, exist_ok=True)
 
     try:
@@ -96,6 +101,7 @@ def index(ctx, repo_path, docs_path, output, do_build_profile):
             vector_store = ChromaVectorStore(
                 persist_directory=str(output_path / "vectorstore"),
                 embedding_model=config.index.embedding_model,
+                model_cache=str(paths["models"]),
             )
 
             docs_path_obj = Path(docs_path)
@@ -155,6 +161,7 @@ def index(ctx, repo_path, docs_path, output, do_build_profile):
                             persist_directory=str(output_path / "vectorstore"),
                             embedding_model=config.index.embedding_model,
                             collection_name="commits",
+                            model_cache=str(paths["models"]),
                         )
                         from reqradar.modules.vector_store import Document
 
@@ -198,12 +205,8 @@ def index(ctx, repo_path, docs_path, output, do_build_profile):
                 from reqradar.modules.llm_client import create_llm_client
                 from reqradar.modules.project_memory import ProjectMemory
 
-                memory_storage = (
-                    config.memory.project_storage_path
-                    if hasattr(config, "memory")
-                    else ".reqradar/memories"
-                )
-                project_memory = ProjectMemory(storage_path=str(memory_storage), project_id=0)
+                memory_storage = str(paths["memories"])
+                project_memory = ProjectMemory(storage_path=memory_storage, project_id=0)
 
                 llm_client = create_llm_client(
                     model=config.llm.model,

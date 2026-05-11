@@ -364,6 +364,7 @@ async def trigger_index(
     index_service = ProjectIndexService(
         projects_path=request.app.state.paths["projects"],
         memories_path=request.app.state.paths["memories"],
+        model_cache_path=request.app.state.paths.get("models"),
     )
     asyncio.create_task(index_service.build_index(project, db, config))
 

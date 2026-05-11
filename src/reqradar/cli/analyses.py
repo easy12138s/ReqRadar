@@ -363,8 +363,12 @@ def analyze_file(ctx, requirement_file, index_path, output, llm_backend, verbose
         from datetime import datetime
         from reqradar.modules.memory import MemoryManager
         from reqradar.modules.memory_manager import AnalysisMemoryManager
+        from reqradar.infrastructure.paths import get_paths
 
-        memory_manager = MemoryManager(storage_path=config.memory.storage_path)
+        paths = get_paths(config)
+        memory_path = str(paths["memories"])
+        model_cache_path = str(paths["models"])
+        memory_manager = MemoryManager(storage_path=memory_path)
         memory_data = memory_manager.load() if config.memory.enabled else None
 
         requirement_path = Path(requirement_file)
@@ -380,8 +384,8 @@ def analyze_file(ctx, requirement_file, index_path, output, llm_backend, verbose
         analysis_memory = AnalysisMemoryManager(
             project_id=0,
             user_id=0,
-            project_storage_path=config.memory.storage_path,
-            user_storage_path=config.memory.storage_path,
+            project_storage_path=memory_path,
+            user_storage_path=memory_path,
             memory_enabled=config.memory.enabled,
         )
 
@@ -398,7 +402,10 @@ def analyze_file(ctx, requirement_file, index_path, output, llm_backend, verbose
 
         vector_store = None
         if vectorstore_path.exists():
-            vector_store = ChromaVectorStore(persist_directory=str(vectorstore_path))
+            vector_store = ChromaVectorStore(
+                persist_directory=str(vectorstore_path),
+                model_cache=model_cache_path,
+            )
 
         code_graph = None
         if code_graph_path.exists():
@@ -466,6 +473,7 @@ def analyze_file(ctx, requirement_file, index_path, output, llm_backend, verbose
                 git_vector_store = ChromaVectorStore(
                     persist_directory=str(vectorstore_path),
                     collection_name="commits",
+                    model_cache=model_cache_path,
                 )
                 from reqradar.agent.tools.search_git_history import SearchGitHistoryTool
 
