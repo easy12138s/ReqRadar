@@ -85,6 +85,29 @@ reports/*
 # Frontend build output
 src/reqradar/web/static/
 
+# Frontend Testing - Vitest & Testing Library
+frontend/src/**/__tests__/
+frontend/src/**/*.test.ts
+frontend/src/**/*.test.tsx
+frontend/src/**/*.spec.ts
+frontend/src/**/*.spec.tsx
+frontend/vitest.config.ts
+frontend/.vitest-cache/
+
+# Frontend Testing - Coverage Reports
+frontend/coverage/
+frontend/.coverage*
+
+# Frontend Testing - Playwright E2E
+frontend/e2e/
+frontend/playwright.config.ts
+frontend/playwright-report/
+frontend/test-results/
+
+# Frontend Testing - Test Infrastructure (optional: keep if you want to share)
+# Uncomment the following line to also exclude test utils/mocks
+# frontend/src/test/
+
 # Root-level test scripts (contain env-specific config)
 /test_e2e.py
 /test_minimax_api.py
