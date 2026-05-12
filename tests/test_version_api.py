@@ -73,6 +73,7 @@ async def auth_client(setup_db, tmp_path):
     config = config_module.load_config()
     paths = get_paths(config)
     report_storage = ReportStorage(paths["reports"])
+    app.state.config = config
     app.state.paths = paths
     app.state.report_storage = report_storage
 

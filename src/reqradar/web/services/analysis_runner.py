@@ -62,11 +62,13 @@ class AnalysisRunner:
         self._active_tasks: dict[int, asyncio.Task] = {}
         self.session_factory = None
 
-    def submit(self, task_id: int, project: Project, config: Config) -> asyncio.Task:
+    def submit(
+        self, task_id: int, project: Project, config: Config, paths: dict | None = None
+    ) -> asyncio.Task:
         if task_id in self._active_tasks and not self._active_tasks[task_id].done():
             raise ValueError(f"Task {task_id} is already running")
 
-        task = asyncio.create_task(self._run_analysis(task_id, project, config))
+        task = asyncio.create_task(self._run_analysis(task_id, project, config, paths=paths))
 
         def _on_done(t):
             self._active_tasks.pop(task_id, None)
@@ -75,7 +77,9 @@ class AnalysisRunner:
         self._active_tasks[task_id] = task
         return task
 
-    async def _run_analysis(self, task_id: int, project: Project, config: Config):
+    async def _run_analysis(
+        self, task_id: int, project: Project, config: Config, paths: dict | None = None
+    ):
         async with self._semaphore:
             factory: async_sessionmaker[AsyncSession] | None
             if self.session_factory is None:
@@ -91,7 +95,7 @@ class AnalysisRunner:
 
             async with factory() as db:
                 try:
-                    await self._execute_agent(task_id, project, config, db, ws_manager)
+                    await self._execute_agent(task_id, project, config, db, ws_manager, paths=paths)
                 except asyncio.CancelledError:
                     logger.info("Agent analysis task %d cancelled", task_id)
                     raise
@@ -375,11 +379,13 @@ class AnalysisRunner:
         config: Config,
         db: AsyncSession,
         ws_manager: ConnectionManager | None = None,
+        paths: dict | None = None,
     ):
         from reqradar.infrastructure.paths import get_paths
         from reqradar.web.services.report_storage import ReportStorage
 
-        paths = get_paths(config)
+        if paths is None:
+            paths = get_paths(config)
         report_storage = ReportStorage(paths["reports"])
 
         result = await db.execute(select(AnalysisTask).where(AnalysisTask.id == task_id))

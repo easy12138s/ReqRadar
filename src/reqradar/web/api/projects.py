@@ -358,9 +358,7 @@ async def trigger_index(
     if project is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
-    from reqradar.infrastructure.config import load_config
-
-    config = load_config()
+    config = request.app.state.config
     index_service = ProjectIndexService(
         projects_path=request.app.state.paths["projects"],
         memories_path=request.app.state.paths["memories"],

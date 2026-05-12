@@ -72,9 +72,7 @@ async def preprocess_requirements_endpoint(
     if not project:
         raise HTTPException(404, "Project not found")
 
-    from reqradar.infrastructure.config import load_config
-
-    config = load_config()
+    config = request.app.state.config
     projects_path = request.app.state.paths["projects"]
     req_dir = projects_path / project.name / "requirements"
     req_dir.mkdir(parents=True, exist_ok=True)

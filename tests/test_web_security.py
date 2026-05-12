@@ -87,6 +87,7 @@ async def test_upload_rejects_dangerous_extension(setup_db, tmp_path):
     config = config_module.load_config()
     paths = get_paths(config)
     report_storage = ReportStorage(paths["reports"])
+    app.state.config = config
     app.state.paths = paths
     app.state.report_storage = report_storage
 
@@ -132,6 +133,7 @@ async def test_upload_accepts_allowed_extension(setup_db, tmp_path):
     config = config_module.load_config()
     paths = get_paths(config)
     report_storage = ReportStorage(paths["reports"])
+    app.state.config = config
     app.state.paths = paths
     app.state.report_storage = report_storage
 

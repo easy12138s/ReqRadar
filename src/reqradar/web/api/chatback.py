@@ -5,7 +5,6 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from reqradar.infrastructure.config import load_config
 from reqradar.infrastructure.config_manager import ConfigManager
 from reqradar.modules.llm_client import create_llm_client
 from reqradar.web.dependencies import DbSession, CurrentUser
@@ -51,7 +50,7 @@ async def chat(
     version_number = req.version_number or task.current_version or 1
     user_id = current_user.id
 
-    config = load_config()
+    config = request.app.state.config
     cm = ConfigManager(db, config)
     provider = await cm.get_str(
         "llm.provider", user_id=user_id, project_id=task.project_id, default="openai"
@@ -131,7 +130,7 @@ async def chat_stream(
     version_number = req.version_number or task.current_version or 1
     user_id = current_user.id
 
-    config = load_config()
+    config = request.app.state.config
     cm = ConfigManager(db, config)
     provider = await cm.get_str(
         "llm.provider", user_id=user_id, project_id=task.project_id, default="openai"

@@ -10,6 +10,7 @@ from fastapi import (
     APIRouter,
     Depends,
     HTTPException,
+    Request,
     UploadFile,
     File,
     Form,
@@ -28,7 +29,7 @@ from reqradar.web.models import AnalysisTask, Project, RequirementDocument, Uplo
 from reqradar.web.api.auth import SECRET_KEY, ALGORITHM
 from reqradar.web.enums import TaskStatus
 from reqradar.web.websocket import manager as ws_manager
-from reqradar.infrastructure.config import load_config
+
 
 logger = logging.getLogger("reqradar.web.api.analyses")
 
@@ -105,7 +106,9 @@ class AnalysisDetailResponse(AnalysisResponse):
 
 
 @router.post("", response_model=AnalysisResponse, status_code=status.HTTP_201_CREATED)
-async def submit_analysis(req: AnalysisSubmit, current_user: CurrentUser, db: DbSession):
+async def submit_analysis(
+    req: AnalysisSubmit, request: Request, current_user: CurrentUser, db: DbSession
+):
     result = await db.execute(select(Project).where(Project.id == req.project_id))
     project = result.scalar_one_or_none()
     if project is None:
@@ -117,7 +120,7 @@ async def submit_analysis(req: AnalysisSubmit, current_user: CurrentUser, db: Db
     from reqradar.infrastructure.config_manager import ConfigManager
     from reqradar.modules.llm_connectivity import is_llm_reachable
 
-    cm = ConfigManager(db, load_config())
+    cm = ConfigManager(db, request.app.state.config)
     provider = await cm.get_str(
         "llm.provider", user_id=current_user.id, project_id=req.project_id, default="openai"
     )
@@ -169,14 +172,16 @@ async def submit_analysis(req: AnalysisSubmit, current_user: CurrentUser, db: Db
     await db.commit()
     await db.refresh(task)
 
-    config = load_config()
-    asyncio.create_task(_run_analysis_background(task.id, project, config))
+    config = request.app.state.config
+    paths = request.app.state.paths
+    asyncio.create_task(_run_analysis_background(task.id, project, config, paths))
 
     return task
 
 
 @router.post("/upload", response_model=AnalysisResponse, status_code=status.HTTP_201_CREATED)
 async def submit_analysis_upload(
+    request: Request,
     project_id: int = Form(...),
     requirement_name: str = Form(default=""),
     file: UploadFile = File(...),
@@ -204,7 +209,7 @@ async def submit_analysis_upload(
 
     content = await file.read()
 
-    config = load_config()
+    config = request.app.state.config
     max_upload_bytes = config.web.max_upload_size * 1024 * 1024
     if len(content) > max_upload_bytes:
         raise HTTPException(
@@ -212,10 +217,10 @@ async def submit_analysis_upload(
             detail=f"File size ({len(content)} bytes) exceeds limit ({config.web.max_upload_size}MB)",
         )
 
-    from reqradar.infrastructure.paths import get_paths
     from reqradar.web.services.project_file_service import ProjectFileService
 
-    file_svc = ProjectFileService(get_paths(config)["projects"])
+    paths = request.app.state.paths
+    file_svc = ProjectFileService(paths["projects"])
     upload_dir = str(file_svc.get_requirements_path(project.name))
     os.makedirs(upload_dir, exist_ok=True)
     file_id = str(uuid.uuid4())[:8]
@@ -248,7 +253,7 @@ async def submit_analysis_upload(
     await db.commit()
     await db.refresh(task)
 
-    asyncio.create_task(_run_analysis_background(task.id, project, config))
+    asyncio.create_task(_run_analysis_background(task.id, project, config, paths))
 
     return task
 
@@ -328,7 +333,7 @@ async def get_analysis(task_id: int, current_user: CurrentUser, db: DbSession):
 
 
 @router.post("/{task_id}/retry", response_model=AnalysisResponse)
-async def retry_analysis(task_id: int, current_user: CurrentUser, db: DbSession):
+async def retry_analysis(task_id: int, request: Request, current_user: CurrentUser, db: DbSession):
     result = await db.execute(
         select(AnalysisTask).where(
             AnalysisTask.id == task_id, AnalysisTask.user_id == current_user.id
@@ -357,8 +362,9 @@ async def retry_analysis(task_id: int, current_user: CurrentUser, db: DbSession)
     await db.commit()
     await db.refresh(task)
 
-    config = load_config()
-    asyncio.create_task(_run_analysis_background(task.id, project, config))
+    config = request.app.state.config
+    paths = request.app.state.paths
+    asyncio.create_task(_run_analysis_background(task.id, project, config, paths))
 
     return task
 
@@ -426,7 +432,9 @@ async def analysis_websocket(websocket: WebSocket, task_id: int, token: str = Qu
         ws_manager.unsubscribe(task_id, websocket)
 
 
-async def _run_analysis_background(task_id: int, project: Project, config):
+async def _run_analysis_background(
+    task_id: int, project: Project, config, paths: dict | None = None
+):
     from reqradar.web.services.analysis_runner import runner
 
-    runner.submit(task_id, project, config)
+    runner.submit(task_id, project, config, paths=paths)
