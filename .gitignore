@@ -112,6 +112,9 @@ frontend/test-results/
 /test_e2e.py
 /test_minimax_api.py
 
+# Backend tests
+tests/
+
 # OpenCode config
 opencode.json
 .opencode/
