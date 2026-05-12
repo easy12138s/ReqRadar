@@ -112,14 +112,20 @@ frontend/test-results/
 /test_e2e.py
 /test_minimax_api.py
 
-# Backend tests
-tests/
+# Backend test artifacts
+.coverage
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
 # OpenCode config
 opencode.json
 .opencode/
 
-# Docs (design specs, requirements, issues — managed separately)
+.trae/
+
+# Docs (design specs, requirements, issues 鈥?managed separately)
 docs/.superpowers/
 docs/
 .superpowers/
