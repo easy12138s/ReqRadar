@@ -47,6 +47,7 @@ export default function AppShell() {
       'templates': '报告模板',
       'preferences': '偏好设置',
       'users': '用户管理',
+    'mcp': 'MCP 设置',
       'profile': '项目画像',
       'synonyms': '同义词管理',
       'reports': '分析报告',

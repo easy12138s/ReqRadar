@@ -107,3 +107,13 @@ web:
 
 reporting:
   default_template_id: 1
+
+mcp:
+  enabled: false              # Enable MCP server for AI coding agents
+  auto_start_with_web: true   # Auto-start MCP when web server starts
+  host: 0.0.0.0               # MCP server bind host
+  port: 8765                  # MCP server bind port
+  path: /mcp                  # Streamable HTTP endpoint path
+  public_url: ""              # External URL (auto-derived if empty)
+  audit_enabled: true         # Log MCP tool calls for auditing
+  audit_retention_days: 90    # Days to retain audit logs

@@ -4,7 +4,7 @@ from sqlalchemy import ForeignKey, String, Text, Integer, DateTime, Boolean, JSO
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from reqradar.web.database import Base
-from reqradar.web.enums import TaskStatus, ChangeStatus
+from reqradar.web.enums import TaskStatus, ChangeStatus, ReleaseStatus
 
 
 def utc_now() -> datetime:
@@ -347,3 +347,79 @@ class LLMCallLog(Base):
     tool_names: Mapped[str] = mapped_column(Text, default="", nullable=False)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
+
+
+class MCPAccessKey(Base):
+    __tablename__ = "mcp_access_keys"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id"), nullable=False, index=True
+    )
+    key_prefix: Mapped[str] = mapped_column(String(12), nullable=False, index=True)
+    key_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    scopes: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
+
+    user: Mapped["User"] = relationship()
+
+
+class RequirementRelease(Base):
+    __tablename__ = "requirement_releases"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("projects.id"), nullable=False, index=True
+    )
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
+    task_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("analysis_tasks.id"), nullable=True
+    )
+    release_code: Mapped[str] = mapped_column(String(100), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    title: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    content: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    context_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default=ReleaseStatus.DRAFT, nullable=False)
+    superseded_by: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("requirement_releases.id"), nullable=True
+    )
+    published_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utc_now, onupdate=utc_now, nullable=False
+    )
+
+    project: Mapped["Project"] = relationship()
+    user: Mapped["User"] = relationship()
+    task: Mapped["AnalysisTask | None"] = relationship()
+    superseder: Mapped["RequirementRelease | None"] = relationship(
+        remote_side=[id], foreign_keys=[superseded_by]
+    )
+
+    __table_args__ = (
+        UniqueConstraint("release_code", "version", name="uq_requirement_release_code_version"),
+    )
+
+
+class MCPToolCall(Base):
+    __tablename__ = "mcp_tool_calls"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    access_key_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("mcp_access_keys.id"), nullable=True, index=True
+    )
+    tool_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    arguments_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    result_summary: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    duration_ms: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    success: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
+
+    access_key: Mapped["MCPAccessKey | None"] = relationship()

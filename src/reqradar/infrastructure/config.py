@@ -196,6 +196,39 @@ class WebConfig(BaseModel):
         return v
 
 
+class MCPConfig(BaseModel):
+    model_config = {"env_prefix": "REQRADAR_MCP_"}  # type: ignore[typeddict-unknown-key]
+
+    enabled: bool = Field(default=False, description="Enable MCP server")
+    auto_start_with_web: bool = Field(
+        default=True, description="Auto-start MCP server when web server starts"
+    )
+    host: str = Field(default="0.0.0.0", description="MCP server bind host")
+    port: int = Field(default=8765, description="MCP server bind port")
+    path: str = Field(default="/mcp", description="MCP Streamable HTTP endpoint path")
+    public_url: Optional[str] = Field(
+        default=None, description="External URL for MCP server (auto-derived if empty)"
+    )
+    audit_enabled: bool = Field(default=True, description="Enable MCP tool call audit logging")
+    audit_retention_days: int = Field(default=90, description="Days to retain MCP audit logs")
+    host: str = Field(default="0.0.0.0", description="MCP server bind host")
+    port: int = Field(default=8765, description="MCP server bind port")
+    path: str = Field(default="/mcp", description="MCP Streamable HTTP endpoint path")
+    public_url: Optional[str] = Field(
+        default=None, description="External URL for MCP server (auto-derived if empty)"
+    )
+    audit_enabled: bool = Field(default=True, description="Enable MCP tool call audit logging")
+    audit_retention_days: int = Field(default=90, description="Days to retain MCP audit logs")
+    host: str = Field(default="0.0.0.0", description="MCP server bind host")
+    port: int = Field(default=8765, description="MCP server bind port")
+    path: str = Field(default="/mcp", description="MCP Streamable HTTP endpoint path")
+    public_url: Optional[str] = Field(
+        default=None, description="External URL for MCP server (auto-derived if empty)"
+    )
+    audit_enabled: bool = Field(default=True, description="Enable MCP tool call audit logging")
+    audit_retention_days: int = Field(default=90, description="Days to retain MCP audit logs")
+
+
 class Config(BaseModel):
     home: HomeConfig = Field(default_factory=HomeConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)
@@ -210,6 +243,7 @@ class Config(BaseModel):
     reporting: ReportingConfig = Field(default_factory=ReportingConfig)
     log: LogConfig = Field(default_factory=LogConfig)
     web: WebConfig = Field(default_factory=WebConfig)
+    mcp: MCPConfig = Field(default_factory=MCPConfig)
 
     @model_validator(mode="after")
     def _validate_critical_settings(self) -> "Config":

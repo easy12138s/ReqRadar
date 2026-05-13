@@ -253,6 +253,7 @@ from reqradar.cli.analyses import analyze
 from reqradar.cli.reports import report
 from reqradar.cli.config import config
 from reqradar.cli.requirements import requirement_group
+from reqradar.cli.mcp_cli import mcp
 
 cli.add_command(serve)
 cli.add_command(project)
@@ -260,6 +261,7 @@ cli.add_command(analyze)
 cli.add_command(report)
 cli.add_command(config)
 cli.add_command(requirement_group)
+cli.add_command(mcp)
 
 
 if __name__ == "__main__":

@@ -7,12 +7,16 @@ import {
   Empty,
   message,
   Dropdown,
+  Modal,
+  Input,
+  Form,
 } from 'antd';
-import { ArrowLeftOutlined, DownloadOutlined, FilePdfOutlined, FileMarkdownOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined, DownloadOutlined, FilePdfOutlined, FileMarkdownOutlined, PlusOutlined } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import html2pdf from 'html2pdf.js';
 import type { Report } from '@/types/api';
 import { getReport } from '@/api/reports';
+import { createRelease } from '@/api/releases';
 import { RiskBadge } from '@/components/RiskBadge';
 import { ChatPanel } from '@/components/ChatPanel';
 import { theme } from 'antd';
@@ -27,6 +31,9 @@ export function ReportView() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const reportRef = useRef<HTMLDivElement>(null);
   const { token } = theme.useToken();
+  const [releaseModalOpen, setReleaseModalOpen] = useState(false);
+  const [releaseForm] = Form.useForm();
+  const [releaseLoading, setReleaseLoading] = useState(false);
 
   useEffect(() => {
     if (!taskId) return;
@@ -77,6 +84,29 @@ export function ReportView() {
         console.error('PDF generation failed:', err);
         message.error({ content: 'PDF 导出失败', key: 'pdf-gen' });
       });
+  };
+
+  const handleReleaseSubmit = async () => {
+    try {
+      const values = await releaseForm.validateFields();
+      setReleaseLoading(true);
+      await createRelease({
+        project_id: Number(values.project_id),
+        release_code: values.release_code,
+        title: values.title,
+        content: report?.content_markdown || '',
+        task_id: taskId ? Number(taskId) : undefined,
+      });
+      message.success('需求版本已创建');
+      setReleaseModalOpen(false);
+      releaseForm.resetFields();
+    } catch (e: any) {
+      if (e?.response?.data?.detail) {
+        message.error(e.response.data.detail);
+      }
+    } finally {
+      setReleaseLoading(false);
+    }
   };
 
   const downloadMenu = {
@@ -139,11 +169,16 @@ export function ReportView() {
           </div>
           <RiskBadge level={report.risk_level as any} />
         </div>
-        <Dropdown menu={downloadMenu} placement="bottomRight">
-          <Button type="primary" icon={<DownloadOutlined />}>
-            导出报告
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Button icon={<PlusOutlined />} onClick={() => setReleaseModalOpen(true)}>
+            发布为需求版本
           </Button>
-        </Dropdown>
+          <Dropdown menu={downloadMenu} placement="bottomRight">
+            <Button type="primary" icon={<DownloadOutlined />}>
+              导出报告
+            </Button>
+          </Dropdown>
+        </div>
       </div>
 
       {/* scrollable report content */}
@@ -180,6 +215,30 @@ export function ReportView() {
       >
         <ChatPanel taskId={taskId} />
       </div>
+
+      <Modal
+        title="发布为需求版本"
+        open={releaseModalOpen}
+        onCancel={() => {
+          setReleaseModalOpen(false);
+          releaseForm.resetFields();
+        }}
+        onOk={handleReleaseSubmit}
+        confirmLoading={releaseLoading}
+        okText="创建并发布"
+      >
+        <Form form={releaseForm} layout="vertical">
+          <Form.Item label="项目 ID" name="project_id" rules={[{ required: true, message: '请输入项目 ID' }]}>
+            <Input type="number" />
+          </Form.Item>
+          <Form.Item label="版本代号" name="release_code" rules={[{ required: true, message: '请输入版本代号' }]}>
+            <Input placeholder="例如: REQ-2026-001" />
+          </Form.Item>
+          <Form.Item label="标题" name="title" rules={[{ required: true, message: '请输入标题' }]}>
+            <Input placeholder="需求版本标题" />
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   );
 }

@@ -25,6 +25,7 @@ const UserPreferences = lazy(() => import('./pages/UserPreferences').then(m => (
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const UserManagement = lazy(() => import('./pages/UserManagement'));
 const RequirementEdit = lazy(() => import('./pages/RequirementEdit'));
+const MCPSettings = lazy(() => import('./pages/MCPSettings').then(m => ({ default: m.MCPSettings })));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -89,6 +90,7 @@ export default function App() {
                     <Route path="settings/templates" element={<TemplateManager />} />
                     <Route path="settings/preferences" element={<UserPreferences />} />
                     <Route path="settings/users" element={<UserManagement />} />
+      <Route path="settings/mcp" element={<MCPSettings />} />
                     <Route path="requirements/:id" element={<RequirementEdit />} />
                   </Route>
 

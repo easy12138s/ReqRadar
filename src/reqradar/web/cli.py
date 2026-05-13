@@ -23,31 +23,28 @@ def serve(ctx, host, port, reload):
 
     lines = [
         "",
-        "\033[36m\033[1m" + f"  ReqRadar v{__version__}" + "\033[0m",
-        "\033[36m" + "  " + "=" * 40 + "\033[0m",
-        f"  Web UI:  http://{serve_host}:{serve_port}/app/",
-        f"  API:     http://{serve_host}:{serve_port}/docs",
+        "\033[36m\033[1m" + f" ReqRadar v{__version__}" + "\033[0m",
+        "\033[36m" + " " + "=" * 40 + "\033[0m",
+        f" Web UI: http://{serve_host}:{serve_port}/app/",
+        f" API: http://{serve_host}:{serve_port}/docs",
     ]
 
+    if config.mcp.enabled:
+        mcp_host = "localhost" if config.mcp.host == "0.0.0.0" else config.mcp.host
+        from reqradar.web.services.mcp_auth_service import build_mcp_public_url
+
+        mcp_url = build_mcp_public_url(config.mcp)
+        lines.append(f" MCP: {mcp_url}")
+
     if web_config.secret_key == "change-me-in-production":
-        lines.append(
-            "\033[33m  WARNING: Using default JWT secret key\033[0m"
-        )
-        lines.append(
-            "  Set REQRADAR_SECRET_KEY env var for production"
-        )
+        lines.append("\033[33m  WARNING: Using default JWT secret key\033[0m")
+        lines.append("  Set REQRADAR_SECRET_KEY env var for production")
 
     if not config.llm.api_key:
-        lines.append(
-            "\033[33m  NOTE: No LLM API key configured\033[0m"
-        )
-        lines.append(
-            "  Configure via Web UI (Settings > LLM) or .reqradar.yaml"
-        )
+        lines.append("\033[33m  NOTE: No LLM API key configured\033[0m")
+        lines.append("  Configure via Web UI (Settings > LLM) or .reqradar.yaml")
 
-    lines.append(
-        "  Default admin: admin@reqradar.io / Admin12138%"
-    )
+    lines.append("  Default admin: admin@reqradar.io / Admin12138%")
     lines.append("")
 
     click.echo("\n".join(lines))
@@ -63,7 +60,9 @@ def serve(ctx, host, port, reload):
 
 @cli.command()
 @click.option("--email", prompt=True, help="Admin email address")
-@click.option("--password", prompt=True, hide_input=True, confirmation_prompt=True, help="Admin password")
+@click.option(
+    "--password", prompt=True, hide_input=True, confirmation_prompt=True, help="Admin password"
+)
 @click.option("--display-name", prompt=True, help="Admin display name")
 @click.pass_context
 def createsuperuser(ctx, email, password, display_name):
@@ -92,7 +91,9 @@ def createsuperuser(ctx, email, password, display_name):
                 await engine.dispose()
                 raise SystemExit(1)
 
-            password_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+            password_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode(
+                "utf-8"
+            )
             user = User(
                 email=email,
                 password_hash=password_hash,
@@ -102,7 +103,9 @@ def createsuperuser(ctx, email, password, display_name):
             session.add(user)
             await session.commit()
             await session.refresh(user)
-            click.echo(f"Superuser '{display_name}' ({email}) created successfully with id={user.id}.")
+            click.echo(
+                f"Superuser '{display_name}' ({email}) created successfully with id={user.id}."
+            )
 
         await engine.dispose()
 

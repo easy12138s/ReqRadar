@@ -27,6 +27,8 @@ from reqradar.web.api.users import router as users_router
 from reqradar.web.api.versions import router as versions_router
 from reqradar.web.api.evidence_api import router as evidence_router
 from reqradar.web.api.requirements import router as requirements_router
+from reqradar.web.api.mcp import router as mcp_router
+from reqradar.web.api.releases import router as releases_router
 from reqradar.web.database import Base, create_engine, create_session_factory
 from reqradar.web.dependencies import async_session_factory, CurrentUser, DbSession
 from reqradar.web.exceptions import reqradar_exception_handler
@@ -113,8 +115,13 @@ async def lifespan(app: FastAPI):
     runner._semaphore = asyncio.Semaphore(web_config.max_concurrent_analyses)
     runner.session_factory = session_factory
 
+    from reqradar.mcp.lifecycle import maybe_start_mcp_with_web, stop_mcp_with_web
+
+    await maybe_start_mcp_with_web(app)
+
     yield
 
+    await stop_mcp_with_web(app)
     await engine.dispose()
 
 
@@ -177,6 +184,8 @@ def create_app(config_path: Optional[Path] = None):
     app.include_router(evidence_router)
     app.include_router(requirements_router)
     app.include_router(users_router)
+    app.include_router(mcp_router)
+    app.include_router(releases_router)
 
     static_path = Path(__file__).parent / "static"
     if static_path.exists():
