@@ -40,3 +40,14 @@
 - 影响范围：ZIP 项目导入的安全边界错误响应；服务层安全校验有效，但 Web API 错误处理不友好
 - 是否阻塞后续测试：是
 - 临时处理：对应测试使用 `pytest.mark.xfail(reason="BUG-20260512-002: ZIP path traversal ValueError is not converted to HTTP 4xx")`
+
+### BUG-20260512-003：RateLimitMiddleware 无法正确获取客户端 IP
+
+- 测试文件：`tests/unit/test_rate_limit.py`
+- 测试用例：`test_tracks_per_client_ip`
+- 复现步骤：构造带有 `request.client = Address("1.1.1.1", 12345)` 的 Request 对象传入 RateLimitMiddleware.dispatch()
+- 期望结果：中间件应从 `request.client.host` 获取到 "1.1.1.1" 并按 IP 分别限流
+- 实际结果：日志显示 `client_ip` 被识别为 "unknown"，说明 `request.client.host` 获取失败，导致所有请求被归为同一 "unknown" 组
+- 影响范围：生产环境部署时，基于 IP 的速率限制可能失效或行为异常
+- 是否阻塞后续测试：否
+- 临时处理：跳过该测试用例，使用 xfail 标记
