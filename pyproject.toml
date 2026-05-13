@@ -26,8 +26,9 @@ gitpython = "^3.1.40"
 numpy = "^2.1.0"
 markitdown = {version = "^0.1.0", extras = ["pdf", "docx", "pptx", "xlsx"]}
 litellm = "^1.80"
-fastapi = "^0.115.0"
-uvicorn = {version = "^0.35", extras = ["standard"]}
+fastapi = {version = "^0.115", extras = ["standard"]}
+uvicorn = {version = ">=0.32,<0.34", extras = ["standard"]}
+starlette = ">=0.40,<0.47"
 python-multipart = "^0.0.26"
 python-jose = {extras = ["cryptography"], version = "^3.3.0"}
 passlib = {extras = ["bcrypt"], version = "^1.7.4"}

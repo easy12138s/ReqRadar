@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Annotated, Optional
 
 import bcrypt
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from jose import JWTError, jwt
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import select
@@ -75,12 +75,13 @@ def _validate_password_strength(password: str) -> str | None:
     return None
 
 
-def create_access_token(user_id: int, expires_delta: Optional[timedelta] = None) -> str:
+def create_access_token(user_id: int, expires_delta: Optional[timedelta] = None, request=None) -> str:
     expire = datetime.now(timezone.utc) + (
         expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     )
     to_encode = {"sub": str(user_id), "exp": expire}
-    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    secret_key = get_secret_key(request)
+    return jwt.encode(to_encode, secret_key, algorithm=ALGORITHM)
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
@@ -106,7 +107,7 @@ async def register(req: RegisterRequest, db: DbSession):
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(req: LoginRequest, db: DbSession):
+async def login(req: LoginRequest, db: DbSession, request: Request):
     result = await db.execute(select(User).where(User.email == req.email))
     user = result.scalar_one_or_none()
     if user is None or not verify_password(req.password, user.password_hash):
@@ -123,7 +124,7 @@ async def login(req: LoginRequest, db: DbSession):
         "web.access_token_expire_minutes",
         default=ACCESS_TOKEN_EXPIRE_MINUTES,
     )
-    access_token = create_access_token(user.id, expires_delta=timedelta(minutes=expire_minutes))
+    access_token = create_access_token(user.id, expires_delta=timedelta(minutes=expire_minutes), request=request)
     return TokenResponse(access_token=access_token)
 
 

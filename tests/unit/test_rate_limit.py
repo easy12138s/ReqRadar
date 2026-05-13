@@ -29,14 +29,13 @@ def _build_request(path: str = "/api/test", client_host: str = "127.0.0.1", sche
         "query_string": b"",
         "scheme": scheme,
     }
-    request = Request(scope)
     if client_host:
         from starlette.datastructures import Address
 
-        request._client = Address(client_host, 12345)
+        scope["client"] = (client_host, 12345)
     else:
-        request._client = None
-    return request
+        scope["client"] = None
+    return Request(scope)
 
 
 class TestRateLimitMiddlewareInit:
@@ -90,7 +89,6 @@ class TestRateLimitMiddlewareDispatch:
         await middleware.dispatch(req, mock_app)
         mock_app.assert_awaited_once()
 
-    @pytest.mark.xfail(reason="BUG-20260512-003: RateLimitMiddleware cannot correctly get client IP from Address object")
     @pytest.mark.asyncio
     async def test_tracks_per_client_ip(self, middleware):
         call_next = AsyncMock(return_value=JSONResponse(content={}))

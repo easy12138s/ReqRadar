@@ -234,7 +234,13 @@ async def create_from_zip(
     svc.create_project_dirs(name)
 
     zip_bytes = await file.read()
-    svc.extract_zip(name, zip_bytes)
+    try:
+        svc.extract_zip(name, zip_bytes)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"ZIP extraction failed: {e}",
+        )
 
     return project
 

@@ -86,9 +86,6 @@ async def test_create_project_from_zip_and_reject_duplicate_name(client, auth_he
 
 
 @pytest.mark.asyncio
-@pytest.mark.xfail(
-    reason="BUG-20260512-002: ZIP path traversal ValueError is not converted to HTTP 4xx"
-)
 async def test_create_project_from_zip_rejects_path_traversal(client, auth_headers):
     response = await client.post(
         "/api/projects/from-zip",
