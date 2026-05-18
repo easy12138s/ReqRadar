@@ -1,14 +1,15 @@
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from reqradar.core.exceptions import ReportException
 from reqradar.web.dependencies import CurrentUser, DbSession
-from reqradar.web.models import RequirementRelease
+from reqradar.web.models import Project, RequirementRelease
 from reqradar.web.services.requirement_release_service import (
     archive_release,
     create_release,
     delete_release,
-    get_release,
     list_releases,
     publish_release,
     update_release,
@@ -31,6 +32,28 @@ class UpdateReleaseRequest(BaseModel):
 
 
 router = APIRouter(prefix="/api/releases", tags=["releases"])
+
+
+async def _verify_project_owner(db: AsyncSession, project_id: int, current_user) -> None:
+    result = await db.execute(
+        select(Project).where(Project.id == project_id, Project.owner_id == current_user.id)
+    )
+    if result.scalar_one_or_none() is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to access this project",
+        )
+
+
+async def _verify_release_owner(
+    db: AsyncSession, release_id: int, current_user
+) -> RequirementRelease:
+    result = await db.execute(select(RequirementRelease).where(RequirementRelease.id == release_id))
+    release = result.scalar_one_or_none()
+    if release is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Release not found")
+    await _verify_project_owner(db, release.project_id, current_user)
+    return release
 
 
 def _release_to_dict(release: RequirementRelease) -> dict:
@@ -59,6 +82,7 @@ async def create_release_endpoint(
     db: DbSession,
     current_user: CurrentUser,
 ):
+    await _verify_project_owner(db, body.project_id, current_user)
     try:
         release = await create_release(
             db,
@@ -84,6 +108,8 @@ async def list_releases_endpoint(
     limit: int = 50,
     offset: int = 0,
 ):
+    if project_id is not None:
+        await _verify_project_owner(db, project_id, current_user)
     releases = await list_releases(
         db, project_id=project_id, status=status, limit=limit, offset=offset
     )
@@ -96,9 +122,7 @@ async def get_release_endpoint(
     db: DbSession,
     current_user: CurrentUser,
 ):
-    release = await get_release(db, release_id)
-    if release is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Release not found")
+    release = await _verify_release_owner(db, release_id, current_user)
     return _release_to_dict(release)
 
 
@@ -109,6 +133,7 @@ async def update_release_endpoint(
     db: DbSession,
     current_user: CurrentUser,
 ):
+    await _verify_release_owner(db, release_id, current_user)
     try:
         release = await update_release(db, release_id, body.title, body.content, body.context_json)
     except ReportException as e:
@@ -124,6 +149,7 @@ async def publish_release_endpoint(
     db: DbSession,
     current_user: CurrentUser,
 ):
+    await _verify_release_owner(db, release_id, current_user)
     try:
         release = await publish_release(db, release_id)
     except ReportException as e:
@@ -138,6 +164,7 @@ async def archive_release_endpoint(
     db: DbSession,
     current_user: CurrentUser,
 ):
+    await _verify_release_owner(db, release_id, current_user)
     try:
         release = await archive_release(db, release_id)
     except ReportException as e:
@@ -152,6 +179,7 @@ async def delete_release_endpoint(
     db: DbSession,
     current_user: CurrentUser,
 ):
+    await _verify_release_owner(db, release_id, current_user)
     try:
         result = await delete_release(db, release_id)
     except ReportException as e:

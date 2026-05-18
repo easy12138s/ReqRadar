@@ -138,9 +138,9 @@ async def test_list_releases_unauthenticated(client):
 
 @pytest.mark.asyncio
 async def test_list_releases_filter_by_project(
-    client, auth_headers, create_release, db_session, admin_user
+    client, auth_headers, create_release, db_session, regular_user
 ):
-    other_project = build_project(owner_id=admin_user.id, name="other_releases_project")
+    other_project = build_project(owner_id=regular_user.id, name="other_releases_project")
     db_session.add(other_project)
     await db_session.commit()
     await db_session.refresh(other_project)
@@ -504,3 +504,84 @@ async def test_cannot_archive_already_archived(client, auth_headers, create_rele
     response = await client.post(f"/api/releases/{release_id}/archive", headers=auth_headers)
 
     assert response.status_code == 400
+
+
+class TestReleaseAuthorization:
+    @pytest.mark.asyncio
+    async def test_create_release_for_other_user_project_returns_403(
+        self, client, admin_headers, db_session, regular_user
+    ):
+        project = build_project(owner_id=regular_user.id, name="authz_test_project")
+        db_session.add(project)
+        await db_session.commit()
+        await db_session.refresh(project)
+        response = await client.post(
+            "/api/releases",
+            headers=admin_headers,
+            json={
+                "project_id": project.id,
+                "release_code": "AUTH-001",
+                "title": "Unauthorized",
+                "content": "test",
+            },
+        )
+        assert response.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_get_other_user_release_returns_403(self, client, admin_headers, create_release):
+        create_resp = await create_release()
+        release_id = create_resp.json()["id"]
+        response = await client.get(f"/api/releases/{release_id}", headers=admin_headers)
+        assert response.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_update_other_user_release_returns_403(
+        self, client, admin_headers, create_release
+    ):
+        create_resp = await create_release()
+        release_id = create_resp.json()["id"]
+        response = await client.put(
+            f"/api/releases/{release_id}", headers=admin_headers, json={"title": "Hacked"}
+        )
+        assert response.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_publish_other_user_release_returns_403(
+        self, client, admin_headers, create_release
+    ):
+        create_resp = await create_release()
+        release_id = create_resp.json()["id"]
+        response = await client.post(f"/api/releases/{release_id}/publish", headers=admin_headers)
+        assert response.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_archive_other_user_release_returns_403(
+        self, client, admin_headers, auth_headers, create_release
+    ):
+        create_resp = await create_release()
+        release_id = create_resp.json()["id"]
+        await client.post(f"/api/releases/{release_id}/publish", headers=auth_headers)
+        response = await client.post(f"/api/releases/{release_id}/archive", headers=admin_headers)
+        assert response.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_delete_other_user_release_returns_403(
+        self, client, admin_headers, create_release
+    ):
+        create_resp = await create_release()
+        release_id = create_resp.json()["id"]
+        response = await client.delete(f"/api/releases/{release_id}", headers=admin_headers)
+        assert response.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_list_releases_with_unauthorized_project_filter_returns_403(
+        self, client, admin_headers, db_session, regular_user
+    ):
+        project = build_project(owner_id=regular_user.id, name="authz_list_project")
+        db_session.add(project)
+        await db_session.commit()
+        await db_session.refresh(project)
+        response = await client.get(
+            "/api/releases", headers=admin_headers, params={"project_id": project.id}
+        )
+        assert response.status_code == 403

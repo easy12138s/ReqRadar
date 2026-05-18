@@ -109,3 +109,28 @@ class ContentReader:
     async def read_project_memory(self, project_id: int) -> dict | None:
         memory = ProjectMemory(self._memory_storage_path, project_id)
         return memory.load()
+
+    async def list_analyses(
+        self,
+        project_id: int,
+        status: str | None = None,
+        limit: int = 10,
+    ) -> list[dict]:
+        async with self._session_factory() as session:
+            stmt = select(AnalysisTask).where(AnalysisTask.project_id == project_id)
+            if status is not None:
+                stmt = stmt.where(AnalysisTask.status == status)
+            stmt = stmt.order_by(AnalysisTask.created_at.desc()).limit(limit)
+            result = await session.execute(stmt)
+            rows = result.scalars().all()
+            return [
+                {
+                    "id": t.id,
+                    "project_id": t.project_id,
+                    "requirement_name": t.requirement_name,
+                    "status": t.status,
+                    "depth": t.depth,
+                    "created_at": t.created_at.isoformat() if t.created_at else None,
+                }
+                for t in rows
+            ]

@@ -29,3 +29,31 @@ class RequirementDetail(BaseModel):
 class ProjectMemoryOutput(BaseModel):
     project_id: int
     memory: dict | None
+
+
+class ReadReportInput(BaseModel):
+    task_id: int = Field(..., description="Analysis task ID")
+    version: int | None = Field(
+        default=None, description="Specific report version (default: latest)"
+    )
+
+
+class ListAnalysesInput(BaseModel):
+    project_id: int = Field(..., description="Project ID")
+    status: str | None = Field(default=None, description="Filter by task status")
+    limit: int = Field(default=10, ge=1, le=50, description="Max results")
+
+
+class AnalysisSummary(BaseModel):
+    id: int
+    project_id: int
+    requirement_name: str
+    status: str
+    depth: str
+    created_at: str | None
+
+
+class ReportOutput(BaseModel):
+    task_id: int
+    markdown: str | None
+    version: int | None = None
