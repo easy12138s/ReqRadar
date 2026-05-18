@@ -284,3 +284,21 @@ export interface ProjectProfile {
   content: string;
   data: ProjectProfileData;
 }
+
+export interface RequirementRelease {
+  id: number;
+  project_id: number;
+  user_id: number;
+  task_id: number | null;
+  release_code: string;
+  version: number;
+  title: string;
+  content: string;
+  context_json: Record<string, unknown> | null;
+  status: 'draft' | 'published' | 'archived';
+  superseded_by: number | null;
+  published_at: string | null;
+  archived_at: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}

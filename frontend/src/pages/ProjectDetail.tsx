@@ -24,6 +24,8 @@ import {
   FileOutlined,
   DeleteOutlined,
   ExperimentOutlined,
+  SendOutlined,
+  InboxOutlined,
 } from '@ant-design/icons';
 import type {
   Project,
@@ -34,8 +36,10 @@ import type {
   TeamMember,
   HistoryEntry,
   FileTreeNode,
+  RequirementRelease,
 } from '@/types/api';
 import { getProject, updateProject, getProjectMemory, getProjectFiles, deleteProject } from '@/api/projects';
+import { listReleases, publishRelease, archiveRelease, deleteRelease } from '@/api/releases';
 
 const { Title, Paragraph } = Typography;
 
@@ -43,6 +47,12 @@ const SOURCE_TYPE_LABELS: Record<string, { text: string; color: string }> = {
   zip: { text: 'ZIP', color: 'orange' },
   git: { text: 'Git', color: 'green' },
   local: { text: '本地路径', color: 'blue' },
+};
+
+const RELEASE_STATUS_LABELS: Record<string, { text: string; color: string }> = {
+  draft: { text: '草稿', color: 'default' },
+  published: { text: '已发布', color: 'green' },
+  archived: { text: '已归档', color: 'orange' },
 };
 
 export function ProjectDetail() {
@@ -55,6 +65,8 @@ export function ProjectDetail() {
   const [editing, setEditing] = useState(false);
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
+  const [releases, setReleases] = useState<RequirementRelease[]>([]);
+  const [releasesLoading, setReleasesLoading] = useState(false);
 
   const fetchData = async () => {
     if (!id) return;
@@ -76,8 +88,22 @@ export function ProjectDetail() {
     }
   };
 
+  const fetchReleases = async () => {
+    if (!id) return;
+    setReleasesLoading(true);
+    try {
+      const data = await listReleases({ project_id: Number(id) });
+      setReleases(data);
+    } catch {
+      message.error('加载需求版本失败');
+    } finally {
+      setReleasesLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchData();
+    fetchReleases();
   }, [id]);
 
   const handleSave = async (values: ProjectUpdate) => {
@@ -108,6 +134,45 @@ export function ProjectDetail() {
           await deleteProject(id);
           message.success('项目已删除');
           navigate('/projects');
+        } catch {
+          message.error('删除失败');
+        }
+      },
+    });
+  };
+
+  const handlePublishRelease = async (releaseId: number) => {
+    try {
+      await publishRelease(releaseId);
+      message.success('发布成功');
+      fetchReleases();
+    } catch {
+      message.error('发布失败');
+    }
+  };
+
+  const handleArchiveRelease = async (releaseId: number) => {
+    try {
+      await archiveRelease(releaseId);
+      message.success('归档成功');
+      fetchReleases();
+    } catch {
+      message.error('归档失败');
+    }
+  };
+
+  const handleDeleteRelease = async (releaseId: number) => {
+    Modal.confirm({
+      title: '确认删除',
+      content: '确定要删除此需求版本吗？仅草稿状态可删除。',
+      okText: '删除',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: async () => {
+        try {
+          await deleteRelease(releaseId);
+          message.success('删除成功');
+          fetchReleases();
         } catch {
           message.error('删除失败');
         }
@@ -316,7 +381,83 @@ export function ProjectDetail() {
                 />
               ),
             },
+      ]}
+      />
+      ),
+    },
+    {
+      key: 'releases',
+      label: '需求版本',
+      children: (
+        <Table<RequirementRelease>
+          dataSource={releases}
+          rowKey="id"
+          loading={releasesLoading}
+          pagination={false}
+          columns={[
+            { title: '版本代号', dataIndex: 'release_code', key: 'release_code' },
+            { title: '版本', dataIndex: 'version', key: 'version', width: 60 },
+            { title: '标题', dataIndex: 'title', key: 'title' },
+            {
+              title: '状态',
+              dataIndex: 'status',
+              key: 'status',
+              width: 100,
+              render: (status: string) => (
+                <Tag color={RELEASE_STATUS_LABELS[status]?.color || 'default'}>
+                  {RELEASE_STATUS_LABELS[status]?.text || status}
+                </Tag>
+              ),
+            },
+            {
+              title: '发布时间',
+              dataIndex: 'published_at',
+              key: 'published_at',
+              width: 180,
+              render: (v: string | null) => (v ? new Date(v).toLocaleString() : '-'),
+            },
+            {
+              title: '操作',
+              key: 'actions',
+              width: 180,
+              render: (_: unknown, record: RequirementRelease) => (
+                <>
+                  {record.status === 'draft' && (
+                    <Button
+                      type="link"
+                      size="small"
+                      icon={<SendOutlined />}
+                      onClick={() => handlePublishRelease(record.id)}
+                    >
+                      发布
+                    </Button>
+                  )}
+                  {record.status === 'published' && (
+                    <Button
+                      type="link"
+                      size="small"
+                      icon={<InboxOutlined />}
+                      onClick={() => handleArchiveRelease(record.id)}
+                    >
+                      归档
+                    </Button>
+                  )}
+                  {record.status === 'draft' && (
+                    <Button
+                      type="link"
+                      size="small"
+                      danger
+                      icon={<DeleteOutlined />}
+                      onClick={() => handleDeleteRelease(record.id)}
+                    >
+                      删除
+                    </Button>
+                  )}
+                </>
+              ),
+            },
           ]}
+          locale={{ emptyText: '暂无需求版本' }}
         />
       ),
     },
