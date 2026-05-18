@@ -16,7 +16,7 @@ import ReactMarkdown from 'react-markdown';
 import html2pdf from 'html2pdf.js';
 import type { Report } from '@/types/api';
 import { getReport } from '@/api/reports';
-import { createRelease } from '@/api/releases';
+import { createRelease, publishRelease } from '@/api/releases';
 import { RiskBadge } from '@/components/RiskBadge';
 import { ChatPanel } from '@/components/ChatPanel';
 import { theme } from 'antd';
@@ -90,14 +90,15 @@ export function ReportView() {
     try {
       const values = await releaseForm.validateFields();
       setReleaseLoading(true);
-      await createRelease({
+      const release = await createRelease({
         project_id: Number(values.project_id),
         release_code: values.release_code,
         title: values.title,
         content: report?.content_markdown || '',
         task_id: taskId ? Number(taskId) : undefined,
       });
-      message.success('需求版本已创建');
+      await publishRelease(release.id);
+      message.success('需求版本已创建并发布');
       setReleaseModalOpen(false);
       releaseForm.resetFields();
     } catch (e: any) {
