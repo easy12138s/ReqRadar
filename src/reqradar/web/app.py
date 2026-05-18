@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select, func, update
 
 from reqradar.core.exceptions import ReqRadarException
-from reqradar.web.api.auth import router as auth_router, SECRET_KEY as AUTH_SECRET_KEY, ALGORITHM
+from reqradar.web.api.auth import router as auth_router
 from reqradar.web.api.projects import router as projects_router
 from reqradar.web.api.analyses import router as analyses_router
 from reqradar.web.api.reports import router as reports_router
@@ -60,7 +60,6 @@ async def lifespan(app: FastAPI):
     session_factory = create_session_factory(engine)
 
     dep_module.async_session_factory = session_factory
-    auth_module.SECRET_KEY = web_config.secret_key
     auth_module.ACCESS_TOKEN_EXPIRE_MINUTES = web_config.access_token_expire_minutes
     app.state.secret_key = web_config.secret_key
 

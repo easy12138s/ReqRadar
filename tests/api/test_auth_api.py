@@ -1,5 +1,27 @@
 import pytest
 
+from reqradar.web.api.auth import create_access_token
+
+
+@pytest.mark.asyncio
+async def test_logout_uses_app_state_secret_key(app, client, db_session, regular_user):
+    app.state.secret_key = "custom-test-secret-not-default"
+    mock_request = type(
+        "R",
+        (),
+        {
+            "app": type(
+                "A",
+                (),
+                {"state": type("S", (), {"secret_key": "custom-test-secret-not-default"})},
+            )
+        },
+    )()
+    token = create_access_token(regular_user.id, None, mock_request)
+    headers = {"Authorization": f"Bearer {token}"}
+    response = await client.post("/api/auth/logout", headers=headers)
+    assert response.status_code == 200
+
 
 @pytest.mark.asyncio
 async def test_register_creates_user_and_returns_token(client):

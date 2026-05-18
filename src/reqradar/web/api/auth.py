@@ -75,7 +75,9 @@ def _validate_password_strength(password: str) -> str | None:
     return None
 
 
-def create_access_token(user_id: int, expires_delta: Optional[timedelta] = None, request=None) -> str:
+def create_access_token(
+    user_id: int, expires_delta: Optional[timedelta] = None, request=None
+) -> str:
     expire = datetime.now(timezone.utc) + (
         expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     )
@@ -124,7 +126,9 @@ async def login(req: LoginRequest, db: DbSession, request: Request):
         "web.access_token_expire_minutes",
         default=ACCESS_TOKEN_EXPIRE_MINUTES,
     )
-    access_token = create_access_token(user.id, expires_delta=timedelta(minutes=expire_minutes), request=request)
+    access_token = create_access_token(
+        user.id, expires_delta=timedelta(minutes=expire_minutes), request=request
+    )
     return TokenResponse(access_token=access_token)
 
 
@@ -135,11 +139,13 @@ async def me(current_user: CurrentUser):
 
 @router.post("/logout")
 async def logout(
+    request: Request,
     token: Annotated[str, Depends(oauth2_scheme)],
     current_user: CurrentUser,
     db: DbSession,
 ):
-    payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    secret_key = get_secret_key(request)
+    payload = jwt.decode(token, secret_key, algorithms=[ALGORITHM])
     expires_at = datetime.fromtimestamp(payload["exp"], tz=timezone.utc)
 
     token_hash = hashlib.sha256(token.encode()).hexdigest()

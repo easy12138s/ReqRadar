@@ -26,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from reqradar.web.dependencies import CurrentUser, DbSession, get_current_user, get_db
 from reqradar.web.models import AnalysisTask, Project, RequirementDocument, UploadedFile, User
-from reqradar.web.api.auth import SECRET_KEY, ALGORITHM
+from reqradar.web.api.auth import ALGORITHM
 from reqradar.web.enums import TaskStatus
 from reqradar.web.websocket import manager as ws_manager
 
@@ -393,7 +393,12 @@ async def cancel_analysis(task_id: int, current_user: CurrentUser, db: DbSession
 @router.websocket("/{task_id}/ws")
 async def analysis_websocket(websocket: WebSocket, task_id: int, token: str = Query(...)):
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        secret_key = getattr(websocket.app.state, "secret_key", None)
+        if secret_key is None:
+            from reqradar.web.api.auth import SECRET_KEY as FALLBACK_KEY
+
+            secret_key = FALLBACK_KEY
+        payload = jwt.decode(token, secret_key, algorithms=[ALGORITHM])
         user_id = int(payload["sub"])
     except (JWTError, ValueError, TypeError):
         await websocket.close(code=4001, reason="Invalid token")
