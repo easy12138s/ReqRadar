@@ -20,7 +20,9 @@ def middleware(mock_app):
     return RateLimitMiddleware(mock_app, requests_per_minute=3)
 
 
-def _build_request(path: str = "/api/test", client_host: str = "127.0.0.1", scheme: str = "http") -> Request:
+def _build_request(
+    path: str = "/api/test", client_host: str | None = "127.0.0.1", scheme: str = "http"
+) -> Request:
     scope = {
         "type": "http",
         "method": "GET",
@@ -102,8 +104,7 @@ class TestRateLimitMiddlewareDispatch:
 
     @pytest.mark.asyncio
     async def test_handles_missing_client(self, middleware):
-        req = _build_request()
-        req._client = None
+        req = _build_request(client_host=None)
         response = await middleware.dispatch(req, AsyncMock(return_value=JSONResponse(content={})))
         assert response.status_code == 200
 
