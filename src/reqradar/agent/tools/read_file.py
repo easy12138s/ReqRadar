@@ -32,6 +32,7 @@ class ReadFileTool(BaseTool):
     }
 
     MAX_LINES = 2000
+    MAX_FILE_SIZE = 2 * 1024 * 1024  # 2MB
 
     def __init__(self, repo_path: str = ""):
         self.repo_path = repo_path
@@ -41,7 +42,21 @@ class ReadFileTool(BaseTool):
     async def execute(self, **kwargs) -> ToolResult:
         file_path = kwargs.get("path", "")
         start_line = kwargs.get("start_line", 1)
-        end_line = kwargs.get("end_line", start_line + self.MAX_LINES - 1)
+        end_line = kwargs.get("end_line")
+
+        try:
+            start_line = int(start_line)
+        except (TypeError, ValueError):
+            start_line = 1
+
+        if end_line is not None:
+            try:
+                end_line = int(end_line)
+            except (TypeError, ValueError):
+                end_line = None
+
+        if end_line is None:
+            end_line = start_line + self.MAX_LINES - 1
 
         if not file_path:
             return ToolResult(success=False, data="", error="No file path provided")
@@ -65,6 +80,14 @@ class ReadFileTool(BaseTool):
             return ToolResult(success=False, data="", error=f"File not found: {file_path}")
 
         try:
+            file_size = full_path.stat().st_size
+            if file_size > self.MAX_FILE_SIZE:
+                return ToolResult(
+                    success=False,
+                    data="",
+                    error=f"File too large ({file_size / 1024 / 1024:.1f}MB), limit is {self.MAX_FILE_SIZE / 1024 / 1024:.0f}MB: {file_path}",
+                )
+
             content = full_path.read_text(encoding="utf-8")
             lines = content.split("\n")
             total_lines = len(lines)

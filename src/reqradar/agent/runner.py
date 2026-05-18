@@ -20,44 +20,20 @@ from reqradar.agent.prompts.analysis_phase import (
     build_termination_prompt,
 )
 from reqradar.agent.prompts.report_phase import build_report_generation_prompt
-from reqradar.agent.schemas import STEP_OUTPUT_SCHEMA
+from reqradar.agent.schemas import REPORT_DATA_SCHEMA, STEP_OUTPUT_SCHEMA
 from reqradar.agent.tool_call_tracker import ToolCallTracker
 from reqradar.agent.tools import ToolRegistry
 
 logger = logging.getLogger("reqradar.agent.runner")
 
-REPORT_DATA_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "requirement_title": {"type": "string"},
-        "requirement_understanding": {"type": "string"},
-        "executive_summary": {"type": "string"},
-        "technical_summary": {"type": "string"},
-        "impact_narrative": {"type": "string"},
-        "risk_narrative": {"type": "string"},
-        "risk_level": {"type": "string", "enum": ["critical", "high", "medium", "low", "unknown"]},
-        "decision_highlights": {"type": "array", "items": {"type": "string"}},
-        "impact_domains": {"type": "array"},
-        "impact_modules": {"type": "array"},
-        "change_assessment": {"type": "array"},
-        "risks": {"type": "array"},
-        "decision_summary": {"type": "object"},
-        "evidence_items": {"type": "array"},
-        "verification_points": {"type": "array", "items": {"type": "string"}},
-        "implementation_suggestion": {"type": "string"},
-        "priority": {"type": "string"},
-        "priority_reason": {"type": "string"},
-        "terms": {"type": "array"},
-        "keywords": {"type": "array", "items": {"type": "string"}},
-        "constraints": {"type": "array", "items": {"type": "string"}},
-        "structured_constraints": {"type": "array"},
-        "contributors": {"type": "array"},
-        "warnings": {"type": "array", "items": {"type": "string"}},
-    },
-    "required": ["requirement_title", "risk_level"],
-}
-
 _RESULT_TRUNCATE_LENGTH = 4000
+
+_EVIDENCE_TYPE_MAP = {
+    "analysis": "inference",
+    "term": "project_context",
+    "code": "code_match",
+    "history": "inference",
+}
 
 
 def _truncate_result(text: str, max_len: int = _RESULT_TRUNCATE_LENGTH) -> str:
@@ -194,7 +170,7 @@ def build_fallback_report_data(agent: AnalysisAgent) -> dict:
         },
         "evidence_items": [
             {
-                "kind": ev.type,
+                "kind": _EVIDENCE_TYPE_MAP.get(ev.type, "inference"),
                 "source": ev.source,
                 "summary": ev.content,
                 "confidence": ev.confidence,
@@ -260,6 +236,16 @@ async def _execute_tool_calls(
                     "role": "tool",
                     "tool_call_id": tc_id,
                     "content": "(此调用已去重，跳过重复请求)",
+                }
+            )
+            continue
+
+        if tracker.is_tool_over_limit(tc_name):
+            tool_results.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": tc_id,
+                    "content": f"Error: Tool '{tc_name}' has reached its call limit ({tracker.max_calls_per_tool})",
                 }
             )
             continue

@@ -169,6 +169,9 @@ class LiteLLMClient(LLMClient):
             ollama_host = host or "http://localhost:11434"
             if not self.api_base:
                 self.api_base = ollama_host.rstrip("/") + "/v1"
+        # 自定义 base_url 时，模型名无 provider 前缀则自动加 openai/
+        if self.api_base and "/" not in self.model:
+            self.model = f"openai/{self.model}"
         self.timeout = timeout
         self.max_retries = max_retries
         self._current_task_id: int | None = None

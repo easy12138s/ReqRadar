@@ -76,6 +76,7 @@ class DimensionTracker:
             dim_id: {
                 "status": state.status,
                 "evidence_ids": state.evidence_ids,
+                "draft_content": state.draft_content,
             }
             for dim_id, state in self.dimensions.items()
         }
@@ -85,3 +86,4 @@ class DimensionTracker:
             if dim_id in self.dimensions:
                 self.dimensions[dim_id].status = data.get("status", "pending")
                 self.dimensions[dim_id].evidence_ids = data.get("evidence_ids", [])
+                self.dimensions[dim_id].draft_content = data.get("draft_content")

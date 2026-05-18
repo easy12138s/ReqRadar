@@ -24,37 +24,6 @@ from reqradar.web.websocket import ConnectionManager, manager as ws_manager
 
 logger = logging.getLogger("reqradar.web.services.analysis_runner")
 
-REPORT_DATA_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "requirement_title": {"type": "string"},
-        "requirement_understanding": {"type": "string"},
-        "executive_summary": {"type": "string"},
-        "technical_summary": {"type": "string"},
-        "impact_narrative": {"type": "string"},
-        "risk_narrative": {"type": "string"},
-        "risk_level": {"type": "string", "enum": ["critical", "high", "medium", "low", "unknown"]},
-        "decision_highlights": {"type": "array", "items": {"type": "string"}},
-        "impact_domains": {"type": "array"},
-        "impact_modules": {"type": "array"},
-        "change_assessment": {"type": "array"},
-        "risks": {"type": "array"},
-        "decision_summary": {"type": "object"},
-        "evidence_items": {"type": "array"},
-        "verification_points": {"type": "array", "items": {"type": "string"}},
-        "implementation_suggestion": {"type": "string"},
-        "priority": {"type": "string"},
-        "priority_reason": {"type": "string"},
-        "terms": {"type": "array"},
-        "keywords": {"type": "array", "items": {"type": "string"}},
-        "constraints": {"type": "array", "items": {"type": "string"}},
-        "structured_constraints": {"type": "array"},
-        "contributors": {"type": "array"},
-        "warnings": {"type": "array", "items": {"type": "string"}},
-    },
-    "required": ["requirement_title", "risk_level"],
-}
-
 
 class AnalysisRunner:
     def __init__(self, max_concurrent: int = 2):

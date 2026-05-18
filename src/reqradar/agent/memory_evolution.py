@@ -116,15 +116,26 @@ async def evolve_memory_after_analysis(
     if not result:
         return
 
+    success_count = 0
+    fail_count = 0
     for op in result.get("operations", []):
         try:
             _apply_operation(project_memory, op)
+            success_count += 1
         except Exception as e:
+            fail_count += 1
             logger.warning("Failed to apply memory operation %s: %s", op.get("target", ""), e)
 
-    changelog_entry = result.get("changelog_entry", "分析后记忆更新")
-    project_memory._save_changelog(changelog_entry)
+    if success_count == 0:
+        logger.warning("All memory operations failed, skipping save")
+        return
+
     project_memory.save()
+
+    changelog_entry = result.get("changelog_entry", "分析后记忆更新")
+    if fail_count > 0:
+        changelog_entry += f" ({fail_count} 个操作失败)"
+    project_memory._save_changelog(changelog_entry)
 
     logger.info(
         "Memory evolution complete: %d operations, changelog: %s",
