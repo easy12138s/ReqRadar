@@ -85,6 +85,15 @@ exclude = ["alembic/versions/"]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 addopts = "--cov=reqradar --cov-report=term-missing --cov-report=html -q"
+markers = [
+    "e2e: End-to-end tests (mock or real)",
+    "e2e_real: End-to-end tests requiring real LLM API key",
+    "integration: Integration tests (DB, API, CLI)",
+    "slow: Tests that take >10s",
+]
+filterwarnings = [
+    "ignore::pytest.PytestUnknownMarkWarning",
+]
 
 [tool.coverage.run]
 source = ["src/reqradar"]

@@ -30,29 +30,30 @@ from reqradar.web.models import AnalysisTask, UserConfig
 _LLM_API_KEY = os.environ.get("REQRADAR_TEST_LLM_API_KEY", "")
 _LLM_MODEL = os.environ.get("REQRADAR_TEST_LLM_MODEL", "MiniMax-M2.5")
 _LLM_BASE_URL = os.environ.get("REQRADAR_TEST_LLM_BASE_URL", "")
-_GIT_URL = os.environ.get(
-    "REQRADAR_TEST_GIT_URL", "https://github.com/easy12138s/cool-agent.git"
-)
+_GIT_URL = os.environ.get("REQRADAR_TEST_GIT_URL", "https://github.com/easy12138s/cool-agent.git")
 _LOCAL_PROJECT_PATH = os.environ.get(
     "REQRADAR_TEST_LOCAL_PROJECT", str(Path(__file__).parent.parent.parent / "src")
 )
 _PDF_PATH = os.environ.get("REQRADAR_TEST_PDF_PATH", "")
 
-_require_real_llm = pytest.mark.skipif(
-    not _LLM_API_KEY, reason="REQRADAR_TEST_LLM_API_KEY not set"
-)
+_require_real_llm = pytest.mark.skipif(not _LLM_API_KEY, reason="REQRADAR_TEST_LLM_API_KEY not set")
 
 _require_pdf = pytest.mark.skipif(
-    not _PDF_PATH and not Path(
-        r"D:\edgedownload\Cool Agent 复杂需求文档（个人全场景信息管理自动化闭环）.pdf"
-    ).exists(),
+    not _PDF_PATH,
     reason="Set REQRADAR_TEST_PDF_PATH to the requirement PDF",
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _reset_llm_connectivity():
+    yield
+    from reqradar.modules.llm_connectivity import _cache
+
+    _cache.clear()
 
 
 @pytest.fixture(autouse=True)
@@ -105,16 +106,12 @@ async def _inject_user_llm_config(db_session, regular_user):
 # ---------------------------------------------------------------------------
 
 
-async def _poll_task_status(
-    session_factory, task_id: int, timeout: int = 600
-) -> AnalysisTask:
+async def _poll_task_status(session_factory, task_id: int, timeout: int = 600) -> AnalysisTask:
     """轮询等待分析任务到达终态。"""
     deadline = asyncio.get_event_loop().time() + timeout
     while asyncio.get_event_loop().time() < deadline:
         async with session_factory() as db:
-            result = await db.execute(
-                select(AnalysisTask).where(AnalysisTask.id == task_id)
-            )
+            result = await db.execute(select(AnalysisTask).where(AnalysisTask.id == task_id))
             task = result.scalar_one()
             if task.status in (
                 TaskStatus.COMPLETED,
@@ -146,9 +143,7 @@ async def _print_analysis_report(client, auth_headers, app, task, test_name: str
     print(f"{'=' * 80}")
 
     # 通过 API 获取 markdown 报告 (复用 GET /api/reports/{task_id}/markdown)
-    resp = await client.get(
-        f"/api/reports/{task.id}/markdown", headers=auth_headers
-    )
+    resp = await client.get(f"/api/reports/{task.id}/markdown", headers=auth_headers)
     if resp.status_code == 200:
         print(resp.text)
     else:
@@ -165,9 +160,8 @@ async def _print_analysis_report(client, auth_headers, app, task, test_name: str
 # ---------------------------------------------------------------------------
 # 测试 1: 需求分析全流程 (from-git → 分析 → 报告)
 # ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
+@pytest.mark.e2e_real
+@pytest.mark.e2e
 @_require_real_llm
 @pytest.mark.timeout(600)
 async def test_full_analysis_pipeline(
@@ -219,17 +213,15 @@ async def test_full_analysis_pipeline(
 
     # 5. 输出完整报告
     await _print_analysis_report(
-        client, auth_headers, app, completed_task,
-        "test_full_analysis_pipeline"
+        client, auth_headers, app, completed_task, "test_full_analysis_pipeline"
     )
 
 
 # ---------------------------------------------------------------------------
 # 测试 2: 需求预处理 + 分析全流程 (PDF → 合并 → 分析 → 报告)
 # ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
+@pytest.mark.e2e_real
+@pytest.mark.e2e
 @_require_real_llm
 @_require_pdf
 @pytest.mark.timeout(600)
@@ -241,9 +233,7 @@ async def test_preprocess_then_analyze(
     from reqradar.modules.llm_client import create_llm_client
 
     # 0. 准备 PDF 路径
-    pdf_path = Path(_PDF_PATH) if _PDF_PATH else Path(
-        r"D:\edgedownload\Cool Agent 复杂需求文档（个人全场景信息管理自动化闭环）.pdf"
-    )
+    pdf_path = Path(_PDF_PATH)
     if not pdf_path.exists():
         pytest.skip(f"PDF not found: {pdf_path}")
 
@@ -297,6 +287,5 @@ async def test_preprocess_then_analyze(
 
     # 5. 输出完整报告
     await _print_analysis_report(
-        client, auth_headers, app, completed_task,
-        "test_preprocess_then_analyze"
+        client, auth_headers, app, completed_task, "test_preprocess_then_analyze"
     )

@@ -2,7 +2,6 @@ import pytest
 
 from tests.factories import build_project, build_requirement_document
 
-
 @pytest.fixture
 async def requirement_doc(db_session, regular_user):
     project = build_project(owner_id=regular_user.id, name="requirement_api_project")
@@ -14,9 +13,6 @@ async def requirement_doc(db_session, regular_user):
     await db_session.commit()
     await db_session.refresh(doc)
     return doc
-
-
-@pytest.mark.asyncio
 async def test_get_update_list_and_delete_requirement(client, auth_headers, requirement_doc):
     get_response = await client.get(f"/api/requirements/{requirement_doc.id}", headers=auth_headers)
     assert get_response.status_code == 200
@@ -41,16 +37,10 @@ async def test_get_update_list_and_delete_requirement(client, auth_headers, requ
     delete_response = await client.delete(f"/api/requirements/{requirement_doc.id}", headers=auth_headers)
     assert delete_response.status_code == 200
     assert delete_response.json() == {"deleted": True}
-
-
-@pytest.mark.asyncio
 async def test_missing_requirement_returns_404(client, auth_headers):
     response = await client.get("/api/requirements/99999", headers=auth_headers)
 
     assert response.status_code == 404
-
-
-@pytest.mark.asyncio
 async def test_preprocess_rejects_unsupported_file_type(client, auth_headers, db_session, regular_user):
     project = build_project(owner_id=regular_user.id, name="upload_requirement_project")
     db_session.add(project)

@@ -5,7 +5,6 @@ from unittest.mock import MagicMock
 
 from reqradar.mcp.lifecycle import MCPServerHandle, create_mcp_server, maybe_start_mcp_with_web, stop_mcp_with_web
 
-
 class TestMCPServerHandle:
     def test_init(self):
         mcp_mock = MagicMock()
@@ -13,7 +12,6 @@ class TestMCPServerHandle:
         assert handle.mcp is mcp_mock
         assert handle.task is None
         assert handle.started is False
-
 
 class TestCreateMCPServer:
     def test_creates_server_with_tools(self):
@@ -35,9 +33,7 @@ class TestCreateMCPServer:
             mcp = create_mcp_server(ctx)
             assert mcp is not None
 
-
 class TestMaybeStartMCPWithWeb:
-    @pytest.mark.asyncio
     async def test_skips_when_already_started(self):
         app = MagicMock()
         existing_handle = MagicMock()
@@ -48,9 +44,7 @@ class TestMaybeStartMCPWithWeb:
 
         assert app.state.mcp_handle is existing_handle
 
-
 class TestStopMCPWithWeb:
-    @pytest.mark.asyncio
     async def test_handles_none_handle(self):
         app = MagicMock()
         app.state.mcp_handle = None

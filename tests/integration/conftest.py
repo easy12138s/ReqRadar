@@ -4,15 +4,12 @@ import pytest
 
 from reqradar.infrastructure.config import Config, HomeConfig, WebConfig
 
-_PROJECT_ROOT = Path(__file__).parent.parent.parent
-_FIXED_DATA = _PROJECT_ROOT / "tmp_test_data"
-
 
 @pytest.fixture
 def test_config(tmp_path: Path) -> Config:
-    """覆盖默认 test_config，将数据目录固定到项目根目录下的 tmp_test_data/。"""
-    data_root = _FIXED_DATA / "data"
-    reports_path = _FIXED_DATA / "reports"
+    """覆盖默认 test_config，所有数据写入 tmp_path 隔离目录。"""
+    data_root = tmp_path / "data"
+    reports_path = tmp_path / "reports"
     data_root.mkdir(parents=True, exist_ok=True)
     reports_path.mkdir(parents=True, exist_ok=True)
     return Config(

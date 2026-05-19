@@ -4,7 +4,6 @@ from reqradar.web.models import PendingChange
 from reqradar.web.services.version_service import VersionService
 from tests.factories import build_analysis_task, build_project
 
-
 @pytest.fixture
 async def owned_project(db_session, regular_user):
     project = build_project(owner_id=regular_user.id, name="gap_project")
@@ -12,9 +11,6 @@ async def owned_project(db_session, regular_user):
     await db_session.commit()
     await db_session.refresh(project)
     return project
-
-
-@pytest.mark.asyncio
 async def test_synonyms_crud(client, auth_headers, owned_project):
     create_response = await client.post(
         "/api/synonyms",
@@ -49,9 +45,6 @@ async def test_synonyms_crud(client, auth_headers, owned_project):
         params={"project_id": owned_project.id},
     )
     assert delete_response.status_code == 204
-
-
-@pytest.mark.asyncio
 async def test_synonym_update_rejects_cross_project_access(client, auth_headers, db_session, admin_user):
     from reqradar.web.models import SynonymMapping
 
@@ -74,9 +67,6 @@ async def test_synonym_update_rejects_cross_project_access(client, auth_headers,
     )
 
     assert response.status_code == 403
-
-
-@pytest.mark.asyncio
 async def test_evidence_list_and_detail(client, auth_headers, db_session, owned_project, regular_user):
     task = build_analysis_task(project_id=owned_project.id, user_id=regular_user.id)
     db_session.add(task)
@@ -111,9 +101,6 @@ async def test_evidence_list_and_detail(client, auth_headers, db_session, owned_
     assert list_response.json()["evidence"][0]["id"] == "ev-1"
     assert detail_response.status_code == 200
     assert detail_response.json()["content"] == "evidence content"
-
-
-@pytest.mark.asyncio
 async def test_evidence_detail_missing_returns_404(client, auth_headers, db_session, owned_project, regular_user):
     task = build_analysis_task(project_id=owned_project.id, user_id=regular_user.id)
     db_session.add(task)
@@ -123,9 +110,6 @@ async def test_evidence_detail_missing_returns_404(client, auth_headers, db_sess
     response = await client.get(f"/api/analyses/{task.id}/evidence/missing", headers=auth_headers)
 
     assert response.status_code == 404
-
-
-@pytest.mark.asyncio
 async def test_reject_pending_change(client, auth_headers, db_session, owned_project):
     change = PendingChange(
         project_id=owned_project.id,

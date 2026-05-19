@@ -1,9 +1,6 @@
 import pytest
 
 from tests.factories import build_report_template
-
-
-@pytest.mark.asyncio
 async def test_template_crud_flow(client, auth_headers):
     create_response = await client.post(
         "/api/templates",
@@ -36,9 +33,6 @@ async def test_template_crud_flow(client, auth_headers):
 
     delete_response = await client.delete(f"/api/templates/{template_id}", headers=auth_headers)
     assert delete_response.status_code == 204
-
-
-@pytest.mark.asyncio
 async def test_default_template_cannot_be_modified_or_deleted(client, auth_headers, db_session):
     template = build_report_template(name="Default", is_default=True)
     db_session.add(template)
@@ -52,9 +46,6 @@ async def test_default_template_cannot_be_modified_or_deleted(client, auth_heade
 
     assert update_response.status_code == 403
     assert delete_response.status_code == 403
-
-
-@pytest.mark.asyncio
 async def test_set_default_template(client, auth_headers, db_session):
     template = build_report_template(name="Candidate", is_default=False)
     db_session.add(template)

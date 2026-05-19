@@ -5,16 +5,12 @@ import pytest
 
 from tests.factories import build_project
 
-
 def make_zip(entries: dict[str, str]) -> bytes:
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w") as zf:
         for name, content in entries.items():
             zf.writestr(name, content)
     return buffer.getvalue()
-
-
-@pytest.mark.asyncio
 async def test_create_project_from_local_list_get_update_files_and_delete(
     client, auth_headers, sample_repo
 ):
@@ -53,9 +49,6 @@ async def test_create_project_from_local_list_get_update_files_and_delete(
     delete_response = await client.delete(f"/api/projects/{project_id}", headers=auth_headers)
     assert delete_response.status_code == 200
     assert delete_response.json()["success"] is True
-
-
-@pytest.mark.asyncio
 async def test_create_project_from_local_rejects_missing_path(client, auth_headers, tmp_path):
     response = await client.post(
         "/api/projects/from-local",
@@ -64,9 +57,6 @@ async def test_create_project_from_local_rejects_missing_path(client, auth_heade
     )
 
     assert response.status_code == 400
-
-
-@pytest.mark.asyncio
 async def test_create_project_from_zip_and_reject_duplicate_name(client, auth_headers):
     response = await client.post(
         "/api/projects/from-zip",
@@ -83,9 +73,6 @@ async def test_create_project_from_zip_and_reject_duplicate_name(client, auth_he
 
     assert response.status_code == 201
     assert duplicate_response.status_code == 409
-
-
-@pytest.mark.asyncio
 async def test_create_project_from_zip_rejects_path_traversal(client, auth_headers):
     response = await client.post(
         "/api/projects/from-zip",
@@ -95,9 +82,6 @@ async def test_create_project_from_zip_rejects_path_traversal(client, auth_heade
     )
 
     assert response.status_code == 400
-
-
-@pytest.mark.asyncio
 async def test_project_access_is_limited_to_owner(client, auth_headers, db_session, admin_user):
     project = build_project(owner_id=admin_user.id, name="private_project")
     db_session.add(project)
@@ -107,9 +91,6 @@ async def test_project_access_is_limited_to_owner(client, auth_headers, db_sessi
     response = await client.get(f"/api/projects/{project.id}", headers=auth_headers)
 
     assert response.status_code == 404
-
-
-@pytest.mark.asyncio
 async def test_trigger_index_returns_accepted(client, auth_headers, db_session, regular_user, monkeypatch):
     calls = []
 

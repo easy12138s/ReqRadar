@@ -17,6 +17,8 @@ from reqradar.web.database import Base
 from reqradar.web.models import User
 from reqradar.web.services.report_storage import ReportStorage
 
+from tests.factories import unique_email
+
 
 @pytest.fixture
 def test_config(tmp_path: Path) -> Config:
@@ -130,3 +132,63 @@ def sample_repo(tmp_path: Path) -> Path:
     (repo / "main.py").write_text("print('hello')\n", encoding="utf-8")
     (repo / "README.md").write_text("# Sample\n", encoding="utf-8")
     return repo
+
+
+@pytest.fixture(scope="session")
+async def session_scoped_db_engine():
+    engine = create_async_engine(
+        "sqlite+aiosqlite:///:memory:",
+        future=True,
+    )
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    try:
+        yield engine
+    finally:
+        await engine.dispose()
+
+
+@pytest.fixture(scope="session")
+async def session_scoped_session_factory(session_scoped_db_engine):
+    return async_sessionmaker(session_scoped_db_engine, expire_on_commit=False, class_=AsyncSession)
+
+
+@pytest.fixture
+async def test_user(client: AsyncClient) -> tuple:
+    """Register + login a user, yield (client, headers, token, user_data)."""
+    user_data = {
+        "email": unique_email("testuser"),
+        "password": "TestPass123",
+        "display_name": "Test User",
+    }
+    resp = await client.post("/api/auth/register", json=user_data)
+    assert resp.status_code == 201
+    login_resp = await client.post(
+        "/api/auth/login",
+        json={"email": user_data["email"], "password": user_data["password"]},
+    )
+    assert login_resp.status_code == 200
+    token = login_resp.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+    yield (client, headers, token, user_data)
+
+
+@pytest.fixture
+async def test_project(test_user, tmp_path: Path) -> tuple:
+    """Create a project, yield (client, headers, token, user_data, project_id)."""
+    client, headers, token, user_data = test_user
+    repo = tmp_path / "project_repo"
+    repo.mkdir()
+    (repo / "main.py").write_text("print('hello')", encoding="utf-8")
+    resp = await client.post(
+        "/api/projects/from-local",
+        headers=headers,
+        json={
+            "name": "test-project",
+            "description": "Test",
+            "local_path": str(repo),
+        },
+    )
+    assert resp.status_code == 201
+    project_id = resp.json()["id"]
+    yield (client, headers, token, user_data, project_id)

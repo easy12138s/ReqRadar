@@ -1,9 +1,6 @@
 import pytest
 
 from reqradar.web.api.auth import create_access_token
-
-
-@pytest.mark.asyncio
 async def test_logout_uses_app_state_secret_key(app, client, db_session, regular_user):
     app.state.secret_key = "custom-test-secret-not-default"
     mock_request = type(
@@ -21,9 +18,6 @@ async def test_logout_uses_app_state_secret_key(app, client, db_session, regular
     headers = {"Authorization": f"Bearer {token}"}
     response = await client.post("/api/auth/logout", headers=headers)
     assert response.status_code == 200
-
-
-@pytest.mark.asyncio
 async def test_register_creates_user_and_returns_token(client):
     response = await client.post(
         "/api/auth/register",
@@ -38,9 +32,6 @@ async def test_register_creates_user_and_returns_token(client):
     body = response.json()
     assert body["email"] == "new-user@example.com"
     assert body["role"] == "user"
-
-
-@pytest.mark.asyncio
 async def test_register_rejects_weak_password(client):
     response = await client.post(
         "/api/auth/register",
@@ -49,9 +40,6 @@ async def test_register_rejects_weak_password(client):
 
     assert response.status_code == 400
     assert "Password must be at least" in response.json()["detail"]
-
-
-@pytest.mark.asyncio
 async def test_login_returns_token_for_valid_credentials(client, regular_user):
     response = await client.post(
         "/api/auth/login",
@@ -61,9 +49,6 @@ async def test_login_returns_token_for_valid_credentials(client, regular_user):
     assert response.status_code == 200
     assert response.json()["token_type"] == "bearer"
     assert response.json()["access_token"]
-
-
-@pytest.mark.asyncio
 async def test_login_rejects_invalid_credentials(client, regular_user):
     response = await client.post(
         "/api/auth/login",
@@ -71,9 +56,6 @@ async def test_login_rejects_invalid_credentials(client, regular_user):
     )
 
     assert response.status_code == 401
-
-
-@pytest.mark.asyncio
 async def test_put_me_password_changes_current_user_password(client, auth_headers, regular_user):
     response = await client.put(
         "/api/auth/me/password",
@@ -87,9 +69,6 @@ async def test_put_me_password_changes_current_user_password(client, auth_header
 
     assert response.status_code == 200
     assert login_response.status_code == 200
-
-
-@pytest.mark.asyncio
 async def test_put_me_password_rejects_wrong_old_password(client, auth_headers):
     response = await client.put(
         "/api/auth/me/password",

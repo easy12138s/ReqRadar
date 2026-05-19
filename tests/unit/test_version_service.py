@@ -4,7 +4,6 @@ from reqradar.web.models import ReportVersion
 from reqradar.web.services.version_service import VersionService
 from tests.factories import build_analysis_task, build_project
 
-
 @pytest.fixture
 async def task(db_session, regular_user):
     project = build_project(owner_id=regular_user.id, name="version_project")
@@ -16,9 +15,6 @@ async def task(db_session, regular_user):
     await db_session.commit()
     await db_session.refresh(task)
     return task
-
-
-@pytest.mark.asyncio
 async def test_create_version_increments_version_number_and_updates_task(db_session, task):
     service = VersionService(db_session)
 
@@ -28,9 +24,6 @@ async def test_create_version_increments_version_number_and_updates_task(db_sess
     assert first.version_number == 1
     assert second.version_number == 2
     assert task.current_version == 2
-
-
-@pytest.mark.asyncio
 async def test_list_versions_orders_newest_first(db_session, task):
     service = VersionService(db_session)
     await service.create_version(task.id, {"summary": "v1"}, {}, "# V1", "<h1>V1</h1>")
@@ -39,16 +32,10 @@ async def test_list_versions_orders_newest_first(db_session, task):
     versions = await service.list_versions(task.id)
 
     assert [version.version_number for version in versions] == [2, 1]
-
-
-@pytest.mark.asyncio
 async def test_get_current_version_returns_none_without_task_or_current_version(db_session):
     service = VersionService(db_session)
 
     assert await service.get_current_version(999) is None
-
-
-@pytest.mark.asyncio
 async def test_rollback_creates_new_version_from_target(db_session, task):
     service = VersionService(db_session)
     await service.create_version(task.id, {"summary": "v1"}, {"ctx": 1}, "# V1", "<h1>V1</h1>")
@@ -60,9 +47,6 @@ async def test_rollback_creates_new_version_from_target(db_session, task):
     assert rollback.version_number == 3
     assert rollback.trigger_type == "rollback"
     assert rollback.content_markdown == "# V1"
-
-
-@pytest.mark.asyncio
 async def test_enforce_version_limit_removes_oldest_versions(db_session, task):
     service = VersionService(db_session, version_limit=2)
     await service.create_version(task.id, {"summary": "v1"}, {}, "# V1", "<h1>V1</h1>")
@@ -72,9 +56,6 @@ async def test_enforce_version_limit_removes_oldest_versions(db_session, task):
     versions = await service.list_versions(task.id)
 
     assert [version.version_number for version in versions] == [3, 2]
-
-
-@pytest.mark.asyncio
 async def test_get_context_snapshot_handles_missing_and_non_dict_snapshot(db_session, task):
     service = VersionService(db_session)
     version = ReportVersion(

@@ -5,11 +5,15 @@ from reqradar.web.api.auth import hash_password
 from reqradar.web.enums import TaskStatus
 from reqradar.web.models import (
     AnalysisTask,
+    MCPAccessKey,
+    PendingChange,
     Project,
     Report,
     ReportTemplate,
     ReportVersion,
     RequirementDocument,
+    RequirementRelease,
+    SynonymMapping,
     User,
 )
 
@@ -115,3 +119,62 @@ def build_report_template(**overrides) -> ReportTemplate:
     }
     data.update(overrides)
     return ReportTemplate(**data)
+
+
+def build_requirement_release(project_id: int, user_id: int, **overrides) -> RequirementRelease:
+    index = next(_seq)
+    data = {
+        "project_id": project_id,
+        "user_id": user_id,
+        "release_code": f"REL-{index:03d}",
+        "version": 1,
+        "title": f"Release {index}",
+        "content": "需求文档内容",
+        "context_json": {},
+        "status": "draft",
+    }
+    data.update(overrides)
+    return RequirementRelease(**data)
+
+
+def build_synonym(**overrides) -> SynonymMapping:
+    index = next(_seq)
+    data = {
+        "project_id": None,
+        "business_term": f"业务术语{index}",
+        "code_terms": [f"code_term_{index}"],
+        "priority": 100,
+        "source": "user",
+    }
+    data.update(overrides)
+    return SynonymMapping(**data)
+
+
+def build_pending_change(project_id: int, **overrides) -> PendingChange:
+    index = next(_seq)
+    data = {
+        "project_id": project_id,
+        "change_type": "update",
+        "target_id": f"target-{index}",
+        "old_value": "旧值",
+        "new_value": "新值",
+        "diff": "-旧值\n+新值",
+        "source": "analysis",
+        "status": "pending",
+    }
+    data.update(overrides)
+    return PendingChange(**data)
+
+
+def build_mcp_access_key(user_id: int, **overrides) -> MCPAccessKey:
+    index = next(_seq)
+    data = {
+        "user_id": user_id,
+        "key_prefix": f"mcp_{index:06d}"[:12],
+        "key_hash": f"hashed_key_{index}",
+        "name": f"Test Key {index}",
+        "scopes": ["read"],
+        "is_active": True,
+    }
+    data.update(overrides)
+    return MCPAccessKey(**data)

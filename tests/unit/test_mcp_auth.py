@@ -4,7 +4,6 @@ import pytest
 
 from reqradar.mcp.auth import MCPAuthResult, authenticate_mcp_request, parse_bearer_token
 
-
 class TestParseBearerToken:
     def test_valid_bearer_token(self):
         token = parse_bearer_token("Bearer rr_mcp_abc123")
@@ -31,7 +30,6 @@ class TestParseBearerToken:
     def test_non_rr_mcp_prefix(self):
         assert parse_bearer_token("Bearer other_token") is None
 
-
 class TestMCPAuthResult:
     def test_creation(self):
         from unittest.mock import MagicMock
@@ -45,25 +43,19 @@ class TestMCPAuthResult:
         assert result.user_id == 10
         assert result.scopes == ["read"]
 
-
 class TestAuthenticateMCPRequest:
-    @pytest.mark.asyncio
     async def test_null_header_returns_none(self):
         from unittest.mock import AsyncMock
 
         db = AsyncMock()
         result = await authenticate_mcp_request(None, db)
         assert result is None
-
-    @pytest.mark.asyncio
     async def test_invalid_format_returns_none(self):
         from unittest.mock import AsyncMock
 
         db = AsyncMock()
         result = await authenticate_mcp_request("Basic abc", db)
         assert result is None
-
-    @pytest.mark.asyncio
     async def test_invalid_key_returns_none(self):
         from unittest.mock import AsyncMock, patch
 
@@ -71,8 +63,6 @@ class TestAuthenticateMCPRequest:
         with patch("reqradar.mcp.auth.verify_key", return_value=None):
             result = await authenticate_mcp_request("Bearer rr_mcp_fake", db)
             assert result is None
-
-    @pytest.mark.asyncio
     async def test_valid_key_returns_result(self):
         from unittest.mock import AsyncMock, MagicMock, patch
 

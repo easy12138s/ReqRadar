@@ -2,7 +2,6 @@ import pytest
 
 from tests.factories import build_project
 
-
 @pytest.fixture
 async def project(db_session, regular_user):
     project = build_project(owner_id=regular_user.id, name="releases_api_project")
@@ -10,7 +9,6 @@ async def project(db_session, regular_user):
     await db_session.commit()
     await db_session.refresh(project)
     return project
-
 
 @pytest.fixture
 async def release_data(project):
@@ -21,7 +19,6 @@ async def release_data(project):
         "content": "Release content here",
     }
 
-
 @pytest.fixture
 async def create_release(client, auth_headers, release_data):
     async def _create(**overrides):
@@ -29,9 +26,6 @@ async def create_release(client, auth_headers, release_data):
         return await client.post("/api/releases", headers=auth_headers, json=data)
 
     return _create
-
-
-@pytest.mark.asyncio
 async def test_create_release_returns_201(client, auth_headers, release_data):
     response = await client.post("/api/releases", headers=auth_headers, json=release_data)
 
@@ -47,18 +41,12 @@ async def test_create_release_returns_201(client, auth_headers, release_data):
     assert body["archived_at"] is None
     assert body["id"] is not None
     assert body["created_at"] is not None
-
-
-@pytest.mark.asyncio
 async def test_create_release_auto_increments_version(client, auth_headers, release_data):
     first = await client.post("/api/releases", headers=auth_headers, json=release_data)
     second = await client.post("/api/releases", headers=auth_headers, json=release_data)
 
     assert first.json()["version"] == 1
     assert second.json()["version"] == 2
-
-
-@pytest.mark.asyncio
 async def test_create_release_with_optional_fields(client, auth_headers, project):
     response = await client.post(
         "/api/releases",
@@ -74,16 +62,10 @@ async def test_create_release_with_optional_fields(client, auth_headers, project
 
     assert response.status_code == 201
     assert response.json()["context_json"] == {"key": "value"}
-
-
-@pytest.mark.asyncio
 async def test_create_release_unauthenticated(client, release_data):
     response = await client.post("/api/releases", json=release_data)
 
     assert response.status_code == 401
-
-
-@pytest.mark.asyncio
 async def test_create_release_missing_required_fields(client, auth_headers):
     response = await client.post(
         "/api/releases",
@@ -92,9 +74,6 @@ async def test_create_release_missing_required_fields(client, auth_headers):
     )
 
     assert response.status_code == 422
-
-
-@pytest.mark.asyncio
 async def test_create_release_invalid_field_types(client, auth_headers, project):
     response = await client.post(
         "/api/releases",
@@ -108,9 +87,6 @@ async def test_create_release_invalid_field_types(client, auth_headers, project)
     )
 
     assert response.status_code == 422
-
-
-@pytest.mark.asyncio
 async def test_list_releases_returns_list(client, auth_headers, create_release):
     await create_release()
     await create_release()
@@ -119,24 +95,15 @@ async def test_list_releases_returns_list(client, auth_headers, create_release):
 
     assert response.status_code == 200
     assert len(response.json()) == 2
-
-
-@pytest.mark.asyncio
 async def test_list_releases_empty(client, auth_headers):
     response = await client.get("/api/releases", headers=auth_headers)
 
     assert response.status_code == 200
     assert response.json() == []
-
-
-@pytest.mark.asyncio
 async def test_list_releases_unauthenticated(client):
     response = await client.get("/api/releases")
 
     assert response.status_code == 401
-
-
-@pytest.mark.asyncio
 async def test_list_releases_filter_by_project(
     client, auth_headers, create_release, db_session, regular_user
 ):
@@ -158,9 +125,6 @@ async def test_list_releases_filter_by_project(
     results = response.json()
     assert len(results) == 1
     assert results[0]["project_id"] == other_project.id
-
-
-@pytest.mark.asyncio
 async def test_list_releases_filter_by_status(client, auth_headers, create_release):
     await create_release()
     create_resp = await create_release(release_code="REQ-002")
@@ -176,9 +140,6 @@ async def test_list_releases_filter_by_status(client, auth_headers, create_relea
     assert response.status_code == 200
     results = response.json()
     assert all(r["status"] == "published" for r in results)
-
-
-@pytest.mark.asyncio
 async def test_list_releases_pagination(client, auth_headers, create_release):
     for i in range(5):
         await create_release(release_code=f"REQ-PAGE-{i}")
@@ -195,9 +156,6 @@ async def test_list_releases_pagination(client, auth_headers, create_release):
     assert len(page1.json()) == 2
     assert len(page2.json()) == 2
     assert page1.json()[0]["id"] != page2.json()[0]["id"]
-
-
-@pytest.mark.asyncio
 async def test_get_release_returns_single(client, auth_headers, create_release):
     create_resp = await create_release()
     release_id = create_resp.json()["id"]
@@ -207,16 +165,10 @@ async def test_get_release_returns_single(client, auth_headers, create_release):
     assert response.status_code == 200
     assert response.json()["id"] == release_id
     assert response.json()["release_code"] == "REQ-001"
-
-
-@pytest.mark.asyncio
 async def test_get_release_not_found(client, auth_headers):
     response = await client.get("/api/releases/99999", headers=auth_headers)
 
     assert response.status_code == 404
-
-
-@pytest.mark.asyncio
 async def test_get_release_unauthenticated(client, create_release):
     create_resp = await create_release()
     release_id = create_resp.json()["id"]
@@ -224,9 +176,6 @@ async def test_get_release_unauthenticated(client, create_release):
     response = await client.get(f"/api/releases/{release_id}")
 
     assert response.status_code == 401
-
-
-@pytest.mark.asyncio
 async def test_update_release_draft_success(client, auth_headers, create_release):
     create_resp = await create_release()
     release_id = create_resp.json()["id"]
@@ -240,9 +189,6 @@ async def test_update_release_draft_success(client, auth_headers, create_release
     assert response.status_code == 200
     assert response.json()["title"] == "Updated Title"
     assert response.json()["content"] == "Updated Content"
-
-
-@pytest.mark.asyncio
 async def test_update_release_partial(client, auth_headers, create_release):
     create_resp = await create_release()
     release_id = create_resp.json()["id"]
@@ -256,9 +202,6 @@ async def test_update_release_partial(client, auth_headers, create_release):
     assert response.status_code == 200
     assert response.json()["title"] == "New Title Only"
     assert response.json()["content"] == create_resp.json()["content"]
-
-
-@pytest.mark.asyncio
 async def test_update_release_context_json(client, auth_headers, create_release):
     create_resp = await create_release()
     release_id = create_resp.json()["id"]
@@ -271,9 +214,6 @@ async def test_update_release_context_json(client, auth_headers, create_release)
 
     assert response.status_code == 200
     assert response.json()["context_json"] == {"updated": True}
-
-
-@pytest.mark.asyncio
 async def test_update_release_not_found(client, auth_headers):
     response = await client.put(
         "/api/releases/99999",
@@ -282,9 +222,6 @@ async def test_update_release_not_found(client, auth_headers):
     )
 
     assert response.status_code == 404
-
-
-@pytest.mark.asyncio
 async def test_update_release_non_draft_returns_400(client, auth_headers, create_release):
     create_resp = await create_release()
     release_id = create_resp.json()["id"]
@@ -297,9 +234,6 @@ async def test_update_release_non_draft_returns_400(client, auth_headers, create
     )
 
     assert response.status_code == 400
-
-
-@pytest.mark.asyncio
 async def test_update_release_unauthenticated(client, create_release):
     create_resp = await create_release()
     release_id = create_resp.json()["id"]
@@ -310,9 +244,6 @@ async def test_update_release_unauthenticated(client, create_release):
     )
 
     assert response.status_code == 401
-
-
-@pytest.mark.asyncio
 async def test_publish_release_draft_to_published(client, auth_headers, create_release):
     create_resp = await create_release()
     release_id = create_resp.json()["id"]
@@ -323,9 +254,6 @@ async def test_publish_release_draft_to_published(client, auth_headers, create_r
     body = response.json()
     assert body["status"] == "published"
     assert body["published_at"] is not None
-
-
-@pytest.mark.asyncio
 async def test_publish_release_non_draft_returns_400(client, auth_headers, create_release):
     create_resp = await create_release()
     release_id = create_resp.json()["id"]
@@ -334,9 +262,6 @@ async def test_publish_release_non_draft_returns_400(client, auth_headers, creat
     response = await client.post(f"/api/releases/{release_id}/publish", headers=auth_headers)
 
     assert response.status_code == 400
-
-
-@pytest.mark.asyncio
 async def test_publish_release_unauthenticated(client, create_release):
     create_resp = await create_release()
     release_id = create_resp.json()["id"]
@@ -344,9 +269,6 @@ async def test_publish_release_unauthenticated(client, create_release):
     response = await client.post(f"/api/releases/{release_id}/publish")
 
     assert response.status_code == 401
-
-
-@pytest.mark.asyncio
 async def test_archive_release_published_to_archived(client, auth_headers, create_release):
     create_resp = await create_release()
     release_id = create_resp.json()["id"]
@@ -358,9 +280,6 @@ async def test_archive_release_published_to_archived(client, auth_headers, creat
     body = response.json()
     assert body["status"] == "archived"
     assert body["archived_at"] is not None
-
-
-@pytest.mark.asyncio
 async def test_archive_release_draft_returns_400(client, auth_headers, create_release):
     create_resp = await create_release()
     release_id = create_resp.json()["id"]
@@ -368,9 +287,6 @@ async def test_archive_release_draft_returns_400(client, auth_headers, create_re
     response = await client.post(f"/api/releases/{release_id}/archive", headers=auth_headers)
 
     assert response.status_code == 400
-
-
-@pytest.mark.asyncio
 async def test_archive_release_unauthenticated(client, create_release):
     create_resp = await create_release()
     release_id = create_resp.json()["id"]
@@ -378,9 +294,6 @@ async def test_archive_release_unauthenticated(client, create_release):
     response = await client.post(f"/api/releases/{release_id}/archive")
 
     assert response.status_code == 401
-
-
-@pytest.mark.asyncio
 async def test_delete_release_draft_success(client, auth_headers, create_release):
     create_resp = await create_release()
     release_id = create_resp.json()["id"]
@@ -391,9 +304,6 @@ async def test_delete_release_draft_success(client, auth_headers, create_release
 
     get_response = await client.get(f"/api/releases/{release_id}", headers=auth_headers)
     assert get_response.status_code == 404
-
-
-@pytest.mark.asyncio
 async def test_delete_release_non_draft_returns_400(client, auth_headers, create_release):
     create_resp = await create_release()
     release_id = create_resp.json()["id"]
@@ -402,16 +312,10 @@ async def test_delete_release_non_draft_returns_400(client, auth_headers, create
     response = await client.delete(f"/api/releases/{release_id}", headers=auth_headers)
 
     assert response.status_code == 400
-
-
-@pytest.mark.asyncio
 async def test_delete_release_not_found(client, auth_headers):
     response = await client.delete("/api/releases/99999", headers=auth_headers)
 
     assert response.status_code == 404
-
-
-@pytest.mark.asyncio
 async def test_delete_release_unauthenticated(client, create_release):
     create_resp = await create_release()
     release_id = create_resp.json()["id"]
@@ -419,9 +323,6 @@ async def test_delete_release_unauthenticated(client, create_release):
     response = await client.delete(f"/api/releases/{release_id}")
 
     assert response.status_code == 401
-
-
-@pytest.mark.asyncio
 async def test_full_lifecycle_draft_publish_archive(client, auth_headers, create_release):
     create_resp = await create_release()
     release_id = create_resp.json()["id"]
@@ -438,9 +339,6 @@ async def test_full_lifecycle_draft_publish_archive(client, auth_headers, create
     archive_resp = await client.post(f"/api/releases/{release_id}/archive", headers=auth_headers)
     assert archive_resp.json()["status"] == "archived"
     assert archive_resp.json()["archived_at"] is not None
-
-
-@pytest.mark.asyncio
 async def test_cannot_update_published_release(client, auth_headers, create_release):
     create_resp = await create_release()
     release_id = create_resp.json()["id"]
@@ -453,9 +351,6 @@ async def test_cannot_update_published_release(client, auth_headers, create_rele
     )
 
     assert response.status_code == 400
-
-
-@pytest.mark.asyncio
 async def test_cannot_update_archived_release(client, auth_headers, create_release):
     create_resp = await create_release()
     release_id = create_resp.json()["id"]
@@ -469,9 +364,6 @@ async def test_cannot_update_archived_release(client, auth_headers, create_relea
     )
 
     assert response.status_code == 400
-
-
-@pytest.mark.asyncio
 async def test_cannot_delete_published_release(client, auth_headers, create_release):
     create_resp = await create_release()
     release_id = create_resp.json()["id"]
@@ -480,9 +372,6 @@ async def test_cannot_delete_published_release(client, auth_headers, create_rele
     response = await client.delete(f"/api/releases/{release_id}", headers=auth_headers)
 
     assert response.status_code == 400
-
-
-@pytest.mark.asyncio
 async def test_cannot_delete_archived_release(client, auth_headers, create_release):
     create_resp = await create_release()
     release_id = create_resp.json()["id"]
@@ -492,9 +381,6 @@ async def test_cannot_delete_archived_release(client, auth_headers, create_relea
     response = await client.delete(f"/api/releases/{release_id}", headers=auth_headers)
 
     assert response.status_code == 400
-
-
-@pytest.mark.asyncio
 async def test_cannot_archive_already_archived(client, auth_headers, create_release):
     create_resp = await create_release()
     release_id = create_resp.json()["id"]
@@ -505,9 +391,7 @@ async def test_cannot_archive_already_archived(client, auth_headers, create_rele
 
     assert response.status_code == 400
 
-
 class TestReleaseAuthorization:
-    @pytest.mark.asyncio
     async def test_create_release_for_other_user_project_returns_403(
         self, client, admin_headers, db_session, regular_user
     ):
@@ -526,15 +410,11 @@ class TestReleaseAuthorization:
             },
         )
         assert response.status_code == 403
-
-    @pytest.mark.asyncio
     async def test_get_other_user_release_returns_403(self, client, admin_headers, create_release):
         create_resp = await create_release()
         release_id = create_resp.json()["id"]
         response = await client.get(f"/api/releases/{release_id}", headers=admin_headers)
         assert response.status_code == 403
-
-    @pytest.mark.asyncio
     async def test_update_other_user_release_returns_403(
         self, client, admin_headers, create_release
     ):
@@ -544,8 +424,6 @@ class TestReleaseAuthorization:
             f"/api/releases/{release_id}", headers=admin_headers, json={"title": "Hacked"}
         )
         assert response.status_code == 403
-
-    @pytest.mark.asyncio
     async def test_publish_other_user_release_returns_403(
         self, client, admin_headers, create_release
     ):
@@ -553,8 +431,6 @@ class TestReleaseAuthorization:
         release_id = create_resp.json()["id"]
         response = await client.post(f"/api/releases/{release_id}/publish", headers=admin_headers)
         assert response.status_code == 403
-
-    @pytest.mark.asyncio
     async def test_archive_other_user_release_returns_403(
         self, client, admin_headers, auth_headers, create_release
     ):
@@ -563,8 +439,6 @@ class TestReleaseAuthorization:
         await client.post(f"/api/releases/{release_id}/publish", headers=auth_headers)
         response = await client.post(f"/api/releases/{release_id}/archive", headers=admin_headers)
         assert response.status_code == 403
-
-    @pytest.mark.asyncio
     async def test_delete_other_user_release_returns_403(
         self, client, admin_headers, create_release
     ):
@@ -572,8 +446,6 @@ class TestReleaseAuthorization:
         release_id = create_resp.json()["id"]
         response = await client.delete(f"/api/releases/{release_id}", headers=admin_headers)
         assert response.status_code == 403
-
-    @pytest.mark.asyncio
     async def test_list_releases_with_unauthorized_project_filter_returns_403(
         self, client, admin_headers, db_session, regular_user
     ):

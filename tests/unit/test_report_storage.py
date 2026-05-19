@@ -2,9 +2,6 @@ import pytest
 
 from reqradar.web.services.report_storage import ReportStorage
 from tests.factories import build_analysis_task, build_project
-
-
-@pytest.mark.asyncio
 async def test_save_and_read_report(tmp_path):
     storage = ReportStorage(tmp_path)
 
@@ -16,9 +13,6 @@ async def test_save_and_read_report(tmp_path):
     assert markdown == "# Markdown"
     assert html == "<h1>HTML</h1>"
     assert (tmp_path / "1" / "context.json").exists()
-
-
-@pytest.mark.asyncio
 async def test_save_and_read_version(tmp_path):
     storage = ReportStorage(tmp_path)
 
@@ -30,9 +24,6 @@ async def test_save_and_read_version(tmp_path):
     assert markdown == "# V2"
     assert html == "<h1>V2</h1>"
     assert (tmp_path / "1" / "versions" / "v2_context.json").exists()
-
-
-@pytest.mark.asyncio
 async def test_delete_task_reports(tmp_path):
     storage = ReportStorage(tmp_path)
     await storage.save_report(1, "# Markdown", "<h1>HTML</h1>")
@@ -40,9 +31,6 @@ async def test_delete_task_reports(tmp_path):
     await storage.delete_task_reports(1)
 
     assert not (tmp_path / "1").exists()
-
-
-@pytest.mark.asyncio
 async def test_delete_project_reports_removes_task_directories(tmp_path, db_session, regular_user):
     project = build_project(owner_id=regular_user.id, name="report_project")
     db_session.add(project)
