@@ -3,6 +3,7 @@ import pytest
 from reqradar.web.services.version_service import VersionService
 from tests.factories import build_analysis_task, build_project, build_report
 
+
 @pytest.fixture
 async def report_task(db_session, regular_user):
     project = build_project(owner_id=regular_user.id, name="report_api_project")
@@ -13,14 +14,20 @@ async def report_task(db_session, regular_user):
     db_session.add(task)
     await db_session.commit()
     await db_session.refresh(task)
-    report = build_report(task.id, content_markdown="# DB Report", content_html="<h1>DB Report</h1>")
+    report = build_report(
+        task.id, content_markdown="# DB Report", content_html="<h1>DB Report</h1>"
+    )
     db_session.add(report)
     await db_session.commit()
     await db_session.refresh(task)
     return task
+
+
 async def test_get_report_json_markdown_and_html(client, auth_headers, report_task):
     json_response = await client.get(f"/api/reports/{report_task.id}", headers=auth_headers)
-    markdown_response = await client.get(f"/api/reports/{report_task.id}/markdown", headers=auth_headers)
+    markdown_response = await client.get(
+        f"/api/reports/{report_task.id}/markdown", headers=auth_headers
+    )
     html_response = await client.get(f"/api/reports/{report_task.id}/html", headers=auth_headers)
 
     assert json_response.status_code == 200
@@ -29,10 +36,14 @@ async def test_get_report_json_markdown_and_html(client, auth_headers, report_ta
     assert markdown_response.text == "# DB Report"
     assert html_response.status_code == 200
     assert "DB Report" in html_response.text
+
+
 async def test_report_missing_task_returns_404(client, auth_headers):
     response = await client.get("/api/reports/99999", headers=auth_headers)
 
     assert response.status_code == 404
+
+
 async def test_list_get_and_rollback_versions(client, auth_headers, db_session, report_task):
     service = VersionService(db_session)
     await service.create_version(
@@ -68,9 +79,53 @@ async def test_list_get_and_rollback_versions(client, auth_headers, db_session, 
     assert get_response.json()["content_markdown"] == "# Version 1"
     assert rollback_response.status_code == 200
     assert rollback_response.json()["current_version"] == 3
+
+
 async def test_missing_version_returns_404(client, auth_headers, report_task):
     response = await client.get(
         f"/api/analyses/{report_task.id}/reports/versions/404", headers=auth_headers
     )
 
     assert response.status_code == 404
+
+
+async def test_rollback_nonexistent_task_returns_404(client, auth_headers):
+    response = await client.post(
+        "/api/analyses/99999/reports/rollback",
+        headers=auth_headers,
+        json={"version_number": 1},
+    )
+    assert response.status_code == 404
+
+
+async def test_list_versions_nonexistent_task_returns_404(client, auth_headers):
+    response = await client.get("/api/analyses/99999/reports/versions", headers=auth_headers)
+    assert response.status_code == 404
+
+
+class TestUnauthenticated:
+    """未认证访问应返回 401/403。"""
+
+    async def test_get_report_unauthenticated(self, client):
+        resp = await client.get("/api/reports/1")
+        assert resp.status_code in (401, 403)
+
+    async def test_get_markdown_unauthenticated(self, client):
+        resp = await client.get("/api/reports/1/markdown")
+        assert resp.status_code in (401, 403)
+
+    async def test_get_html_unauthenticated(self, client):
+        resp = await client.get("/api/reports/1/html")
+        assert resp.status_code in (401, 403)
+
+    async def test_list_versions_unauthenticated(self, client):
+        resp = await client.get("/api/analyses/1/reports/versions")
+        assert resp.status_code in (401, 403)
+
+    async def test_get_version_unauthenticated(self, client):
+        resp = await client.get("/api/analyses/1/reports/versions/1")
+        assert resp.status_code in (401, 403)
+
+    async def test_rollback_unauthenticated(self, client):
+        resp = await client.post("/api/analyses/1/reports/rollback", json={"version_number": 1})
+        assert resp.status_code in (401, 403)

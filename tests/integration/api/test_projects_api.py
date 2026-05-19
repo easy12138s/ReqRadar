@@ -5,12 +5,15 @@ import pytest
 
 from tests.factories import build_project
 
+
 def make_zip(entries: dict[str, str]) -> bytes:
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w") as zf:
         for name, content in entries.items():
             zf.writestr(name, content)
     return buffer.getvalue()
+
+
 async def test_create_project_from_local_list_get_update_files_and_delete(
     client, auth_headers, sample_repo
 ):
@@ -49,6 +52,8 @@ async def test_create_project_from_local_list_get_update_files_and_delete(
     delete_response = await client.delete(f"/api/projects/{project_id}", headers=auth_headers)
     assert delete_response.status_code == 200
     assert delete_response.json()["success"] is True
+
+
 async def test_create_project_from_local_rejects_missing_path(client, auth_headers, tmp_path):
     response = await client.post(
         "/api/projects/from-local",
@@ -57,6 +62,8 @@ async def test_create_project_from_local_rejects_missing_path(client, auth_heade
     )
 
     assert response.status_code == 400
+
+
 async def test_create_project_from_zip_and_reject_duplicate_name(client, auth_headers):
     response = await client.post(
         "/api/projects/from-zip",
@@ -73,6 +80,8 @@ async def test_create_project_from_zip_and_reject_duplicate_name(client, auth_he
 
     assert response.status_code == 201
     assert duplicate_response.status_code == 409
+
+
 async def test_create_project_from_zip_rejects_path_traversal(client, auth_headers):
     response = await client.post(
         "/api/projects/from-zip",
@@ -82,6 +91,8 @@ async def test_create_project_from_zip_rejects_path_traversal(client, auth_heade
     )
 
     assert response.status_code == 400
+
+
 async def test_project_access_is_limited_to_owner(client, auth_headers, db_session, admin_user):
     project = build_project(owner_id=admin_user.id, name="private_project")
     db_session.add(project)
@@ -91,7 +102,43 @@ async def test_project_access_is_limited_to_owner(client, auth_headers, db_sessi
     response = await client.get(f"/api/projects/{project.id}", headers=auth_headers)
 
     assert response.status_code == 404
-async def test_trigger_index_returns_accepted(client, auth_headers, db_session, regular_user, monkeypatch):
+
+
+async def test_get_nonexistent_project_returns_404(client, auth_headers):
+    response = await client.get("/api/projects/99999", headers=auth_headers)
+    assert response.status_code == 404
+
+
+async def test_put_nonexistent_project_returns_404(client, auth_headers):
+    response = await client.put(
+        "/api/projects/99999", headers=auth_headers, json={"description": "x"}
+    )
+    assert response.status_code == 404
+
+
+async def test_delete_nonexistent_project_returns_404(client, auth_headers):
+    response = await client.delete("/api/projects/99999", headers=auth_headers)
+    assert response.status_code == 404
+
+
+async def test_list_projects_returns_empty_list(client, auth_headers):
+    response = await client.get("/api/projects", headers=auth_headers)
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+async def test_create_project_from_local_rejects_invalid_name(client, auth_headers, tmp_path):
+    response = await client.post(
+        "/api/projects/from-local",
+        headers=auth_headers,
+        json={"name": "bad name!", "local_path": str(tmp_path)},
+    )
+    assert response.status_code == 422
+
+
+async def test_trigger_index_returns_accepted(
+    client, auth_headers, db_session, regular_user, monkeypatch
+):
     calls = []
 
     async def fake_build_index(self, project, db, config):
@@ -111,3 +158,45 @@ async def test_trigger_index_returns_accepted(client, auth_headers, db_session, 
     assert response.status_code == 202
     assert response.json()["project_id"] == project.id
     assert calls
+
+
+class TestUnauthenticated:
+    """未认证访问应返回 401/403。"""
+
+    async def test_list_unauthenticated(self, client):
+        resp = await client.get("/api/projects")
+        assert resp.status_code in (401, 403)
+
+    async def test_create_from_local_unauthenticated(self, client):
+        resp = await client.post(
+            "/api/projects/from-local", json={"name": "x", "local_path": "/tmp"}
+        )
+        assert resp.status_code in (401, 403)
+
+    async def test_create_from_zip_unauthenticated(self, client):
+        resp = await client.post(
+            "/api/projects/from-zip",
+            data={"name": "x"},
+            files={"file": ("x.zip", b"x", "application/zip")},
+        )
+        assert resp.status_code in (401, 403)
+
+    async def test_get_unauthenticated(self, client):
+        resp = await client.get("/api/projects/1")
+        assert resp.status_code in (401, 403)
+
+    async def test_update_unauthenticated(self, client):
+        resp = await client.put("/api/projects/1", json={"description": "x"})
+        assert resp.status_code in (401, 403)
+
+    async def test_delete_unauthenticated(self, client):
+        resp = await client.delete("/api/projects/1")
+        assert resp.status_code in (401, 403)
+
+    async def test_files_unauthenticated(self, client):
+        resp = await client.get("/api/projects/1/files")
+        assert resp.status_code in (401, 403)
+
+    async def test_index_unauthenticated(self, client):
+        resp = await client.post("/api/projects/1/index")
+        assert resp.status_code in (401, 403)

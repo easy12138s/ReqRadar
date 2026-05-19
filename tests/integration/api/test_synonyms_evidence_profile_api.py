@@ -4,6 +4,7 @@ from reqradar.web.models import PendingChange
 from reqradar.web.services.version_service import VersionService
 from tests.factories import build_analysis_task, build_project
 
+
 @pytest.fixture
 async def owned_project(db_session, regular_user):
     project = build_project(owner_id=regular_user.id, name="gap_project")
@@ -11,6 +12,8 @@ async def owned_project(db_session, regular_user):
     await db_session.commit()
     await db_session.refresh(project)
     return project
+
+
 async def test_synonyms_crud(client, auth_headers, owned_project):
     create_response = await client.post(
         "/api/synonyms",
@@ -45,7 +48,11 @@ async def test_synonyms_crud(client, auth_headers, owned_project):
         params={"project_id": owned_project.id},
     )
     assert delete_response.status_code == 204
-async def test_synonym_update_rejects_cross_project_access(client, auth_headers, db_session, admin_user):
+
+
+async def test_synonym_update_rejects_cross_project_access(
+    client, auth_headers, db_session, admin_user
+):
     from reqradar.web.models import SynonymMapping
 
     other_project = build_project(owner_id=admin_user.id, name="other_synonym_project")
@@ -67,7 +74,11 @@ async def test_synonym_update_rejects_cross_project_access(client, auth_headers,
     )
 
     assert response.status_code == 403
-async def test_evidence_list_and_detail(client, auth_headers, db_session, owned_project, regular_user):
+
+
+async def test_evidence_list_and_detail(
+    client, auth_headers, db_session, owned_project, regular_user
+):
     task = build_analysis_task(project_id=owned_project.id, user_id=regular_user.id)
     db_session.add(task)
     await db_session.commit()
@@ -101,7 +112,11 @@ async def test_evidence_list_and_detail(client, auth_headers, db_session, owned_
     assert list_response.json()["evidence"][0]["id"] == "ev-1"
     assert detail_response.status_code == 200
     assert detail_response.json()["content"] == "evidence content"
-async def test_evidence_detail_missing_returns_404(client, auth_headers, db_session, owned_project, regular_user):
+
+
+async def test_evidence_detail_missing_returns_404(
+    client, auth_headers, db_session, owned_project, regular_user
+):
     task = build_analysis_task(project_id=owned_project.id, user_id=regular_user.id)
     db_session.add(task)
     await db_session.commit()
@@ -110,6 +125,8 @@ async def test_evidence_detail_missing_returns_404(client, auth_headers, db_sess
     response = await client.get(f"/api/analyses/{task.id}/evidence/missing", headers=auth_headers)
 
     assert response.status_code == 404
+
+
 async def test_reject_pending_change(client, auth_headers, db_session, owned_project):
     change = PendingChange(
         project_id=owned_project.id,
@@ -132,3 +149,55 @@ async def test_reject_pending_change(client, auth_headers, db_session, owned_pro
 
     assert response.status_code == 200
     assert response.json()["status"] == "rejected"
+
+
+async def test_update_nonexistent_synonym_returns_404(client, auth_headers):
+    response = await client.put("/api/synonyms/99999", headers=auth_headers, json={"priority": 1})
+    assert response.status_code == 404
+
+
+async def test_delete_nonexistent_synonym_returns_404(client, auth_headers, owned_project):
+    response = await client.delete(
+        "/api/synonyms/99999",
+        headers=auth_headers,
+        params={"project_id": owned_project.id},
+    )
+    assert response.status_code == 404
+
+
+async def test_list_synonyms_returns_empty_list(client, auth_headers, owned_project):
+    response = await client.get(
+        "/api/synonyms", headers=auth_headers, params={"project_id": owned_project.id}
+    )
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+class TestUnauthenticated:
+    """未认证访问应返回 401/403。"""
+
+    async def test_list_synonyms_unauthenticated(self, client):
+        resp = await client.get("/api/synonyms", params={"project_id": 1})
+        assert resp.status_code in (401, 403)
+
+    async def test_create_synonym_unauthenticated(self, client):
+        resp = await client.post(
+            "/api/synonyms", json={"project_id": 1, "business_term": "x", "code_terms": ["x"]}
+        )
+        assert resp.status_code in (401, 403)
+
+    async def test_update_synonym_unauthenticated(self, client):
+        resp = await client.put("/api/synonyms/1", json={"priority": 1})
+        assert resp.status_code in (401, 403)
+
+    async def test_delete_synonym_unauthenticated(self, client):
+        resp = await client.delete("/api/synonyms/1", params={"project_id": 1})
+        assert resp.status_code in (401, 403)
+
+    async def test_evidence_list_unauthenticated(self, client):
+        resp = await client.get("/api/analyses/1/evidence")
+        assert resp.status_code in (401, 403)
+
+    async def test_evidence_detail_unauthenticated(self, client):
+        resp = await client.get("/api/analyses/1/evidence/ev-1")
+        assert resp.status_code in (401, 403)

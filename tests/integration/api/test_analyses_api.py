@@ -3,6 +3,7 @@ import pytest
 from reqradar.web.enums import TaskStatus
 from tests.factories import build_analysis_task, build_project
 
+
 @pytest.fixture
 async def project(db_session, regular_user):
     project = build_project(owner_id=regular_user.id, name="analysis_api_project")
@@ -10,6 +11,8 @@ async def project(db_session, regular_user):
     await db_session.commit()
     await db_session.refresh(project)
     return project
+
+
 async def test_submit_analysis_requires_project_owner(client, auth_headers, db_session, admin_user):
     other_project = build_project(owner_id=admin_user.id, name="other_project")
     db_session.add(other_project)
@@ -23,6 +26,8 @@ async def test_submit_analysis_requires_project_owner(client, auth_headers, db_s
     )
 
     assert response.status_code == 403
+
+
 async def test_submit_analysis_requires_llm_api_key(client, auth_headers, project):
     response = await client.post(
         "/api/analyses",
@@ -32,6 +37,8 @@ async def test_submit_analysis_requires_llm_api_key(client, auth_headers, projec
 
     assert response.status_code == 400
     assert "LLM API Key" in response.json()["detail"]
+
+
 async def test_upload_analysis_rejects_large_file(client, auth_headers, project):
     response = await client.post(
         "/api/analyses/upload",
@@ -41,6 +48,8 @@ async def test_upload_analysis_rejects_large_file(client, auth_headers, project)
     )
 
     assert response.status_code == 413
+
+
 async def test_list_and_get_analysis(client, auth_headers, db_session, project, regular_user):
     task = build_analysis_task(
         project_id=project.id,
@@ -59,7 +68,11 @@ async def test_list_and_get_analysis(client, auth_headers, db_session, project, 
     assert list_response.json()[0]["id"] == task.id
     assert get_response.status_code == 200
     assert get_response.json()["step_summary"] == {"a": {"success": True, "confidence": 0.9}}
-async def test_retry_analysis_resets_failed_task(client, auth_headers, db_session, project, regular_user, monkeypatch):
+
+
+async def test_retry_analysis_resets_failed_task(
+    client, auth_headers, db_session, project, regular_user, monkeypatch
+):
     calls = []
 
     async def fake_run(*args, **kwargs):
@@ -82,7 +95,11 @@ async def test_retry_analysis_resets_failed_task(client, auth_headers, db_sessio
     assert response.status_code == 200
     assert response.json()["status"] == TaskStatus.PENDING.value
     assert calls
-async def test_cancel_analysis_updates_pending_task(client, auth_headers, db_session, project, regular_user):
+
+
+async def test_cancel_analysis_updates_pending_task(
+    client, auth_headers, db_session, project, regular_user
+):
     task = build_analysis_task(
         project_id=project.id,
         user_id=regular_user.id,
@@ -96,7 +113,11 @@ async def test_cancel_analysis_updates_pending_task(client, auth_headers, db_ses
 
     assert response.status_code == 200
     assert response.json() == {"success": True, "status": "cancelled"}
-async def test_cancel_completed_analysis_returns_400(client, auth_headers, db_session, project, regular_user):
+
+
+async def test_cancel_completed_analysis_returns_400(
+    client, auth_headers, db_session, project, regular_user
+):
     task = build_analysis_task(
         project_id=project.id,
         user_id=regular_user.id,
@@ -109,3 +130,67 @@ async def test_cancel_completed_analysis_returns_400(client, auth_headers, db_se
     response = await client.post(f"/api/analyses/{task.id}/cancel", headers=auth_headers)
 
     assert response.status_code == 400
+
+
+async def test_get_nonexistent_analysis_returns_404(client, auth_headers):
+    response = await client.get("/api/analyses/99999", headers=auth_headers)
+    assert response.status_code == 404
+
+
+async def test_submit_analysis_nonexistent_project_returns_404(client, auth_headers):
+    response = await client.post(
+        "/api/analyses",
+        headers=auth_headers,
+        json={"project_id": 99999, "requirement_text": "test"},
+    )
+    assert response.status_code == 404
+
+
+async def test_cancel_nonexistent_analysis_returns_404(client, auth_headers):
+    response = await client.post("/api/analyses/99999/cancel", headers=auth_headers)
+    assert response.status_code == 404
+
+
+async def test_retry_nonexistent_analysis_returns_404(client, auth_headers):
+    response = await client.post("/api/analyses/99999/retry", headers=auth_headers)
+    assert response.status_code == 404
+
+
+async def test_list_analyses_returns_empty_list(client, auth_headers):
+    response = await client.get("/api/analyses", headers=auth_headers)
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+class TestUnauthenticated:
+    """未认证访问应返回 401/403。"""
+
+    async def test_submit_unauthenticated(self, client):
+        resp = await client.post(
+            "/api/analyses", json={"project_id": 1, "requirement_text": "test"}
+        )
+        assert resp.status_code in (401, 403)
+
+    async def test_upload_unauthenticated(self, client):
+        resp = await client.post(
+            "/api/analyses/upload",
+            data={"project_id": "1", "requirement_name": "Test", "depth": "standard"},
+            files={"file": ("test.md", b"test", "text/markdown")},
+        )
+        assert resp.status_code in (401, 403)
+
+    async def test_list_unauthenticated(self, client):
+        resp = await client.get("/api/analyses")
+        assert resp.status_code in (401, 403)
+
+    async def test_get_unauthenticated(self, client):
+        resp = await client.get("/api/analyses/1")
+        assert resp.status_code in (401, 403)
+
+    async def test_retry_unauthenticated(self, client):
+        resp = await client.post("/api/analyses/1/retry")
+        assert resp.status_code in (401, 403)
+
+    async def test_cancel_unauthenticated(self, client):
+        resp = await client.post("/api/analyses/1/cancel")
+        assert resp.status_code in (401, 403)
