@@ -42,6 +42,35 @@ def _truncate_result(text: str, max_len: int = _RESULT_TRUNCATE_LENGTH) -> str:
     return text[:max_len] + "\n...(截断)"
 
 
+def _safe_truncate_history(history: list[dict], max_messages: int = 6) -> list[dict]:
+    """Truncate conversation history while keeping assistant(tool_calls) + tool result pairs atomic.
+
+    If a truncated prefix would leave an orphan ``tool`` message (i.e. its
+    parent ``assistant`` message with ``tool_calls`` is missing), we skip
+    forward past that broken group so the API never sees a ``tool`` message
+    without its matching ``assistant``.
+    """
+    if len(history) <= max_messages:
+        return history
+
+    recent = history[-max_messages:]
+
+    start = 0
+    while start < len(recent):
+        msg = recent[start]
+        if msg.get("role") == "tool" and msg.get("tool_call_id"):
+            start += 1
+            continue
+        if msg.get("role") == "assistant" and msg.get("tool_calls"):
+            start += 1
+            while start < len(recent) and recent[start].get("role") == "tool":
+                start += 1
+            continue
+        break
+
+    return recent[start:]
+
+
 def _build_messages_chain(
     system_prompt: str,
     user_prompt: str,
@@ -53,7 +82,7 @@ def _build_messages_chain(
         {"role": "user", "content": user_prompt},
     ]
     if history:
-        recent = history[-max_history_messages:]
+        recent = _safe_truncate_history(history, max_history_messages)
         messages = messages[:1] + recent + messages[1:]
     return messages
 
@@ -336,7 +365,7 @@ async def run_react_analysis(
             {"role": "user", "content": user_prompt},
         ]
         if conversation_history:
-            recent = conversation_history[-6:]
+            recent = _safe_truncate_history(conversation_history, 6)
             messages = messages[:1] + recent + messages[1:]
 
         if not tool_schemas:
