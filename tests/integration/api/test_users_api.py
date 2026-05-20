@@ -1,4 +1,3 @@
-import pytest
 
 
 async def test_user_list_requires_admin(client, auth_headers):

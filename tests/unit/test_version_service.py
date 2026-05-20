@@ -4,6 +4,7 @@ from reqradar.web.models import ReportVersion
 from reqradar.web.services.version_service import VersionService
 from tests.factories import build_analysis_task, build_project
 
+
 @pytest.fixture
 async def task(db_session, regular_user):
     project = build_project(owner_id=regular_user.id, name="version_project")

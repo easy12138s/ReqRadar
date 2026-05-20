@@ -1,7 +1,6 @@
 import pytest
 
 from reqradar.web.enums import TaskStatus
-from reqradar.web.models import AnalysisTask
 from tests.factories import build_analysis_task, build_project
 
 pytestmark = pytest.mark.integration

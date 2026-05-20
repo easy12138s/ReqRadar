@@ -1,13 +1,13 @@
 """RateLimitMiddleware 单元测试"""
 
-import time
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from reqradar.web.middleware.rate_limit import RateLimitMiddleware
+
 
 @pytest.fixture
 def mock_app():
@@ -29,7 +29,6 @@ def _build_request(
         "scheme": scheme,
     }
     if client_host:
-        from starlette.datastructures import Address
 
         scope["client"] = (client_host, 12345)
     else:

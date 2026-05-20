@@ -1,6 +1,5 @@
 """DimensionTracker 单元测试"""
 
-import pytest
 
 from reqradar.agent.dimension import DEFAULT_DIMENSIONS, DimensionState, DimensionTracker
 
@@ -55,7 +54,7 @@ class TestDimensionTracker:
     def test_init_with_defaults(self):
         tracker = DimensionTracker()
         assert set(tracker.dimensions.keys()) == set(DEFAULT_DIMENSIONS)
-        for dim_id, state in tracker.dimensions.items():
+        for _dim_id, state in tracker.dimensions.items():
             assert state.status == "pending"
 
     def test_init_with_custom_dimensions(self):

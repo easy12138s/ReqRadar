@@ -1,9 +1,14 @@
 """MCP 生命周期管理单元测试"""
 
-import pytest
 from unittest.mock import MagicMock
 
-from reqradar.mcp.lifecycle import MCPServerHandle, create_mcp_server, maybe_start_mcp_with_web, stop_mcp_with_web
+from reqradar.mcp.lifecycle import (
+    MCPServerHandle,
+    create_mcp_server,
+    maybe_start_mcp_with_web,
+    stop_mcp_with_web,
+)
+
 
 class TestMCPServerHandle:
     def test_init(self):
@@ -15,9 +20,10 @@ class TestMCPServerHandle:
 
 class TestCreateMCPServer:
     def test_creates_server_with_tools(self):
-        from reqradar.infrastructure.config import Config, HomeConfig, WebConfig, MCPConfig
-        from reqradar.mcp.context import MCPRuntimeContext
         import tempfile
+
+        from reqradar.infrastructure.config import Config, HomeConfig, MCPConfig, WebConfig
+        from reqradar.mcp.context import MCPRuntimeContext
 
         with tempfile.TemporaryDirectory() as tmp:
             config = Config(

@@ -1,6 +1,5 @@
 """ToolCallTracker 单元测试"""
 
-import pytest
 
 from reqradar.agent.tool_call_tracker import ToolCallTracker
 

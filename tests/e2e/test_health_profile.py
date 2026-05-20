@@ -38,12 +38,12 @@ class TestMetricsEndpoint:
         assert resp.status_code == 401
 
     async def test_metrics_returns_200_with_auth(self, test_user, app):
-        client, headers, token, user_data = test_user
+        client, headers, _token, _user_data = test_user
         resp = await client.get("/api/metrics", headers=headers)
         assert resp.status_code == 200
 
     async def test_metrics_response_format(self, test_user, app):
-        client, headers, token, user_data = test_user
+        client, headers, _token, _user_data = test_user
         resp = await client.get("/api/metrics", headers=headers)
         data = resp.json()
         assert "project_count" in data
@@ -52,7 +52,7 @@ class TestMetricsEndpoint:
         assert isinstance(data["task_counts"], dict)
 
     async def test_metrics_task_counts_keys(self, test_user, app):
-        client, headers, token, user_data = test_user
+        client, headers, _token, _user_data = test_user
         resp = await client.get("/api/metrics", headers=headers)
         task_counts = resp.json()["task_counts"]
         for key in ("pending", "running", "completed", "failed"):
@@ -64,7 +64,7 @@ class TestProfileE2E:
     """Profile 端点 E2E 测试 — 使用 e2e fixtures。"""
 
     async def test_profile_lifecycle(self, e2e_client, e2e_user, tmp_path):
-        client, headers, token, user_data, user_id = e2e_user
+        client, headers, _token, _user_data, _user_id = e2e_user
 
         repo = tmp_path / "profile_repo"
         repo.mkdir()
@@ -101,7 +101,7 @@ class TestProfileE2E:
         assert resp4.json() == []
 
     async def test_profile_requires_auth(self, e2e_client, e2e_user, tmp_path):
-        client, headers, token, user_data, user_id = e2e_user
+        client, headers, _token, _user_data, _user_id = e2e_user
 
         repo = tmp_path / "profile_auth_repo"
         repo.mkdir()
@@ -123,23 +123,27 @@ class TestProfileE2E:
         assert resp_no_auth.status_code == 401
 
     async def test_profile_not_found(self, e2e_client, e2e_user):
-        client, headers, token, user_data, user_id = e2e_user
+        client, headers, _token, _user_data, _user_id = e2e_user
 
         resp = await client.get("/api/projects/999999/profile", headers=headers)
         assert resp.status_code == 404
 
     # BUG-1: Profile PUT content 分支未创建父目录
-    # 发现阶段: P3-2 | 测试文件: tests/e2e/test_health_profile.py | 测试用例: test_profile_update_content
+    # 发现阶段: P3-2 | 测试文件: tests/e2e/test_health_profile.py
+    # 测试用例: test_profile_update_content
     # 复现步骤: PUT /api/projects/{pid}/profile 传 {"content": "..."} 时，
-    #   update_profile 直接写 pm.file_path 而未调用 pm.save()（后者会 mkdir -p），
-    #   导致 FileNotFoundError（父目录 memories/projects/{pid}/ 不存在）。
+    # update_profile 直接写 pm.file_path 而未调用 pm.save()（后者会 mkdir -p），
+    # 导致 FileNotFoundError（父目录 memories/projects/{pid}/ 不存在）。
     # 期望结果: 200 + content 更新成功 | 实际结果: 500 FileNotFoundError
     # 影响范围: Profile content 更新路径 | 是否阻塞: N
     @pytest.mark.xfail(
-        reason="BUG-1: Profile PUT content 分支未创建父目录，直接写 pm.file_path 导致 FileNotFoundError"
+        reason=(
+            "BUG-1: Profile PUT content 分支未创建父目录，"
+            "直接写 pm.file_path 导致 FileNotFoundError"
+        )
     )
     async def test_profile_update_content(self, e2e_client, e2e_user, tmp_path):
-        client, headers, token, user_data, user_id = e2e_user
+        client, headers, _token, _user_data, _user_id = e2e_user
 
         repo = tmp_path / "profile_content_repo"
         repo.mkdir()

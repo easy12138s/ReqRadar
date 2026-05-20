@@ -4,7 +4,6 @@ import os
 from pathlib import Path
 
 import pytest
-from unittest.mock import patch
 
 from reqradar.infrastructure.config import Config, HomeConfig, WebConfig
 from reqradar.infrastructure.paths import derive_database_url, ensure_dirs, get_paths, resolve_home

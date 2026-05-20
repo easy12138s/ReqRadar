@@ -1,9 +1,8 @@
 """MCP 上下文管理单元测试"""
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
-from reqradar.infrastructure.config import Config, HomeConfig, WebConfig, MCPConfig
+from reqradar.infrastructure.config import Config, HomeConfig, WebConfig
 from reqradar.mcp.context import MCPRuntimeContext
 
 

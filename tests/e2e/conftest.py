@@ -15,13 +15,10 @@ os.environ.setdefault("REQRADAR_TESTING", "1")
 
 from reqradar.infrastructure.config import Config, HomeConfig, WebConfig
 from reqradar.infrastructure.paths import get_paths
-from reqradar.web.api.auth import create_access_token, hash_password
 from reqradar.web.app import create_app
 from reqradar.web.database import Base
-from reqradar.web.enums import TaskStatus
-from reqradar.web.models import AnalysisTask, Project, User, UserConfig
+from reqradar.web.models import User, UserConfig
 from reqradar.web.services.report_storage import ReportStorage
-
 
 # ---------------------------------------------------------------------------
 # E2E 独立 DB + app fixtures (不依赖 root conftest，完全自包含)
@@ -218,7 +215,7 @@ def patch_llm_reachable(monkeypatch):
 @pytest.fixture
 async def inject_llm_config(e2e_db: AsyncSession, e2e_user):
     """通过 UserConfig 注入 mock LLM 配置，让 submit_analysis 通过 API key 检查。"""
-    _client, _headers, _token, user_data, user_id = e2e_user
+    _client, _headers, _token, _user_data, user_id = e2e_user
     configs = [
         UserConfig(
             user_id=user_id,

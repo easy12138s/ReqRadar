@@ -1,4 +1,3 @@
-import pytest
 
 from reqradar.web.api.auth import create_access_token
 

@@ -19,6 +19,7 @@ from reqradar.core.exceptions import (
 )
 from reqradar.web.exceptions import EXCEPTION_STATUS_MAP, reqradar_exception_handler
 
+
 @pytest.fixture
 def fake_request():
     from unittest.mock import MagicMock

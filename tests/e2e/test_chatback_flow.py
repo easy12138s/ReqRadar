@@ -1,7 +1,6 @@
 """E2E 测试 — Chatback 交互流程 (mock-mode)"""
 
 import pytest
-from sqlalchemy import select
 
 from reqradar.web.enums import TaskStatus
 from reqradar.web.models import AnalysisTask, ReportVersion
@@ -69,15 +68,15 @@ class TestChatbackFlow:
 
     async def test_get_chat_history_not_found(self, e2e_client, e2e_user):
         """不存在的任务应返回 404。"""
-        client, headers, *_ = e2e_user
+        _client, headers, *_ = e2e_user
         resp = await e2e_client.get("/api/analyses/999999/chat", headers=headers)
         assert resp.status_code == 404
 
     async def test_chat_static_without_llm_key(self, e2e_project, setup_runner_session):
         """无 LLM Key 时 POST /chat 应返回 400。"""
-        client, headers, token, user_data, user_id, project_id = e2e_project
+        client, headers, _token, _user_data, _user_id, _project_id = e2e_project
         resp = await client.post(
-            f"/api/analyses/1/chat",
+            "/api/analyses/1/chat",
             headers=headers,
             json={"message": "hello"},
         )
@@ -101,7 +100,7 @@ class TestChatbackFlow:
 
     async def test_chat_save_not_found(self, e2e_client, e2e_user):
         """不存在的任务保存应返回 404。"""
-        client, headers, *_ = e2e_user
+        _client, headers, *_ = e2e_user
         resp = await e2e_client.post(
             "/api/analyses/999999/chat/save",
             headers=headers,

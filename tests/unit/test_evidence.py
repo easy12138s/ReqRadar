@@ -1,6 +1,5 @@
 """EvidenceCollector 单元测试"""
 
-import pytest
 
 from reqradar.agent.evidence import Evidence, EvidenceCollector
 

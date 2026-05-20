@@ -1,7 +1,8 @@
 """需求发布服务单元测试"""
 
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from reqradar.core.exceptions import ReportException
 from reqradar.web.services.requirement_release_service import (
@@ -14,6 +15,7 @@ from reqradar.web.services.requirement_release_service import (
     supersede_release,
     update_release,
 )
+
 
 class TestCreateRelease:
     async def test_creates_draft_with_auto_version(self):

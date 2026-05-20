@@ -5,6 +5,7 @@ import pytest
 
 from reqradar.web.services.content_reader import _TRUNCATE_LENGTH, ContentReader
 
+
 @pytest.fixture
 def content_reader():
     session_factory = MagicMock()

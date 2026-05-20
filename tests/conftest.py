@@ -16,7 +16,6 @@ from reqradar.web.app import create_app
 from reqradar.web.database import Base
 from reqradar.web.models import User
 from reqradar.web.services.report_storage import ReportStorage
-
 from tests.factories import unique_email
 
 

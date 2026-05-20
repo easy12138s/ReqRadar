@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from reqradar.web.api.auth import create_access_token, hash_password
-from reqradar.web.models import User
+from reqradar.web.api.auth import create_access_token
 
 
 def make_user_payload(

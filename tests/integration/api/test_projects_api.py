@@ -1,8 +1,6 @@
 import io
 import zipfile
 
-import pytest
-
 from tests.factories import build_project
 
 

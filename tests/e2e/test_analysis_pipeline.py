@@ -34,7 +34,7 @@ async def analysis_env(
 
 async def test_submit_analysis_returns_201(analysis_env):
     """提交分析应返回 201。"""
-    client, headers, token, user_data, user_id, project_id = analysis_env
+    client, headers, _token, _user_data, user_id, project_id = analysis_env
 
     resp = await client.post(
         "/api/analyses",
@@ -56,7 +56,7 @@ async def test_submit_analysis_returns_201(analysis_env):
 
 async def test_list_analyses_after_submit(analysis_env):
     """提交分析后应能在列表中看到。"""
-    client, headers, token, user_data, user_id, project_id = analysis_env
+    client, headers, _token, _user_data, _user_id, project_id = analysis_env
 
     resp = await client.post(
         "/api/analyses",
@@ -79,7 +79,7 @@ async def test_list_analyses_after_submit(analysis_env):
 
 async def test_get_analysis_detail(analysis_env):
     """获取单个分析详情。"""
-    client, headers, token, user_data, user_id, project_id = analysis_env
+    client, headers, _token, _user_data, _user_id, project_id = analysis_env
 
     resp = await client.post(
         "/api/analyses",
@@ -100,7 +100,7 @@ async def test_get_analysis_detail(analysis_env):
 
 async def test_analysis_cancel(analysis_env, e2e_session_factory):
     """取消分析应成功。"""
-    client, headers, token, user_data, user_id, project_id = analysis_env
+    client, headers, _token, _user_data, _user_id, project_id = analysis_env
 
     resp = await client.post(
         "/api/analyses",
@@ -129,7 +129,7 @@ async def test_analysis_submit_without_llm_key(
     e2e_project, patch_llm_reachable, setup_runner_session
 ):
     """无 LLM API Key 应返回 400。"""
-    client, headers, token, user_data, user_id, project_id = e2e_project
+    client, headers, _token, _user_data, _user_id, project_id = e2e_project
 
     resp = await client.post(
         "/api/analyses",
@@ -148,7 +148,7 @@ async def test_analysis_submit_without_llm_key(
 
 async def test_analysis_submit_other_user_project(analysis_env, e2e_client, e2e_session_factory):
     """非项目所有者提交分析应返回 403。"""
-    client, headers, token, user_data, user_id, project_id = analysis_env
+    _client, _headers, _token, _user_data, _user_id, project_id = analysis_env
 
     from tests.factories import unique_email
 
@@ -187,7 +187,7 @@ async def test_analysis_retry_after_completion(
     inject_llm_config,
 ):
     """完成后的任务可以重试。"""
-    client, headers, token, user_data, user_id, project_id = analysis_env
+    client, headers, _token, _user_data, _user_id, project_id = analysis_env
 
     resp = await client.post(
         "/api/analyses",
@@ -214,7 +214,7 @@ async def test_analysis_retry_after_completion(
 
 async def test_analysis_not_found(analysis_env):
     """查询不存在的分析应返回 404。"""
-    client, headers, token, user_data, user_id, project_id = analysis_env
+    client, headers, _token, _user_data, _user_id, _project_id = analysis_env
 
     resp = await client.get("/api/analyses/999999", headers=headers)
     assert resp.status_code == 404
@@ -222,7 +222,7 @@ async def test_analysis_not_found(analysis_env):
 
 async def test_analysis_cancel_not_cancellable(analysis_env, e2e_session_factory):
     """已取消的任务不能再取消，应返回 400。"""
-    client, headers, token, user_data, user_id, project_id = analysis_env
+    client, headers, _token, _user_data, _user_id, project_id = analysis_env
 
     resp = await client.post(
         "/api/analyses",
@@ -248,7 +248,7 @@ async def test_analysis_cancel_not_cancellable(analysis_env, e2e_session_factory
 
 async def test_analysis_retry_not_retriable(analysis_env, e2e_session_factory):
     """运行中的任务不能重试，应返回 400。"""
-    client, headers, token, user_data, user_id, project_id = analysis_env
+    client, headers, _token, _user_data, _user_id, project_id = analysis_env
 
     resp = await client.post(
         "/api/analyses",

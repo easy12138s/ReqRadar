@@ -19,7 +19,7 @@ class TestAuthFullLifecycle:
             json={"email": email, "password": "Pass1234", "display_name": "Lifecycle User"},
         )
         assert resp.status_code == 201
-        user_data = resp.json()
+        resp.json()
 
         # 2. Login
         resp2 = await e2e_client.post(

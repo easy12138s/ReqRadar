@@ -1,4 +1,6 @@
-"""E2E 测试 — 需求发布(Release)完整生命周期：创建→编辑→发布→归档→搜索、版本递增、仅草稿可删、跨项目 403。"""
+"""E2E 测试 — 需求发布(Release)完整生命周期：
+创建→编辑→发布→归档→搜索、版本递增、仅草稿可删、跨项目 403。
+"""
 
 import pytest
 
@@ -8,7 +10,7 @@ pytestmark = [pytest.mark.e2e, pytest.mark.integration]
 @pytest.fixture
 async def release_project(e2e_user, tmp_path):
     """创建用于 release 测试的项目，yield (client, headers, project_id)。"""
-    client, headers, token, user_data, user_id = e2e_user
+    client, headers, _token, _user_data, _user_id = e2e_user
     repo = tmp_path / "release_repo"
     repo.mkdir()
     (repo / "main.py").write_text("print('release test')", encoding="utf-8")

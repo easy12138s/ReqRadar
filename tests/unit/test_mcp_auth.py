@@ -1,8 +1,8 @@
 """MCP 认证模块单元测试"""
 
-import pytest
 
 from reqradar.mcp.auth import MCPAuthResult, authenticate_mcp_request, parse_bearer_token
+
 
 class TestParseBearerToken:
     def test_valid_bearer_token(self):

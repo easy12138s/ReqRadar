@@ -1,7 +1,5 @@
 """MCP 审计服务单元测试"""
 
-import pytest
-from unittest.mock import MagicMock
 
 from reqradar.web.services.mcp_audit_service import SENSITIVE_KEYS, sanitize_args
 

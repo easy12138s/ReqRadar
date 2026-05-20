@@ -1,4 +1,3 @@
-import pytest
 
 from tests.factories import build_report_template
 

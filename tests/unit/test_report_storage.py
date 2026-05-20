@@ -1,7 +1,8 @@
-import pytest
 
 from reqradar.web.services.report_storage import ReportStorage
 from tests.factories import build_analysis_task, build_project
+
+
 async def test_save_and_read_report(tmp_path):
     storage = ReportStorage(tmp_path)
 

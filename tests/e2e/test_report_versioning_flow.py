@@ -1,7 +1,6 @@
 """E2E 测试 — 报告版本管理流程 (mock-mode)"""
 
 import pytest
-from sqlalchemy import select
 
 from reqradar.web.enums import TaskStatus
 from reqradar.web.models import AnalysisTask, Report, ReportVersion

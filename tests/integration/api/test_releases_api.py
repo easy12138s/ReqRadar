@@ -2,6 +2,7 @@ import pytest
 
 from tests.factories import build_project
 
+
 @pytest.fixture
 async def project(db_session, regular_user):
     project = build_project(owner_id=regular_user.id, name="releases_api_project")
