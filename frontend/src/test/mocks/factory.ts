@@ -1,5 +1,3 @@
-import { vi } from 'vitest'
-
 export const mockFactory = {
   user: (overrides = {}) => ({
     id: 1,
