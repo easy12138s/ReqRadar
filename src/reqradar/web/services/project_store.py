@@ -76,7 +76,10 @@ class ProjectStore:
                 )
                 return None
 
-            vector_store = ChromaVectorStore(persist_directory=str(vectorstore_path))
+            vector_store = ChromaVectorStore(
+                persist_directory=str(vectorstore_path),
+                use_onnx=True,
+            )
 
             async with self._lock:
                 self._vector_stores[project_id] = vector_store
@@ -113,6 +116,7 @@ class ProjectStore:
             store = ChromaVectorStore(
                 persist_directory=str(vectorstore_path),
                 collection_name="commits",
+                use_onnx=True,
             )
 
             async with self._lock:

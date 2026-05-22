@@ -4,9 +4,9 @@ import platform
 import re
 import shutil
 import subprocess
+import tempfile
 import zipfile
 from pathlib import Path
-
 
 logger = logging.getLogger("reqradar.web.services.project_file_service")
 
@@ -189,3 +189,33 @@ class ProjectFileService:
     @staticmethod
     def is_git_available() -> bool:
         return shutil.which("git") is not None
+
+    @staticmethod
+    def extract_text_from_bytes(content: bytes, filename: str) -> str:
+        from reqradar.modules.loaders import LoaderRegistry
+
+        ext = Path(filename).suffix.lower()
+        text_exts = {".txt", ".md", ".csv", ".json", ".yaml", ".yml", ".html", ".htm", ".xml"}
+        if ext in text_exts:
+            return content.decode("utf-8", errors="replace")
+
+        loader = LoaderRegistry.get_for_file(Path(f"dummy{ext}"))
+        if loader is None:
+            logger.warning("无可用加载器处理 %s，回退到原始字节", filename)
+            return content.decode("utf-8", errors="replace")
+
+        with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+            tmp.write(content)
+            tmp_path = tmp.name
+        try:
+            if hasattr(loader, "load_full"):
+                return loader.load_full(Path(tmp_path))
+            docs = loader.load(Path(tmp_path), chunk=False)
+            if docs:
+                return "\n\n".join(doc.content for doc in docs)
+            return ""
+        except Exception as e:
+            logger.warning("文档解析 %s 失败: %s，回退到原始字节", filename, e)
+            return content.decode("utf-8", errors="replace")
+        finally:
+            os.unlink(tmp_path)

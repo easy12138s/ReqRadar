@@ -1,24 +1,28 @@
-"""向量存储 - Chroma 嵌入式"""
+"""向量存储 - ChromaDB 内置嵌入函数"""
 
 import json
 import logging
+import os
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
+if not os.environ.get("HF_ENDPOINT"):
+    os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
+
 logger = logging.getLogger("reqradar.vector_store")
 
 try:
     import chromadb
-    import sentence_transformers
+    from chromadb.utils import embedding_functions as chroma_ef
 
     CHROMA_AVAILABLE = True
 except ImportError:
     CHROMA_AVAILABLE = False
     chromadb = None
-    sentence_transformers = None
+    chroma_ef = None
 
 
 def _get_index_version_path(persist_directory: Path) -> Path:
@@ -102,20 +106,55 @@ def _estimate_model_size_mb(model_name: str) -> int:
     return info["size_mb"] if info else 400
 
 
+def _create_embedding_function(
+    embedding_model: str,
+    use_onnx: bool = False,
+    model_cache: Optional[str] = None,
+):
+    """
+    创建嵌入函数实例
+    优先使用 SentenceTransformerEmbeddingFunction（支持中文模型）
+    失败时降级到 ChromaDB 内置 ONNXMiniLM_L6_V2（英文模型，零下载）
+    """
+
+    if model_cache:
+        os.environ["SENTENCE_TRANSFORMERS_HOME"] = model_cache
+
+    try:
+        ef = chroma_ef.SentenceTransformerEmbeddingFunction(
+            model_name=embedding_model,
+        )
+        logger.info(
+            "使用 SentenceTransformerEmbeddingFunction (模型=%s)",
+            embedding_model,
+        )
+        return ef
+    except Exception as e:
+        logger.warning(
+            "SentenceTransformer 加载失败 (%s)，降级到内置 ONNXMiniLM_L6_V2。"
+            "中文语义搜索质量会下降。如需中文模型，请手动下载: "
+            "python -c \"from sentence_transformers import SentenceTransformer; SentenceTransformer('BAAI/bge-small-zh')\"",
+            e,
+        )
+        return chroma_ef.ONNXMiniLM_L6_V2()
+
+
 class ChromaVectorStore(VectorStore):
-    """Chroma 持久化向量存储"""
+    """ChromaDB 持久化向量存储 — 使用内置 EmbeddingFunction"""
+
+    _client_cache: dict[str, object] = {}
 
     def __init__(
         self,
         persist_directory: str = ".reqradar/vectorstore",
-        embedding_model: str = "BAAI/bge-large-zh",
+        embedding_model: str = "BAAI/bge-small-zh",
         collection_name: str = "requirements",
         model_cache: Optional[str] = None,
+        use_onnx: bool = False,
     ):
         if not CHROMA_AVAILABLE:
             raise ImportError(
-                "chroma or sentence-transformers not installed. "
-                "Run: pip install chromadb sentence-transformers"
+                "chromadb 未安装。请运行: pip install 'reqradar[vector]' 或 pip install chromadb"
             )
 
         self.persist_directory = Path(persist_directory)
@@ -123,18 +162,23 @@ class ChromaVectorStore(VectorStore):
 
         _check_index_compatibility(self.persist_directory)
 
+        cache_key = str(self.persist_directory.resolve())
         try:
-            self.client = chromadb.PersistentClient(
-                path=str(self.persist_directory),
-                settings=chromadb.Settings(
-                    anonymized_telemetry=False,
-                ),
-            )
+            if cache_key in ChromaVectorStore._client_cache:
+                self.client = ChromaVectorStore._client_cache[cache_key]
+            else:
+                self.client = chromadb.PersistentClient(
+                    path=str(self.persist_directory),
+                    settings=chromadb.Settings(
+                        anonymized_telemetry=False,
+                    ),
+                )
+                ChromaVectorStore._client_cache[cache_key] = self.client
         except Exception as e:
             raise ImportError(
-                f"ChromaDB index is incompatible with current version. "
-                f"Please rebuild: rm -rf {self.persist_directory} && reqradar index. "
-                f"Original error: {e}"
+                f"ChromaDB 索引与当前版本不兼容。"
+                f"请重建索引: rm -rf {self.persist_directory} && reqradar index。"
+                f"原始错误: {e}"
             ) from e
 
         logger.info(
@@ -142,15 +186,17 @@ class ChromaVectorStore(VectorStore):
             embedding_model,
             _estimate_model_size_mb(embedding_model),
         )
-        st_kwargs = {}
-        if model_cache:
-            st_kwargs["cache_folder"] = model_cache
-        self.embedding_model = sentence_transformers.SentenceTransformer(
-            embedding_model, **st_kwargs
+
+        self.ef = _create_embedding_function(
+            embedding_model=embedding_model,
+            use_onnx=use_onnx,
+            model_cache=model_cache,
         )
 
         self.collection = self.client.get_or_create_collection(
-            name=collection_name, metadata={"hnsw:space": "cosine"}
+            name=collection_name,
+            embedding_function=self.ef,
+            metadata={"hnsw:space": "cosine"},
         )
 
     def add_documents(self, docs: list[Document]):
@@ -161,13 +207,11 @@ class ChromaVectorStore(VectorStore):
         ids = [doc.id or str(uuid.uuid4()) for doc in docs]
         contents = [doc.content for doc in docs]
         metadatas = [doc.metadata if doc.metadata else None for doc in docs]
-        embeddings = self.embedding_model.encode(contents).tolist()
 
         self.collection.add(
             ids=ids,
             documents=contents,
             metadatas=metadatas,
-            embeddings=embeddings,
         )
 
     def add_document(self, doc: Document):
@@ -183,10 +227,8 @@ class ChromaVectorStore(VectorStore):
         except Exception:
             pass
 
-        query_embedding = self.embedding_model.encode([query]).tolist()
-
         results = self.collection.query(
-            query_embeddings=query_embedding,
+            query_texts=query,
             n_results=top_k,
         )
 

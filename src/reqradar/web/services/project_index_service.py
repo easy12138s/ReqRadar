@@ -76,19 +76,21 @@ class ProjectIndexService:
                     from reqradar.modules.loaders import LoaderRegistry
                     from reqradar.modules.vector_store import Document
 
-                    try:
-                        import chromadb
-
-                        client = chromadb.PersistentClient(path=str(vectorstore_path))
-                        client.delete_collection("requirements")
-                    except (ValueError, Exception):
-                        pass
-
                     vs = ChromaVectorStore(
                         persist_directory=str(vectorstore_path),
                         embedding_model=config.index.embedding_model,
                         model_cache=str(self._model_cache_path) if self._model_cache_path else None,
+                        use_onnx=config.index.use_onnx_backend,
                     )
+                    try:
+                        vs.client.delete_collection("requirements")
+                        vs.collection = vs.client.get_or_create_collection(
+                            name="requirements",
+                            embedding_function=vs.ef,
+                            metadata={"hnsw:space": "cosine"},
+                        )
+                    except Exception:
+                        pass
 
                     for doc_path in req_dir.rglob("*"):
                         if doc_path.is_file():
@@ -144,20 +146,22 @@ class ProjectIndexService:
 
         vectorstore_path = index_path / "vectorstore"
 
-        try:
-            import chromadb
-
-            client = chromadb.PersistentClient(path=str(vectorstore_path))
-            client.delete_collection("commits")
-        except (ValueError, Exception):
-            pass
-
         vs = ChromaVectorStore(
             persist_directory=str(vectorstore_path),
             embedding_model=config.index.embedding_model,
             collection_name="commits",
             model_cache=str(self._model_cache_path) if self._model_cache_path else None,
+            use_onnx=config.index.use_onnx_backend,
         )
+        try:
+            vs.client.delete_collection("commits")
+            vs.collection = vs.client.get_or_create_collection(
+                name="commits",
+                embedding_function=vs.ef,
+                metadata={"hnsw:space": "cosine"},
+            )
+        except Exception:
+            pass
 
         documents = []
         for c in commits:
