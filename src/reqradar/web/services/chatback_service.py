@@ -52,6 +52,7 @@ class ChatbackService:
         version_number: int,
         user_message: str,
         user_id: int,
+        chat_history: list[dict] | None = None,
     ) -> dict:
         intent = classify_intent(user_message)
 
@@ -86,8 +87,16 @@ class ChatbackService:
             intent_type=intent,
         )
 
+        # 获取历史对话
+        if chat_history is None:
+            chat_history = await self.get_chat_history(task_id, version_number)
+        history_messages = [
+            {"role": c["role"], "content": c["content"]}
+            for c in chat_history[-10:]
+        ]
+
         reply = await self._generate_reply(
-            agent, report_data, context_snapshot, user_message, intent
+            agent, report_data, context_snapshot, user_message, intent, history_messages
         )
 
         agent_reply = ReportChat(
@@ -123,6 +132,7 @@ class ChatbackService:
         context_snapshot: dict,
         user_message: str,
         intent: str,
+        chat_history: list[dict] | None = None,
     ) -> str:
         if self.llm_client is None:
             return self._generate_fallback_reply(
@@ -133,10 +143,21 @@ class ChatbackService:
             report_data=report_data,
             context_snapshot=context_snapshot,
         )
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_message},
-        ]
+        messages = [{"role": "system", "content": system_prompt}]
+
+        if chat_history:
+            recent_history = chat_history[-10:]
+            messages.extend(recent_history)
+
+        messages.append({"role": "user", "content": user_message})
+
+        fits, estimated = self.llm_client.check_context_fit(messages, reserved_tokens=500)
+        if not fits:
+            logger.warning("Chatback context may exceed limit: %d tokens, truncating history", estimated)
+            messages = [{"role": "system", "content": system_prompt}]
+            if chat_history:
+                messages.extend(chat_history[-5:])
+            messages.append({"role": "user", "content": user_message})
 
         try:
             response = await self.llm_client.complete(messages)

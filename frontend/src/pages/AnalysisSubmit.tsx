@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Card,
@@ -56,6 +56,7 @@ export function AnalysisSubmit() {
   }, []);
 
   const handleTextSubmit = async (values: { project_id: number; text: string }) => {
+    if (submitting) return;
     setSubmitting(true);
     try {
       const task = await createAnalysis({
@@ -75,22 +76,50 @@ export function AnalysisSubmit() {
     }
   };
 
-  const handleFileUpload = async (file: File) => {
+  const handleFileUpload = useCallback(async (file: File) => {
+    if (submitting) return;
     const projectId = textForm.getFieldValue('project_id');
     if (!projectId) {
       message.error('请先选择项目');
       throw new Error('No project selected');
     }
-    const task = await uploadAnalysis(
-      projectId,
-      file,
-      depth,
-      templateId,
-      focusAreas.length > 0 ? focusAreas : undefined,
-    );
-    message.success('文件上传成功，分析已开始');
-    navigate(`/analyses/${task.id}`);
-  };
+    setSubmitting(true);
+    try {
+      const task = await uploadAnalysis(
+        projectId,
+        file,
+        depth,
+        templateId,
+        focusAreas.length > 0 ? focusAreas : undefined,
+      );
+      message.success('文件上传成功，分析已开始');
+      navigate(`/analyses/${task.id}`);
+    } catch (err) {
+      console.error('Upload analysis failed:', err);
+      message.error('文件上传失败');
+    } finally {
+      setSubmitting(false);
+    }
+  }, [submitting, textForm, depth, templateId, focusAreas, navigate]);
+
+  const handlePreprocess = useCallback(async () => {
+    if (preprocessing) return;
+    const projectId = textForm.getFieldValue('project_id');
+    if (!projectId) {
+      message.error('请先选择项目');
+      return;
+    }
+    setPreprocessing(true);
+    try {
+      const result = await preprocessRequirements(projectId, preprocessFiles, preprocessTitle);
+      message.success('需求文档已生成');
+      navigate(`/requirements/${result.id}`);
+    } catch (e: any) {
+      message.error(e.response?.data?.detail || '预处理失败');
+    } finally {
+      setPreprocessing(false);
+    }
+  }, [preprocessing, textForm, preprocessFiles, preprocessTitle, navigate]);
 
   if (loading) {
     return (
@@ -110,6 +139,36 @@ export function AnalysisSubmit() {
     );
   }
 
+  const projectSelect = (
+    <Form.Item
+      label="项目"
+      name="project_id"
+      rules={[{ required: true, message: '请选择项目' }]}
+    >
+      <Select placeholder="请选择项目" aria-label="选择项目">
+        {projects.map((p) => (
+          <Option key={p.id} value={p.id}>
+            {p.name}
+          </Option>
+        ))}
+      </Select>
+    </Form.Item>
+  );
+
+  const sharedConfig = (
+    <>
+      <Form.Item label="分析深度">
+        <DepthSelector value={depth} onChange={(v) => setDepth(v)} />
+      </Form.Item>
+      <Form.Item label="报告模板">
+        <TemplateSelector value={templateId} onChange={(v) => setTemplateId(v)} />
+      </Form.Item>
+      <Form.Item label="关注领域">
+        <FocusAreaSelector value={focusAreas} onChange={(v) => setFocusAreas(v)} />
+      </Form.Item>
+    </>
+  );
+
   const tabItems = [
     {
       key: 'text',
@@ -123,19 +182,7 @@ export function AnalysisSubmit() {
           }}
           layout="vertical"
         >
-          <Form.Item
-            label="项目"
-            name="project_id"
-            rules={[{ required: true, message: '请选择项目' }]}
-          >
-            <Select placeholder="请选择项目">
-              {projects.map((p) => (
-                <Option key={p.id} value={p.id}>
-                  {p.name}
-                </Option>
-              ))}
-            </Select>
-          </Form.Item>
+          {projectSelect}
           <Form.Item
             label="需求文本"
             name="text"
@@ -148,15 +195,7 @@ export function AnalysisSubmit() {
               maxLength={50000}
             />
           </Form.Item>
-          <Form.Item label="分析深度">
-            <DepthSelector value={depth} onChange={(v) => setDepth(v)} />
-          </Form.Item>
-          <Form.Item label="报告模板">
-            <TemplateSelector value={templateId} onChange={(v) => setTemplateId(v)} />
-          </Form.Item>
-          <Form.Item label="关注领域">
-            <FocusAreaSelector value={focusAreas} onChange={(v) => setFocusAreas(v)} />
-          </Form.Item>
+          {sharedConfig}
           <Form.Item>
             <Button
               type="primary"
@@ -177,19 +216,7 @@ export function AnalysisSubmit() {
       children: (
         <div>
           <Form form={textForm} layout="vertical">
-            <Form.Item
-              label="项目"
-              name="project_id"
-              rules={[{ required: true, message: '请选择项目' }]}
-            >
-              <Select placeholder="请选择项目">
-                {projects.map((p) => (
-                  <Option key={p.id} value={p.id}>
-                    {p.name}
-                  </Option>
-                ))}
-              </Select>
-            </Form.Item>
+            {projectSelect}
           </Form>
           <FileUploader
             onUpload={handleFileUpload}
@@ -204,19 +231,7 @@ export function AnalysisSubmit() {
       children: (
         <Space direction="vertical" style={{ width: '100%' }} size="middle">
           <Form form={textForm} layout="vertical">
-            <Form.Item
-              label="项目"
-              name="project_id"
-              rules={[{ required: true, message: '请选择项目' }]}
-            >
-              <Select placeholder="请选择项目">
-                {projects.map((p) => (
-                  <Option key={p.id} value={p.id}>
-                    {p.name}
-                  </Option>
-                ))}
-              </Select>
-            </Form.Item>
+            {projectSelect}
           </Form>
 
           <Upload.Dragger
@@ -253,24 +268,8 @@ export function AnalysisSubmit() {
             block
             size="large"
             loading={preprocessing}
-            disabled={preprocessFiles.length === 0}
-            onClick={async () => {
-              const projectId = textForm.getFieldValue('project_id');
-              if (!projectId) {
-                message.error('请先选择项目');
-                return;
-              }
-              setPreprocessing(true);
-              try {
-                const result = await preprocessRequirements(projectId, preprocessFiles, preprocessTitle);
-                message.success('需求文档已生成');
-                navigate(`/requirements/${result.id}`);
-              } catch (e: any) {
-                message.error(e.response?.data?.detail || '预处理失败');
-              } finally {
-                setPreprocessing(false);
-              }
-            }}
+            disabled={preprocessFiles.length === 0 || preprocessing}
+            onClick={handlePreprocess}
           >
             预处理需求文档
           </Button>

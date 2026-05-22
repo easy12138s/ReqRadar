@@ -13,6 +13,8 @@ import {
 import { getDashboardSummaries, type ProjectDashboardSummary } from '../api/projects';
 import SkeletonStat from '../components/SkeletonStat';
 import SkeletonCard from '../components/SkeletonCard';
+import { EmptyState } from '../components/EmptyState';
+import { ASSET_COLORS, PENDING_COLORS, STAT_CARD_COLORS } from '../constants/chartColors';
 
 const { Title, Text } = Typography;
 
@@ -51,16 +53,16 @@ export default function Dashboard() {
 
   if (projects.length === 0) {
     return (
-      <div style={{ textAlign: 'center', padding: '80px 20px' }}>
-        <ProjectOutlined style={{ fontSize: 64, color: token.colorBorderSecondary, marginBottom: 16 }} />
-        <Title level={3} style={{ color: token.colorTextSecondary }}>还没有项目</Title>
-        <Text type="secondary" style={{ display: 'block', marginBottom: 24 }}>
-          创建第一个项目开始使用需求分析
-        </Text>
-        <Button type="primary" icon={<PlusOutlined />} size="large" onClick={() => navigate('/projects')}>
-          新建项目
-        </Button>
-      </div>
+      <EmptyState
+        icon={<ProjectOutlined />}
+        title="还没有项目"
+        description="创建第一个项目开始使用需求分析。您可以上传 ZIP、克隆 Git 仓库或选择本地路径。"
+        action={{
+          label: '新建项目',
+          icon: <PlusOutlined />,
+          onClick: () => navigate('/projects'),
+        }}
+      />
     );
   }
 
@@ -97,66 +99,28 @@ export default function Dashboard() {
       )}
 
       <Row gutter={[24, 24]} style={{ marginBottom: 32 }}>
-        <Col xs={24} sm={12} lg={6}>
-          <motion.div variants={itemVariants}>
-            <Card size="small" className="flat-card" style={{ padding: '8px 4px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                <div style={{ padding: 12, borderRadius: 12, background: 'rgba(0,184,212,0.1)' }}>
-                  <ProjectOutlined style={{ fontSize: 24, color: token.colorInfo }} />
+        {[
+          { icon: <ProjectOutlined />, label: '项目', value: projects.length, colors: STAT_CARD_COLORS[0] },
+          { icon: <TagsOutlined />, label: '术语', value: totalTerms, colors: STAT_CARD_COLORS[1] },
+          { icon: <AppstoreOutlined />, label: '模块', value: totalModules, colors: STAT_CARD_COLORS[2] },
+          { icon: <ExclamationCircleOutlined />, label: '待确认', value: totalPending, colors: STAT_CARD_COLORS[3] },
+        ].map((stat, idx) => (
+          <Col xs={24} sm={12} lg={6} key={idx}>
+            <motion.div variants={itemVariants}>
+              <Card size="small" className="flat-card" style={{ padding: '8px 4px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                  <div style={{ padding: 12, borderRadius: 12, background: stat.colors.bg }}>
+                    <span style={{ fontSize: 24, color: stat.colors.icon }}>{stat.icon}</span>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 13, color: token.colorTextSecondary, marginBottom: 4 }}>{stat.label}</div>
+                    <div style={{ fontSize: 32, fontWeight: 700, color: token.colorText, lineHeight: 1 }}>{stat.value}</div>
+                  </div>
                 </div>
-                <div>
-                  <div style={{ fontSize: 13, color: token.colorTextSecondary, marginBottom: 4 }}>项目</div>
-                  <div style={{ fontSize: 32, fontWeight: 700, color: token.colorText, lineHeight: 1 }}>{projects.length}</div>
-                </div>
-              </div>
-            </Card>
-          </motion.div>
-        </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <motion.div variants={itemVariants}>
-            <Card size="small" className="flat-card" style={{ padding: '8px 4px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                <div style={{ padding: 12, borderRadius: 12, background: 'rgba(0,184,212,0.1)' }}>
-                  <TagsOutlined style={{ fontSize: 24, color: token.colorPrimary }} />
-                </div>
-                <div>
-                  <div style={{ fontSize: 13, color: token.colorTextSecondary, marginBottom: 4 }}>术语</div>
-                  <div style={{ fontSize: 32, fontWeight: 700, color: token.colorText, lineHeight: 1 }}>{totalTerms}</div>
-                </div>
-              </div>
-            </Card>
-          </motion.div>
-        </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <motion.div variants={itemVariants}>
-            <Card size="small" className="flat-card" style={{ padding: '8px 4px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                <div style={{ padding: 12, borderRadius: 12, background: 'rgba(0,200,83,0.1)' }}>
-                  <AppstoreOutlined style={{ fontSize: 24, color: token.colorSuccess }} />
-                </div>
-                <div>
-                  <div style={{ fontSize: 13, color: token.colorTextSecondary, marginBottom: 4 }}>模块</div>
-                  <div style={{ fontSize: 32, fontWeight: 700, color: token.colorText, lineHeight: 1 }}>{totalModules}</div>
-                </div>
-              </div>
-            </Card>
-          </motion.div>
-        </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <motion.div variants={itemVariants}>
-            <Card size="small" className="flat-card" style={{ padding: '8px 4px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                <div style={{ padding: 12, borderRadius: 12, background: 'rgba(255,171,0,0.1)' }}>
-                  <ExclamationCircleOutlined style={{ fontSize: 24, color: token.colorWarning }} />
-                </div>
-                <div>
-                  <div style={{ fontSize: 13, color: token.colorTextSecondary, marginBottom: 4 }}>待确认</div>
-                  <div style={{ fontSize: 32, fontWeight: 700, color: token.colorText, lineHeight: 1 }}>{totalPending}</div>
-                </div>
-              </div>
-            </Card>
-          </motion.div>
-        </Col>
+              </Card>
+            </motion.div>
+          </Col>
+        ))}
       </Row>
 
       <Row gutter={[24, 24]} style={{ marginBottom: 32 }}>
@@ -174,8 +138,8 @@ export default function Dashboard() {
                         contentStyle={{ backgroundColor: token.colorBgElevated, borderColor: token.colorBorderSecondary, borderRadius: 8 }}
                         itemStyle={{ color: token.colorText }}
                       />
-                      <Bar dataKey="termsCount" name="术语" stackId="a" fill={token.colorPrimary} radius={[0, 0, 4, 4]} />
-                      <Bar dataKey="modulesCount" name="模块" stackId="a" fill={token.colorSuccess} radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="termsCount" name="术语" stackId="a" fill={ASSET_COLORS.terms} radius={[0, 0, 4, 4]} />
+                      <Bar dataKey="modulesCount" name="模块" stackId="a" fill={ASSET_COLORS.modules} radius={[4, 4, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -206,7 +170,7 @@ export default function Dashboard() {
                         paddingAngle={5}
                       >
                         {projects.filter((p: typeof projects[number]) => p.pendingChangesCount > 0).map((_, index: number) => (
-                          <Cell key={`cell-${index}`} fill={[token.colorWarning, token.colorError, token.colorPrimary, token.colorInfo][index % 4]} />
+                          <Cell key={`cell-${index}`} fill={PENDING_COLORS[index % PENDING_COLORS.length]} />
                         ))}
                       </Pie>
                       <RechartsTooltip 

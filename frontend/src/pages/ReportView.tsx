@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Button,
@@ -34,6 +34,12 @@ export function ReportView() {
   const [releaseModalOpen, setReleaseModalOpen] = useState(false);
   const [releaseForm] = Form.useForm();
   const [releaseLoading, setReleaseLoading] = useState(false);
+  const [chatCollapsed, setChatCollapsed] = useState(false);
+  const [chatHeight, setChatHeight] = useState(320);
+  const chatRef = useRef<HTMLDivElement>(null);
+  const dragStartY = useRef(0);
+  const dragStartHeight = useRef(0);
+  const isDragging = useRef(false);
 
   useEffect(() => {
     if (!taskId) return;
@@ -80,7 +86,7 @@ export function ReportView() {
       .then(() => {
         message.success({ content: 'PDF 导出成功', key: 'pdf-gen' });
       })
-      .catch((err: any) => {
+      .catch((err: unknown) => {
         console.error('PDF generation failed:', err);
         message.error({ content: 'PDF 导出失败', key: 'pdf-gen' });
       });
@@ -101,14 +107,47 @@ export function ReportView() {
       message.success('需求版本已创建并发布');
       setReleaseModalOpen(false);
       releaseForm.resetFields();
-    } catch (e: any) {
-      if (e?.response?.data?.detail) {
-        message.error(e.response.data.detail);
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { detail?: string } } };
+      if (err?.response?.data?.detail) {
+        message.error(err.response.data.detail);
       }
     } finally {
       setReleaseLoading(false);
     }
   };
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    isDragging.current = true;
+    dragStartY.current = e.clientY;
+    dragStartHeight.current = chatHeight;
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = 'row-resize';
+  }, [chatHeight]);
+
+  const handleMouseMove = useCallback((e: MouseEvent) => {
+    if (!isDragging.current) return;
+    const delta = dragStartY.current - e.clientY;
+    const newHeight = Math.max(120, Math.min(600, dragStartHeight.current + delta));
+    setChatHeight(newHeight);
+  }, []);
+
+  const handleMouseUp = useCallback(() => {
+    if (isDragging.current) {
+      isDragging.current = false;
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+    }
+  }, []);
+
+  useEffect(() => {
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [handleMouseMove, handleMouseUp]);
 
   const downloadMenu = {
     items: [
@@ -144,7 +183,7 @@ export function ReportView() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 80px)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
       {/* top bar */}
       <div
         style={{
@@ -162,13 +201,14 @@ export function ReportView() {
             type="text"
             icon={<ArrowLeftOutlined />}
             onClick={() => navigate('/analyses')}
+            aria-label="返回分析列表"
           />
           <div>
             <Title level={5} style={{ margin: 0 }}>
               任务 #{report.task_id} 分析报告
             </Title>
           </div>
-          <RiskBadge level={report.risk_level as any} />
+          <RiskBadge level={report.risk_level as 'low' | 'medium' | 'high' | 'critical'} />
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <Button icon={<PlusOutlined />} onClick={() => setReleaseModalOpen(true)}>
@@ -191,6 +231,7 @@ export function ReportView() {
           overflow: 'auto',
           padding: '32px 24px',
           background: token.colorBgBase,
+          minHeight: 0,
         }}
       >
         <div style={{ maxWidth: 860, margin: '0 auto' }}>
@@ -204,17 +245,71 @@ export function ReportView() {
         </div>
       </div>
 
-      {/* fixed bottom chat */}
+      {/* collapsible & resizable chat panel */}
       <div
+        ref={chatRef}
         style={{
-          borderTop: '1px solid #363b48',
-          background: '#0d1117',
+          borderTop: `1px solid ${token.colorBorderSecondary}`,
+          background: token.colorBgContainer,
           flexShrink: 0,
-          maxHeight: '40vh',
-          overflow: 'auto',
+          height: chatCollapsed ? 48 : chatHeight,
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+          transition: chatCollapsed ? 'height 0.3s ease' : 'none',
         }}
       >
-        <ChatPanel taskId={taskId} />
+        {/* drag handle */}
+        <div
+          onMouseDown={handleMouseDown}
+          onClick={() => setChatCollapsed(!chatCollapsed)}
+          style={{
+            height: 8,
+            background: chatCollapsed ? 'transparent' : `${token.colorBorderSecondary}`,
+            cursor: 'row-resize',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+            transition: 'background 0.2s',
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = `${token.colorPrimary}40`; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = chatCollapsed ? 'transparent' : `${token.colorBorderSecondary}`; }}
+        >
+          <div style={{
+            width: 40,
+            height: 4,
+            borderRadius: 2,
+            background: token.colorTextSecondary,
+            opacity: 0.5,
+          }} />
+        </div>
+        {/* chat header bar */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '8px 16px',
+            borderBottom: chatCollapsed ? 'none' : `1px solid ${token.colorBorderSecondary}`,
+            flexShrink: 0,
+            cursor: 'pointer',
+          }}
+          onClick={() => setChatCollapsed(!chatCollapsed)}
+        >
+          <span style={{ fontSize: 13, fontWeight: 600, color: token.colorText }}>
+            AI 追问助手
+          </span>
+          <Button type="text" size="small" style={{ color: token.colorTextSecondary }}>
+            {chatCollapsed ? '展开' : '收起'}
+          </Button>
+        </div>
+        {/* chat content */}
+        {!chatCollapsed && (
+          <div style={{ flex: 1, overflow: 'hidden', minHeight: 0 }}>
+            <ChatPanel taskId={taskId} />
+          </div>
+        )}
       </div>
 
       <Modal

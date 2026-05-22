@@ -25,13 +25,28 @@ class HomeConfig(BaseModel):
 
 
 class LLMConfig(BaseModel):
-    provider: str = Field(default="openai", description="LLM provider: openai or ollama")
-    model: str = Field(default="gpt-4o-mini", description="Model name")
+    provider: str = Field(
+        default="openai",
+        description="LLM provider: openai, anthropic, ollama, etc.",
+    )
+    model: str = Field(
+        default="gpt-4o-mini",
+        description="模型名称，支持格式: gpt-4o-mini, anthropic/claude-3, ollama/llama2",
+    )
     api_key: Optional[str] = Field(default=None, description="API key (or env var reference)")
     base_url: Optional[str] = Field(default=None, description="OpenAI-compatible API base URL")
     timeout: int = Field(default=60, description="Request timeout in seconds")
     max_retries: int = Field(default=2, description="Max retry attempts")
     host: Optional[str] = Field(default=None, description="Ollama host")
+    # 新增：上下文和生成长度配置
+    context_window: int = Field(
+        default=8192,
+        description="模型上下文窗口大小（用于 token 管理）",
+    )
+    max_output_tokens: int = Field(
+        default=2000,
+        description="默认最大生成 token 数",
+    )
 
     @field_validator("api_key", mode="before")
     @classmethod
@@ -89,7 +104,7 @@ EMBEDDING_MODELS = {
 
 class IndexConfig(BaseModel):
     embedding_model: str = Field(
-        default="BAAI/bge-large-zh",
+        default="BAAI/bge-small-zh",
         description="Embedding model name. Options: "
         + ", ".join(f"{k} ({v['description']})" for k, v in EMBEDDING_MODELS.items()),
     )
@@ -99,6 +114,10 @@ class IndexConfig(BaseModel):
     model_cache: str = Field(
         default="",
         description="Embedding model cache directory, auto-derived from home if empty",
+    )
+    use_onnx_backend: bool = Field(
+        default=True,
+        description="使用 ONNX Runtime 替代 PyTorch 进行嵌入推理，体积从 ~2GB 降至 ~150MB",
     )
 
 

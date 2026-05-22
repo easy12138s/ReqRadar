@@ -55,6 +55,14 @@ export default function AppShell() {
     return map[segment] || segment;
   }
 
+  // 轮询获取进行中的任务 - 必须在条件判断之前调用
+  const { data: analyses = [] } = useQuery({
+    queryKey: ['analyses-running'],
+    queryFn: getAnalyses,
+    refetchInterval: 5000, // 每5秒轮询一次
+    enabled: isAuthenticated, // 只有登录后才轮询
+  });
+
   if (isLoading) {
     return <PageLoader />;
   }
@@ -92,14 +100,6 @@ export default function AppShell() {
       if (key === 'logout') logout();
     },
   };
-
-  // 轮询获取进行中的任务
-  const { data: analyses = [] } = useQuery({
-    queryKey: ['analyses-running'],
-    queryFn: getAnalyses,
-    refetchInterval: 5000, // 每5秒轮询一次
-    enabled: isAuthenticated, // 只有登录后才轮询
-  });
 
   const runningTasks = analyses.filter((t: AnalysisTask) => t.status === 'pending' || t.status === 'running');
 
@@ -188,22 +188,29 @@ export default function AppShell() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           <Popover content={notificationContent} placement="bottomRight" trigger="click" arrow={false}>
             <Badge count={runningTasks.length} size="small" offset={[-4, 4]}>
-              <Button 
-                type="text" 
-                icon={<BellOutlined />} 
+              <Button
+                type="text"
+                icon={<BellOutlined />}
                 style={{ color: token.colorTextSecondary }}
+                aria-label={`通知，${runningTasks.length} 个进行中的任务`}
               />
             </Badge>
           </Popover>
-          <Button 
-            type="text" 
-            icon={<BulbOutlined />} 
+          <Button
+            type="text"
+            icon={<BulbOutlined />}
             onClick={toggleTheme}
             style={{ color: token.colorTextSecondary }}
             title={themeMode === 'dark' ? '切换到亮色模式' : '切换到暗色模式'}
+            aria-label={themeMode === 'dark' ? '切换到亮色模式' : '切换到暗色模式'}
           />
           <Dropdown menu={userMenu} placement="bottomRight">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+            <div
+              style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}
+              role="button"
+              aria-label="用户菜单"
+              tabIndex={0}
+            >
               <span style={{ fontSize: 13, color: token.colorTextSecondary, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {user?.email || ''}
               </span>
@@ -211,6 +218,7 @@ export default function AppShell() {
                 size={32}
                 icon={<UserOutlined />}
                 style={{ background: token.colorPrimary }}
+                aria-label="用户头像"
               />
             </div>
           </Dropdown>

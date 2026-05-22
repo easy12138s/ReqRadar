@@ -51,7 +51,9 @@ def _log_llm_call(
     error_message: str | None = None,
     task_id: int | None = None,
 ):
-    """Log an LLM call to the database (fire-and-forget)."""
+    """Log an LLM call to the database (fire-and-forget with error tracking)."""
+    log_errors = []
+
     try:
         from reqradar.web.models import LLMCallLog
 
@@ -59,34 +61,47 @@ def _log_llm_call(
             import reqradar.web.dependencies as dep_module
 
             if dep_module.async_session_factory is None:
+                log_errors.append("async_session_factory is None")
                 return
-            async with dep_module.async_session_factory() as session:
-                log = LLMCallLog(
-                    task_id=task_id,
-                    caller=caller,
-                    model=model,
-                    method=method,
-                    prompt_chars=prompt_chars,
-                    completion_chars=completion_chars,
-                    prompt_tokens=prompt_tokens,
-                    completion_tokens=completion_tokens,
-                    total_tokens=total_tokens,
-                    duration_ms=duration_ms,
-                    success=success,
-                    tool_calls_count=tool_calls_count,
-                    tool_names=tool_names,
-                    error_message=error_message[:2000] if error_message else None,
-                )
-                session.add(log)
-                await session.commit()
+            try:
+                async with dep_module.async_session_factory() as session:
+                    log = LLMCallLog(
+                        task_id=task_id,
+                        caller=caller,
+                        model=model,
+                        method=method,
+                        prompt_chars=prompt_chars,
+                        completion_chars=completion_chars,
+                        prompt_tokens=prompt_tokens,
+                        completion_tokens=completion_tokens,
+                        total_tokens=total_tokens,
+                        duration_ms=duration_ms,
+                        success=success,
+                        tool_calls_count=tool_calls_count,
+                        tool_names=tool_names,
+                        error_message=error_message[:2000] if error_message else None,
+                    )
+                    session.add(log)
+                    await session.commit()
+            except Exception as e:
+                log_errors.append(f"Database write failed: {e}")
 
         try:
             loop = asyncio.get_running_loop()
             loop.create_task(_write())
         except RuntimeError:
-            pass
-    except Exception:
-        pass
+            log_errors.append("No running event loop")
+
+    except Exception as e:
+        log_errors.append(f"Setup failed: {e}")
+
+    # 如果有错误且是重要调用，记录到应用日志
+    if log_errors and task_id:
+        logger.warning(
+            "LLM call log may be lost for task %s: %s",
+            task_id,
+            "; ".join(log_errors)
+        )
 
 
 class LLMClient(ABC):
@@ -94,6 +109,32 @@ class LLMClient(ABC):
 
     def __init__(self):
         self._tool_calling_supported: bool | None = None
+        self._context_window: int = 8192  # 默认 8K
+
+    def estimate_tokens(self, messages: list[dict]) -> int:
+        """
+        估算消息列表的 token 数。
+        简化算法：中文按 1.5 字符/token，英文按 4 字符/token，每条消息 +4 格式开销
+        """
+        total = 0
+        for msg in messages:
+            content = msg.get("content", "") or ""
+            # 简单启发式：中文字符多按 1.5，否则按 4
+            chinese_chars = sum(1 for c in content if "\u4e00" <= c <= "\u9fff")
+            other_chars = len(content) - chinese_chars
+            total += int(chinese_chars / 1.5 + other_chars / 4)
+            total += 4  # 格式开销
+        total += 2  # 回复前缀
+        return total
+
+    def check_context_fit(self, messages: list[dict], reserved_tokens: int = 1000) -> tuple[bool, int]:
+        """
+        检查消息是否能放入上下文窗口
+        返回: (是否适合, 估算 token 数)
+        """
+        estimated = self.estimate_tokens(messages)
+        max_input_tokens = self._context_window - reserved_tokens
+        return estimated <= max_input_tokens, estimated
 
     @abstractmethod
     async def complete(self, messages: list[dict], **kwargs) -> str:
@@ -159,22 +200,37 @@ class LiteLLMClient(LLMClient):
         host: str | None = None,
         timeout: int = 60,
         max_retries: int = 2,
+        max_output_tokens: int = 2000,
+        context_window: int = 8192,
     ):
         super().__init__()
         self.model = model
         self.api_key = api_key
         self.api_base = api_base or base_url or None
-        if "ollama/" in model or self.api_base and "11434" in str(self.api_base):
-            # Ollama: use host if api_base not set
-            ollama_host = host or "http://localhost:11434"
-            if not self.api_base:
-                self.api_base = ollama_host.rstrip("/") + "/v1"
-        # 自定义 base_url 时，模型名无 provider 前缀则自动加 openai/
-        if self.api_base and "/" not in self.model:
-            self.model = f"openai/{self.model}"
+        self._max_output_tokens = max_output_tokens
+        self._context_window = context_window
+        self._setup_ollama_if_needed(host)
         self.timeout = timeout
         self.max_retries = max_retries
         self._current_task_id: int | None = None
+
+    def _setup_ollama_if_needed(self, host: str | None):
+        """优化的 Ollama 检测和配置"""
+        is_ollama = (
+            self.model.startswith("ollama/") or
+            (self.api_base and "/ollama" in self.api_base.lower()) or
+            (host and not self.api_base)
+        )
+
+        if is_ollama:
+            ollama_host = host or "http://localhost:11434"
+            if not self.api_base:
+                self.api_base = ollama_host.rstrip("/") + "/v1"
+            if self.model.startswith("ollama/"):
+                self.model = self.model[7:]
+
+        if self.api_base and "/" not in self.model.split(":")[0]:
+            self.model = f"openai/{self.model}"
 
     def _log(self, method: str, response, prompt_chars: int, t0: float, tool_count: int = 0):
         """统一的 LiteLLM 调用日志"""
@@ -204,6 +260,15 @@ class LiteLLMClient(LLMClient):
         prompt_chars = sum(len(m.get("content", "") or "") for m in messages)
         t0 = time.monotonic()
 
+        # 检查上下文是否超限
+        fits, estimated = self.check_context_fit(messages)
+        if not fits:
+            logger.warning(
+                "Context window may exceed limit: estimated %d tokens, max %d",
+                estimated,
+                self._context_window
+            )
+
         try:
             response = await litellm.acompletion(
                 model=model,
@@ -211,7 +276,7 @@ class LiteLLMClient(LLMClient):
                 api_key=self.api_key or None,
                 api_base=self.api_base,
                 temperature=kwargs.get("temperature", 0.7),
-                max_tokens=kwargs.get("max_tokens", 1000),
+                max_tokens=kwargs.get("max_tokens", self._max_output_tokens),
                 timeout=self.timeout,
                 num_retries=self.max_retries,
             )
@@ -224,7 +289,10 @@ class LiteLLMClient(LLMClient):
     async def stream_complete(self, messages: list[dict], **kwargs):
         """流式调用 (LiteLLM 统一接口)"""
         model = kwargs.get("model", self.model)
+        prompt_chars = sum(len(m.get("content", "") or "") for m in messages)
         t0 = time.monotonic()
+
+        collected_content = []
 
         try:
             response = await litellm.acompletion(
@@ -233,7 +301,7 @@ class LiteLLMClient(LLMClient):
                 api_key=self.api_key or None,
                 api_base=self.api_base,
                 temperature=kwargs.get("temperature", 0.7),
-                max_tokens=kwargs.get("max_tokens", 2048),
+                max_tokens=kwargs.get("max_tokens", self._max_output_tokens),
                 stream=True,
                 timeout=self.timeout + 60,
                 num_retries=self.max_retries,
@@ -242,8 +310,40 @@ class LiteLLMClient(LLMClient):
                 delta = chunk.choices[0].delta
                 content = getattr(delta, "content", None)
                 if content:
+                    collected_content.append(content)
                     yield content
+
+            # 流结束后记录日志
+            full_content = "".join(collected_content)
+            prompt_tokens = self.estimate_tokens(messages)
+            completion_tokens = self.estimate_tokens([{"content": full_content}])
+
+            _log_llm_call(
+                caller="stream_complete",
+                model=self.model,
+                method="stream",
+                prompt_chars=prompt_chars,
+                completion_chars=len(full_content),
+                duration_ms=int((time.monotonic() - t0) * 1000),
+                success=True,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                total_tokens=prompt_tokens + completion_tokens,
+                task_id=self._current_task_id,
+            )
+
         except Exception as e:
+            _log_llm_call(
+                caller="stream_complete",
+                model=self.model,
+                method="stream",
+                prompt_chars=prompt_chars,
+                completion_chars=0,
+                duration_ms=int((time.monotonic() - t0) * 1000),
+                success=False,
+                error_message=str(e),
+                task_id=self._current_task_id,
+            )
             raise LLMException(f"LiteLLM stream failed: {e}", cause=e)
 
     async def complete_structured(
@@ -280,7 +380,7 @@ class LiteLLMClient(LLMClient):
                 tools=tools,
                 tool_choice={"type": "function", "function": {"name": function_name}},
                 temperature=kwargs.get("temperature", 0.3),
-                max_tokens=kwargs.get("max_tokens", 2000),
+                max_tokens=kwargs.get("max_tokens", self._max_output_tokens),
                 timeout=self.timeout,
                 num_retries=self.max_retries,
             )
@@ -331,7 +431,7 @@ class LiteLLMClient(LLMClient):
                 tools=tools,
                 tool_choice=kwargs.get("tool_choice"),
                 temperature=kwargs.get("temperature", 0.3),
-                max_tokens=kwargs.get("max_tokens", 4096),
+                max_tokens=kwargs.get("max_tokens", self._max_output_tokens),
                 timeout=self.timeout,
                 num_retries=self.max_retries,
             )
@@ -354,12 +454,13 @@ class LiteLLMClient(LLMClient):
                     )
                     tool_name_list.append(fn.name or "")
                 usage = getattr(response, "usage", None)
+                total_tokens = getattr(usage, "total_tokens", "?")
                 logger.info(
-                    "LLM complete_with_tools: model=%s tools=%s tool_calls=%d tokens=%s",
-                    model,
-                    tool_name_list,
-                    len(tool_calls),
-                    getattr(usage, "total_tokens", "?"),
+                    "llm_tool_call",
+                    model=model,
+                    tools=tool_name_list,
+                    tool_calls=len(tool_calls),
+                    tokens=total_tokens,
                 )
                 return {
                     "tool_calls": parsed_calls,
@@ -411,7 +512,7 @@ class LiteLLMClient(LLMClient):
                 messages=messages,
                 api_key=self.api_key or None,
                 api_base=self.api_base,
-                max_tokens=kwargs.get("max_tokens", 1024),
+                max_tokens=kwargs.get("max_tokens", self._max_output_tokens),
                 timeout=self.timeout,
                 num_retries=self.max_retries,
             )
@@ -420,10 +521,15 @@ class LiteLLMClient(LLMClient):
             raise LLMException(f"LiteLLM vision failed: {e}", cause=e)
 
 
-def create_llm_client(provider: str = "openai", **kwargs) -> LiteLLMClient:
+def create_llm_client(**kwargs) -> LiteLLMClient:
     """工厂函数：创建 LiteLLM 统一客户端。
 
-    LiteLLM 通过 model 参数自动路由到对应厂商，provider 参数保留向后兼容。
+    注意: provider 参数已废弃，请通过 model 前缀指定厂商。
+    例如: anthropic/claude-3, ollama/llama2, openai/gpt-4o
     """
-    kwargs.pop("provider", None)
+    # 向后兼容：如果传入 provider，打印警告并忽略
+    if "provider" in kwargs:
+        logger.debug("provider parameter is deprecated, use model prefix instead")
+        kwargs.pop("provider")
+
     return LiteLLMClient(**kwargs)

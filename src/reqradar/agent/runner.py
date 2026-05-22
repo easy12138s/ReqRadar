@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import time
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -36,53 +37,164 @@ _EVIDENCE_TYPE_MAP = {
 }
 
 
+class AnalysisSessionLogger:
+    """分析会话日志包装器，自动注入 task_id/phase/step 标签"""
+
+    def __init__(self, task_id: int | None = None):
+        self.task_id = task_id
+        self._round_start: float | None = None
+        self._round_tools: list[str] = []
+
+    def enter(self):
+        from reqradar.infrastructure.logging import set_log_context
+
+        set_log_context(task_id=self.task_id)
+        self.info("analysis_started")
+
+    def exit(self):
+        from reqradar.infrastructure.logging import clear_log_context
+
+        clear_log_context()
+
+    def phase(self, name: str):
+        self.info("phase_changed", phase=name)
+
+    def round_start(self, step_count: int):
+        self._round_start = time.monotonic()
+        self._round_tools.clear()
+        self.debug("react_round_start", step=step_count)
+
+    def tool_call(self, seq: int, name: str, args: dict, result_len: int):
+        self._round_tools.append(name)
+        self.debug(
+            "tool_call",
+            seq=seq,
+            tool=name,
+            args=args,
+            result_chars=result_len,
+        )
+
+    def round_end(self, step_count: int, llm_tokens: int):
+        elapsed = 0.0
+        if self._round_start is not None:
+            elapsed = time.monotonic() - self._round_start
+        self.info(
+            "react_round_complete",
+            step=step_count,
+            tools_called=len(self._round_tools),
+            tools=self._round_tools,
+            tokens=llm_tokens,
+            duration_ms=round(elapsed * 1000),
+        )
+        self._round_start = None
+
+    def report_generated(self, duration_ms: float):
+        self.info("report_generated", duration_ms=duration_ms)
+
+    def analysis_done(self, total_steps: int, status: str):
+        self.info(
+            "analysis_completed",
+            total_steps=total_steps,
+            status=status,
+        )
+
+    # ---- 低级接口（直接透传到 stdlib logger）----
+
+    def info(self, event: str, **kwargs):
+        if kwargs:
+            extras = " ".join(f"{k}={v}" for k, v in kwargs.items())
+            logger.info("%s %s", event, extras)
+        else:
+            logger.info(event)
+
+    def debug(self, event: str, **kwargs):
+        if kwargs:
+            extras = " ".join(f"{k}={v}" for k, v in kwargs.items())
+            logger.debug("%s %s", event, extras)
+        else:
+            logger.debug(event)
+
+    def warning(self, event: str, **kwargs):
+        if kwargs:
+            extras = " ".join(f"{k}={v}" for k, v in kwargs.items())
+            logger.warning("%s %s", event, extras)
+        else:
+            logger.warning(event)
+
+    def error(self, event: str, **kwargs):
+        if kwargs:
+            extras = " ".join(f"{k}={v}" for k, v in kwargs.items())
+            logger.error("%s %s", event, extras)
+        else:
+            logger.error(event)
+
+
 def _truncate_result(text: str, max_len: int = _RESULT_TRUNCATE_LENGTH) -> str:
     if len(text) <= max_len:
         return text
     return text[:max_len] + "\n...(截断)"
 
 
-def _safe_truncate_history(history: list[dict], max_messages: int = 6) -> list[dict]:
-    """Truncate conversation history while keeping assistant(tool_calls) + tool result pairs atomic.
+def _safe_truncate_history(
+    history: list[dict],
+    llm_client,
+    max_tokens: int = 6000,
+    keep_pairs: bool = True,
+) -> list[dict]:
+    """按 token 数截断历史，保持 assistant(tool_calls) + tool 结果原子性。
 
-    If a truncated prefix would leave an orphan ``tool`` message (i.e. its
-    parent ``assistant`` message with ``tool_calls`` is missing), we skip
-    forward past that broken group so the API never sees a ``tool`` message
-    without its matching ``assistant``.
+    如果截断后会留下孤儿 tool 消息（即其对应的 assistant 消息已被截断），
+    则跳过该组，确保 API 不会看到没有匹配 assistant 的 tool 消息。
     """
-    if len(history) <= max_messages:
+    if not history:
         return history
 
-    recent = history[-max_messages:]
+    total_tokens = llm_client.estimate_tokens(history)
+    if total_tokens <= max_tokens:
+        return history
 
-    start = 0
-    while start < len(recent):
-        msg = recent[start]
-        if msg.get("role") == "tool" and msg.get("tool_call_id"):
-            start += 1
-            continue
-        if msg.get("role") == "assistant" and msg.get("tool_calls"):
-            start += 1
-            while start < len(recent) and recent[start].get("role") == "tool":
-                start += 1
-            continue
-        break
+    # 从旧到新遍历，找到截断点
+    truncated = []
+    current_tokens = 0
 
-    return recent[start:]
+    for msg in reversed(history):
+        msg_tokens = llm_client.estimate_tokens([msg])
+
+        # 检查是否是 tool 消息且其对应的 assistant 消息已被截断
+        if keep_pairs and msg.get("role") == "tool":
+            tool_call_id = msg.get("tool_call_id")
+            has_parent = any(
+                m.get("role") == "assistant" and any(
+                    tc.get("id") == tool_call_id
+                    for tc in (m.get("tool_calls") or [])
+                )
+                for m in truncated
+            )
+            if not has_parent:
+                continue  # 跳过孤儿 tool 消息
+
+        if current_tokens + msg_tokens > max_tokens:
+            break
+
+        truncated.insert(0, msg)
+        current_tokens += msg_tokens
+
+    return truncated
 
 
 def _build_messages_chain(
     system_prompt: str,
     user_prompt: str,
     history: list[dict],
-    max_history_messages: int = 6,
+    llm_client,
+    max_history_tokens: int = 6000,
 ) -> list[dict]:
     messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_prompt},
     ]
     if history:
-        recent = _safe_truncate_history(history, max_history_messages)
+        recent = _safe_truncate_history(history, llm_client, max_history_tokens)
         messages = messages[:1] + recent + messages[1:]
     return messages
 
@@ -223,6 +335,7 @@ async def _execute_tool_calls(
     tool_calls: list[dict],
     tool_registry: ToolRegistry,
     tracker: ToolCallTracker,
+    session: AnalysisSessionLogger | None = None,
     ws_manager=None,
     task_id: int | None = None,
 ) -> list[dict]:
@@ -296,13 +409,16 @@ async def _execute_tool_calls(
             }
         )
 
-        logger.info(
-            "Tool #%d: %s(%s) -> %d chars",
-            tracker.call_count,
-            tc_name,
-            json.dumps(tc_args, ensure_ascii=False)[:60],
-            len(result_text),
-        )
+        if session is not None:
+            session.tool_call(tracker.call_count, tc_name, tc_args, len(result_text))
+        else:
+            logger.debug(
+                "Tool #%d: %s(%s) -> %d chars",
+                tracker.call_count,
+                tc_name,
+                json.dumps(tc_args, ensure_ascii=False)[:60],
+                len(result_text),
+            )
 
     return tool_results
 
@@ -317,147 +433,176 @@ async def run_react_analysis(
     requirement_text: str | None = None,
     ws_manager: "ConnectionManager | None" = None,  # type: ignore[name-defined]
     task_id: int | None = None,
+    progress_callback=None,
 ) -> dict:
-    if requirement_text:
-        agent.requirement_text = requirement_text
+    session = AnalysisSessionLogger(task_id=task_id)
+    session.enter()
+    report_start = time.monotonic()
 
-    tool_schemas = tool_registry.get_schemas(tool_registry.list_names())
-    tracker = ToolCallTracker()
-    conversation_history: list[dict] = []
+    try:
+        if requirement_text:
+            agent.requirement_text = requirement_text
 
-    agent.state = AgentState.ANALYZING
+        tool_schemas = tool_registry.get_schemas(tool_registry.list_names())
+        tracker = ToolCallTracker()
+        conversation_history: list[dict] = []
 
-    while True:
-        agent.step_count += 1
+        agent.state = AgentState.ANALYZING
+        session.phase("analyze")
 
-        if ws_manager and task_id:
-            await ws_manager.broadcast(
-                task_id,
-                {
-                    "type": "dimension_progress",
-                    "task_id": task_id,
-                    "step": agent.step_count,
-                    "dimensions": agent.dimension_tracker.status_summary(),
-                },
+        while True:
+            agent.step_count += 1
+            session.round_start(agent.step_count)
+
+            if ws_manager and task_id:
+                await ws_manager.broadcast(
+                    task_id,
+                    {
+                        "type": "dimension_progress",
+                        "task_id": task_id,
+                        "step": agent.step_count,
+                        "dimensions": agent.dimension_tracker.status_summary(),
+                    },
+                )
+
+            ds = agent.dimension_tracker.status_summary()
+            system_prompt = build_dynamic_system_prompt(
+                dimension_status=ds,
+                project_memory=agent.project_memory_text,
+                user_memory=agent.user_memory_text,
+                historical_context=agent.historical_context,
+                template_sections=section_descriptions,
+                pending_actions=agent._pending_actions,
             )
 
+            user_prompt = build_step_user_prompt(
+                requirement_text=agent.requirement_text,
+                step_count=agent.step_count,
+                max_steps=agent.max_steps,
+                weak_dimensions=agent.get_weak_dimensions_text(),
+                evidence_count=len(agent.evidence_collector.evidences),
+                depth=agent.depth,
+            )
+
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ]
+            if conversation_history:
+                recent = _safe_truncate_history(conversation_history, llm_client, max_tokens=6000)
+                messages = messages[:1] + recent + messages[1:]
+
+            if not tool_schemas:
+                result = await _call_llm_structured(llm_client, messages, STEP_OUTPUT_SCHEMA)
+                if result:
+                    update_agent_from_step_result(agent, result)
+                if agent.should_terminate():
+                    break
+                await asyncio.sleep(0)
+                continue
+
+            supported = await llm_client.supports_tool_calling()
+            if not supported:
+                result = await _call_llm_structured(llm_client, messages, STEP_OUTPUT_SCHEMA)
+                if result:
+                    update_agent_from_step_result(agent, result)
+                if agent.should_terminate():
+                    break
+                await asyncio.sleep(0)
+                continue
+
+            response = await _complete_with_tools(llm_client, messages, tool_schemas)
+
+            if response is None:
+                agent._consecutive_failures += 1
+                if agent.should_terminate():
+                    break
+                await asyncio.sleep(0)
+                continue
+
+            agent._consecutive_failures = 0
+
+            tokens_used = response.get("tokens", 0)
+
+            if response.get("tool_calls"):
+                assistant_msg = response.get("assistant_message", {})
+                if assistant_msg:
+                    conversation_history.append(assistant_msg)
+
+                tool_results = await _execute_tool_calls(
+                    response["tool_calls"], tool_registry, tracker, session, ws_manager, task_id
+                )
+                conversation_history.extend(tool_results)
+                session.round_end(agent.step_count, tokens_used)
+                if progress_callback is not None:
+                    await progress_callback(agent.step_count, agent.dimension_tracker.status_summary())
+                await asyncio.sleep(0)
+                continue
+
+            if response.get("content"):
+                try:
+                    parsed = _parse_json_response(response["content"])
+                    update_agent_from_step_result(agent, parsed)
+
+                    if len(parsed.get("key_findings", [])) == 0:
+                        agent._consecutive_empty_steps += 1
+                    else:
+                        agent._consecutive_empty_steps = 0
+                except (json.JSONDecodeError, ValueError):
+                    agent._consecutive_empty_steps += 1
+                    conversation_history.append(
+                        {
+                            "role": "assistant",
+                            "content": response["content"],
+                        }
+                    )
+
+            session.round_end(agent.step_count, tokens_used)
+            if progress_callback is not None:
+                await progress_callback(agent.step_count, agent.dimension_tracker.status_summary())
+
+            if agent.should_terminate():
+                break
+
+            await asyncio.sleep(0)
+
+        agent.state = AgentState.GENERATING
+        session.phase("report")
+
         ds = agent.dimension_tracker.status_summary()
-        system_prompt = build_dynamic_system_prompt(
+        final_system_prompt = build_dynamic_system_prompt(
             dimension_status=ds,
             project_memory=agent.project_memory_text,
             user_memory=agent.user_memory_text,
             historical_context=agent.historical_context,
             template_sections=section_descriptions,
-            pending_actions=agent._pending_actions,
+        )
+        report_data = await generate_report(
+            agent, llm_client, final_system_prompt, section_descriptions
         )
 
-        user_prompt = build_step_user_prompt(
-            requirement_text=agent.requirement_text,
-            step_count=agent.step_count,
-            max_steps=agent.max_steps,
-            weak_dimensions=agent.get_weak_dimensions_text(),
-            evidence_count=len(agent.evidence_collector.evidences),
-            depth=agent.depth,
+        report_elapsed = round((time.monotonic() - report_start) * 1000)
+        session.report_generated(report_elapsed)
+
+        agent.final_report_data = report_data
+
+        enable_memory_evolution = (
+            config and hasattr(config, "memory_evolution") and config.memory_evolution.enabled
         )
-
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ]
-        if conversation_history:
-            recent = _safe_truncate_history(conversation_history, 6)
-            messages = messages[:1] + recent + messages[1:]
-
-        if not tool_schemas:
-            result = await _call_llm_structured(llm_client, messages, STEP_OUTPUT_SCHEMA)
-            if result:
-                update_agent_from_step_result(agent, result)
-            if agent.should_terminate():
-                break
-            await asyncio.sleep(0)
-            continue
-
-        supported = await llm_client.supports_tool_calling()
-        if not supported:
-            result = await _call_llm_structured(llm_client, messages, STEP_OUTPUT_SCHEMA)
-            if result:
-                update_agent_from_step_result(agent, result)
-            if agent.should_terminate():
-                break
-            await asyncio.sleep(0)
-            continue
-
-        response = await _complete_with_tools(llm_client, messages, tool_schemas)
-
-        if response is None:
-            agent._consecutive_failures += 1
-            if agent.should_terminate():
-                break
-            await asyncio.sleep(0)
-            continue
-
-        agent._consecutive_failures = 0
-
-        if response.get("tool_calls"):
-            assistant_msg = response.get("assistant_message", {})
-            if assistant_msg:
-                conversation_history.append(assistant_msg)
-
-            tool_results = await _execute_tool_calls(
-                response["tool_calls"], tool_registry, tracker, ws_manager, task_id
-            )
-            conversation_history.extend(tool_results)
-            await asyncio.sleep(0)
-            continue
-
-        if response.get("content"):
+        if enable_memory_evolution and project_memory is not None:
             try:
-                parsed = _parse_json_response(response["content"])
-                update_agent_from_step_result(agent, parsed)
+                from reqradar.agent.memory_evolution import evolve_memory_after_analysis
 
-                if len(parsed.get("key_findings", [])) == 0:
-                    agent._consecutive_empty_steps += 1
-                else:
-                    agent._consecutive_empty_steps = 0
-            except (json.JSONDecodeError, ValueError):
-                agent._consecutive_empty_steps += 1
-                conversation_history.append(
-                    {
-                        "role": "assistant",
-                        "content": response["content"],
-                    }
-                )
+                await evolve_memory_after_analysis(agent, project_memory, llm_client)
+            except Exception as e:
+                logger.warning("Memory evolution failed: %s", e)
 
-        if agent.should_terminate():
-            break
+        agent.state = AgentState.COMPLETED
+        session.analysis_done(agent.step_count, "completed")
+        return report_data
 
-        await asyncio.sleep(0)
-
-    agent.state = AgentState.GENERATING
-
-    ds = agent.dimension_tracker.status_summary()
-    final_system_prompt = build_dynamic_system_prompt(
-        dimension_status=ds,
-        project_memory=agent.project_memory_text,
-        user_memory=agent.user_memory_text,
-        historical_context=agent.historical_context,
-        template_sections=section_descriptions,
-    )
-    report_data = await generate_report(
-        agent, llm_client, final_system_prompt, section_descriptions
-    )
-    agent.final_report_data = report_data
-
-    enable_memory_evolution = (
-        config and hasattr(config, "memory_evolution") and config.memory_evolution.enabled
-    )
-    if enable_memory_evolution and project_memory is not None:
-        try:
-            from reqradar.agent.memory_evolution import evolve_memory_after_analysis
-
-            await evolve_memory_after_analysis(agent, project_memory, llm_client)
-        except Exception as e:
-            logger.warning("Memory evolution failed: %s", e)
-
-    agent.state = AgentState.COMPLETED
-    return report_data
+    except Exception as e:
+        session.error("analysis_failed", error=str(e))
+        raise
+    finally:
+        session.exit()

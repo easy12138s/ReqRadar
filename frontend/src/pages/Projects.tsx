@@ -31,6 +31,7 @@ import { useNavigate } from 'react-router-dom';
 import type { Project, ProjectCreateFromLocal, ProjectCreateFromGit } from '@/types/api';
 import { getProjects, createFromZip, createFromGit, createFromLocal, deleteProject } from '@/api/projects';
 import { apiClient } from '@/api/client';
+import { useDebounce } from '@/hooks/useDebounce';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -53,6 +54,7 @@ export function Projects() {
   const submittingRef = useRef(false);
   const [zipFile, setZipFile] = useState<File | null>(null);
   const [searchText, setSearchText] = useState('');
+  const debouncedSearch = useDebounce(searchText, 300);
   const navigate = useNavigate();
 
   const fetchProjects = async () => {
@@ -159,7 +161,7 @@ export function Projects() {
   };
 
   const filtered = projects.filter((p) =>
-    p.name.toLowerCase().includes(searchText.toLowerCase())
+    p.name.toLowerCase().includes(debouncedSearch.toLowerCase())
   );
 
   if (loading) {
