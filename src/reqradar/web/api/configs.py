@@ -399,6 +399,10 @@ async def test_llm_connection(
 
     provider = body.get("provider", "openai")
 
+    if base_url:
+        raw_model = model.split("/")[-1]
+        model = f"openai/{raw_model}"
+
     try:
         import litellm
 

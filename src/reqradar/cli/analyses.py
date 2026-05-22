@@ -405,6 +405,7 @@ def analyze_file(ctx, requirement_file, index_path, output, llm_backend, verbose
             vector_store = ChromaVectorStore(
                 persist_directory=str(vectorstore_path),
                 model_cache=model_cache_path,
+                use_onnx=config.index.use_onnx_backend,
             )
 
         code_graph = None
@@ -474,6 +475,7 @@ def analyze_file(ctx, requirement_file, index_path, output, llm_backend, verbose
                     persist_directory=str(vectorstore_path),
                     collection_name="commits",
                     model_cache=model_cache_path,
+                    use_onnx=config.index.use_onnx_backend,
                 )
                 from reqradar.agent.tools.search_git_history import SearchGitHistoryTool
 

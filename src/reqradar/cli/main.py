@@ -102,6 +102,7 @@ def index(ctx, repo_path, docs_path, output, do_build_profile):
                 persist_directory=str(output_path / "vectorstore"),
                 embedding_model=config.index.embedding_model,
                 model_cache=str(paths["models"]),
+                use_onnx=config.index.use_onnx_backend,
             )
 
             docs_path_obj = Path(docs_path)
@@ -162,6 +163,7 @@ def index(ctx, repo_path, docs_path, output, do_build_profile):
                             embedding_model=config.index.embedding_model,
                             collection_name="commits",
                             model_cache=str(paths["models"]),
+                            use_onnx=config.index.use_onnx_backend,
                         )
                         from reqradar.modules.vector_store import Document
 
