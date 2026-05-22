@@ -335,6 +335,7 @@ async def _execute_tool_calls(
     tool_calls: list[dict],
     tool_registry: ToolRegistry,
     tracker: ToolCallTracker,
+    agent: AnalysisAgent | None = None,
     session: AnalysisSessionLogger | None = None,
     ws_manager=None,
     task_id: int | None = None,
@@ -408,6 +409,12 @@ async def _execute_tool_calls(
                 "content": result_text,
             }
         )
+        try:
+            tool_data = json.loads(result_text)
+            if isinstance(tool_data, dict) and agent is not None:
+                update_agent_from_tool_result(agent, tool_data)
+        except (json.JSONDecodeError, TypeError):
+            pass
 
         if session is not None:
             session.tool_call(tracker.call_count, tc_name, tc_args, len(result_text))
@@ -530,12 +537,15 @@ async def run_react_analysis(
                     conversation_history.append(assistant_msg)
 
                 tool_results = await _execute_tool_calls(
-                    response["tool_calls"], tool_registry, tracker, session, ws_manager, task_id
+                    response["tool_calls"], tool_registry, tracker, agent, session, ws_manager, task_id
                 )
                 conversation_history.extend(tool_results)
+                agent._consecutive_empty_steps = 0
                 session.round_end(agent.step_count, tokens_used)
                 if progress_callback is not None:
                     await progress_callback(agent.step_count, agent.dimension_tracker.status_summary())
+                if agent._cancelled or agent.step_count >= agent.max_steps:
+                    break
                 await asyncio.sleep(0)
                 continue
 

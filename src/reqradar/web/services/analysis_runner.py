@@ -1,14 +1,15 @@
 import asyncio
+import contextlib
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import markdown
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from reqradar.agent.analysis_agent import AnalysisAgent, AgentState
+from reqradar.agent.analysis_agent import AgentState, AnalysisAgent
 from reqradar.agent.runner import run_react_analysis
 from reqradar.agent.tools import ToolRegistry
 from reqradar.core.report import ReportRenderer
@@ -16,11 +17,12 @@ from reqradar.infrastructure.config import Config
 from reqradar.infrastructure.config_manager import ConfigManager
 from reqradar.infrastructure.template_loader import TemplateLoader
 from reqradar.modules.memory_manager import AnalysisMemoryManager
-from reqradar.web.models import AnalysisTask, Report, Project
 from reqradar.web.enums import TaskStatus
+from reqradar.web.models import AnalysisTask, Project, Report
 from reqradar.web.services.project_file_service import ProjectFileService
 from reqradar.web.services.project_store import project_store
-from reqradar.web.websocket import ConnectionManager, manager as ws_manager
+from reqradar.web.websocket import ConnectionManager
+from reqradar.web.websocket import manager as ws_manager
 
 logger = logging.getLogger("reqradar.web.services.analysis_runner")
 
@@ -79,8 +81,8 @@ class AnalysisRunner:
         db: AsyncSession,
         paths: dict | None = None,
     ) -> tuple[AnalysisAgent, AnalysisMemoryManager, ConfigManager, object | None]:
-        from reqradar.modules.memory import MemoryManager
         from reqradar.infrastructure.paths import get_paths
+        from reqradar.modules.memory import MemoryManager
 
         depth = task.depth if hasattr(task, "depth") and task.depth else "standard"
         agent = AnalysisAgent(
@@ -125,20 +127,20 @@ class AnalysisRunner:
         memory_data,
         paths: dict | None = None,
     ) -> tuple[ToolRegistry, object]:
-        from reqradar.modules.llm_client import create_llm_client
-        from reqradar.modules.git_analyzer import GitAnalyzer
         from reqradar.agent.tools import (
-            SearchCodeTool,
-            ReadFileTool,
-            ReadModuleSummaryTool,
-            ListModulesTool,
-            SearchRequirementsTool,
-            GetDependenciesTool,
             GetContributorsTool,
+            GetDependenciesTool,
             GetProjectProfileTool,
             GetTerminologyTool,
+            ListModulesTool,
+            ReadFileTool,
+            ReadModuleSummaryTool,
+            SearchCodeTool,
+            SearchRequirementsTool,
         )
         from reqradar.agent.tools.security import PathSandbox, SensitiveFileFilter
+        from reqradar.modules.git_analyzer import GitAnalyzer
+        from reqradar.modules.llm_client import create_llm_client
 
         if paths is None:
             from reqradar.infrastructure.paths import get_paths
@@ -310,7 +312,7 @@ class AnalysisRunner:
         }
         task.context_json = snapshot
         task.status = TaskStatus.COMPLETED
-        task.completed_at = datetime.now(timezone.utc)
+        task.completed_at = datetime.now(UTC)
 
         md_path = ""
         html_path = ""
@@ -363,7 +365,7 @@ class AnalysisRunner:
             return
 
         task.status = TaskStatus.RUNNING
-        task.started_at = datetime.now(timezone.utc)
+        task.started_at = datetime.now(UTC)
         await db.commit()
 
         if ws_manager:
@@ -402,6 +404,28 @@ class AnalysisRunner:
                     },
                 )
 
+            registered_tools = tool_registry.list_names()
+            if "search_code" not in registered_tools and ws_manager:
+                missing = []
+                if "search_code" not in registered_tools:
+                    missing.append("search_code")
+                if "get_dependencies" not in registered_tools:
+                    missing.append("get_dependencies")
+                await ws_manager.broadcast(
+                    task_id,
+                    {
+                        "type": "agent_thinking",
+                        "task_id": task_id,
+                        "message": f"项目未建立索引, 以下工具不可用: {', '.join(missing)}。建议先运行 reqradar index 或在项目页面重建索引。分析将继续但质量可能受限。",
+                    },
+                )
+
+            async def _on_progress(step: int, dimensions: dict):
+                task.current_step = step
+                task.progress_snapshot = dimensions
+                with contextlib.suppress(Exception):
+                    await db.commit()
+
             report_data = await run_react_analysis(
                 agent=agent,
                 llm_client=llm_client,
@@ -411,6 +435,7 @@ class AnalysisRunner:
                 project_memory=analysis_memory.project_memory if analysis_memory else None,
                 ws_manager=ws_manager,
                 task_id=task_id,
+                progress_callback=_on_progress,
             )
 
             renderer = ReportRenderer(
@@ -427,6 +452,7 @@ class AnalysisRunner:
             except Exception:
                 try:
                     from jinja2 import Template as JinjaTemplate
+
                     from reqradar.core.report import _INLINE_FALLBACK_TEMPLATE
 
                     fallback_tmpl = JinjaTemplate(_INLINE_FALLBACK_TEMPLATE)
@@ -463,7 +489,7 @@ class AnalysisRunner:
 
         except asyncio.CancelledError:
             task.status = TaskStatus.CANCELLED
-            task.completed_at = datetime.now(timezone.utc)
+            task.completed_at = datetime.now(UTC)
             await db.commit()
             if ws_manager:
                 await ws_manager.broadcast(
@@ -472,19 +498,23 @@ class AnalysisRunner:
             raise
 
         except Exception as e:
-            task.status = TaskStatus.FAILED
-            task.error_message = str(e)[:2000]
-            task.completed_at = datetime.now(timezone.utc)
-            await db.commit()
-            if ws_manager:
-                await ws_manager.broadcast(
-                    task_id,
-                    {
-                        "type": "analysis_failed",
-                        "task_id": task_id,
-                        "error": str(e)[:500],
-                    },
-                )
+            await db.rollback()
+            result = await db.execute(select(AnalysisTask).where(AnalysisTask.id == task_id))
+            task = result.scalar_one_or_none()
+            if task is not None:
+                task.status = TaskStatus.FAILED
+                task.error_message = str(e)[:2000]
+                task.completed_at = datetime.now(UTC)
+                await db.commit()
+                if ws_manager:
+                    await ws_manager.broadcast(
+                        task_id,
+                        {
+                            "type": "analysis_failed",
+                            "task_id": task_id,
+                            "error": str(e)[:500],
+                        },
+                    )
 
     def cancel(self, task_id: int):
         task = self._active_tasks.get(task_id)

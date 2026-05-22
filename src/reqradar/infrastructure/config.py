@@ -119,6 +119,14 @@ class IndexConfig(BaseModel):
         default=True,
         description="使用 ONNX Runtime 替代 PyTorch 进行嵌入推理，体积从 ~2GB 降至 ~150MB",
     )
+    hf_mirror: str = Field(
+        default="https://hf-mirror.com",
+        description="HuggingFace mirror endpoint for downloading models",
+    )
+    hf_hub_disable_symlinks: bool = Field(
+        default=True,
+        description="Disable symlinks in HuggingFace Hub cache (recommended for Windows)",
+    )
 
 
 class AnalysisConfig(BaseModel):

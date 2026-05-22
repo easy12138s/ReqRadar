@@ -1,14 +1,14 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from sqlalchemy import ForeignKey, String, Text, Integer, DateTime, Boolean, JSON, UniqueConstraint
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from reqradar.web.database import Base
-from reqradar.web.enums import TaskStatus, ChangeStatus, ReleaseStatus
+from reqradar.web.enums import ChangeStatus, ReleaseStatus, TaskStatus
 
 
 def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class User(Base):
@@ -20,7 +20,7 @@ class User(Base):
     display_name: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[str] = mapped_column(String(50), default="user", nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
+        DateTime, default=lambda: datetime.now(UTC), nullable=False
     )
 
     projects: Mapped[list["Project"]] = relationship(back_populates="owner")
@@ -38,7 +38,7 @@ class RevokedToken(Base):
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )
 
 
@@ -88,12 +88,12 @@ class Project(Base):
     source_url: Mapped[str] = mapped_column(String(1024), default="", nullable=False)
     owner_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
+        DateTime, default=lambda: datetime.now(UTC), nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
         nullable=False,
     )
     default_template_id: Mapped[int | None] = mapped_column(
@@ -143,12 +143,12 @@ class RequirementDocument(Base):
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="ready")
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
     )
 
     project: Mapped["Project"] = relationship(backref="requirement_documents")
@@ -175,7 +175,7 @@ class AnalysisTask(Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
+        DateTime, default=lambda: datetime.now(UTC), nullable=False
     )
     current_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     depth: Mapped[str] = mapped_column(String(20), default="standard", nullable=False)
@@ -183,6 +183,8 @@ class AnalysisTask(Base):
         Integer, ForeignKey("report_templates.id"), nullable=True
     )
     focus_areas: Mapped[str | None] = mapped_column(Text, nullable=True)
+    current_step: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    progress_snapshot: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     project: Mapped["Project"] = relationship(back_populates="analysis_tasks")
     user: Mapped["User"] = relationship(back_populates="analysis_tasks")
@@ -208,7 +210,7 @@ class Report(Base):
     markdown_path: Mapped[str] = mapped_column(String(512), default="", nullable=False)
     html_path: Mapped[str] = mapped_column(String(512), default="", nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
+        DateTime, default=lambda: datetime.now(UTC), nullable=False
     )
 
     task: Mapped["AnalysisTask"] = relationship(back_populates="report")
@@ -223,7 +225,7 @@ class UploadedFile(Base):
     file_path: Mapped[str] = mapped_column(String(1024), nullable=False)
     file_size: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
+        DateTime, default=lambda: datetime.now(UTC), nullable=False
     )
 
     task: Mapped["AnalysisTask"] = relationship(back_populates="uploaded_files")

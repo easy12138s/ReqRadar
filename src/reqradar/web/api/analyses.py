@@ -3,20 +3,20 @@ import json
 import logging
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Optional
 
 from fastapi import (
     APIRouter,
     Depends,
-    HTTPException,
-    Request,
-    UploadFile,
     File,
     Form,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
     WebSocket,
     WebSocketDisconnect,
-    Query,
     status,
 )
 from jose import JWTError, jwt
@@ -24,12 +24,11 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from reqradar.web.dependencies import CurrentUser, DbSession, get_current_user, get_db
-from reqradar.web.models import AnalysisTask, Project, RequirementDocument, UploadedFile, User
 from reqradar.web.api.auth import ALGORITHM
+from reqradar.web.dependencies import CurrentUser, DbSession, get_current_user, get_db
 from reqradar.web.enums import TaskStatus
+from reqradar.web.models import AnalysisTask, Project, RequirementDocument, UploadedFile, User
 from reqradar.web.websocket import manager as ws_manager
-
 
 logger = logging.getLogger("reqradar.web.api.analyses")
 
@@ -75,7 +74,7 @@ class AnalysisSubmit(BaseModel):
         return (
             self.requirement_name
             or self.title
-            or f"Analysis-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+            or f"Analysis-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}"
         )
 
     def get_text(self) -> str:
@@ -103,6 +102,8 @@ class AnalysisResponse(BaseModel):
 
 class AnalysisDetailResponse(AnalysisResponse):
     step_summary: Optional[dict] = None
+    current_step: int = 0
+    progress_snapshot: Optional[dict] = None
 
 
 @router.post("", response_model=AnalysisResponse, status_code=status.HTTP_201_CREATED)
@@ -232,7 +233,7 @@ async def submit_analysis_upload(
         project_id=project_id,
         user_id=current_user.id,
         requirement_name=requirement_name or filename.rsplit(".", 1)[0],
-        requirement_text=content.decode("utf-8", errors="replace"),
+        requirement_text=ProjectFileService.extract_text_from_bytes(content, file.filename or "upload"),
         depth=depth,
         template_id=template_id,
         focus_areas=focus_areas,
@@ -385,7 +386,7 @@ async def cancel_analysis(task_id: int, current_user: CurrentUser, db: DbSession
 
     runner.cancel(task_id)
     task.status = TaskStatus.CANCELLED
-    task.completed_at = datetime.now(timezone.utc)
+    task.completed_at = datetime.now(UTC)
     await db.commit()
     return {"success": True, "status": "cancelled"}
 
@@ -400,24 +401,33 @@ async def analysis_websocket(websocket: WebSocket, task_id: int, token: str = Qu
             secret_key = FALLBACK_KEY
         payload = jwt.decode(token, secret_key, algorithms=[ALGORITHM])
         user_id = int(payload["sub"])
-    except (JWTError, ValueError, TypeError):
+    except (JWTError, ValueError, TypeError) as e:
+        logger.warning("WS %d: token 验证失败: %s", task_id, e)
         await websocket.close(code=4001, reason="Invalid token")
         return
 
     await websocket.accept()
+    logger.info("WS %d: 连接已接受 user_id=%s", task_id, user_id)
 
-    session_factory = websocket.app.state.session_factory
-    async with session_factory() as db:
-        result = await db.execute(
-            select(AnalysisTask).where(
-                AnalysisTask.id == task_id,
-                AnalysisTask.user_id == user_id,
+    try:
+        session_factory = websocket.app.state.session_factory
+        async with session_factory() as db:
+            result = await db.execute(
+                select(AnalysisTask).where(
+                    AnalysisTask.id == task_id,
+                    AnalysisTask.user_id == user_id,
+                )
             )
-        )
-        task = result.scalar_one_or_none()
-        if task is None:
-            await websocket.close(code=4003, reason="Task not found or access denied")
-            return
+            task = result.scalar_one_or_none()
+            if task is None:
+                logger.warning("WS %d: 任务不存在或无权限 user_id=%s", task_id, user_id)
+                await websocket.close(code=4003, reason="Task not found or access denied")
+                return
+
+    except Exception as e:
+        logger.exception("WS %d: 数据库查询异常: %s", task_id, e)
+        await websocket.close(code=4004, reason=f"Internal error: {e}")
+        return
 
     ws_manager.subscribe(task_id, websocket)
 
@@ -432,7 +442,10 @@ async def analysis_websocket(websocket: WebSocket, task_id: int, token: str = Qu
                 except (json.JSONDecodeError, RuntimeError):
                     pass
             except WebSocketDisconnect:
+                logger.info("WS %d: 客户端断开连接", task_id)
                 break
+    except Exception as e:
+        logger.exception("WS %d: 消息循环异常: %s", task_id, e)
     finally:
         ws_manager.unsubscribe(task_id, websocket)
 

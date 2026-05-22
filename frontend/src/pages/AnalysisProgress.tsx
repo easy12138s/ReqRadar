@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Card,
@@ -27,6 +27,19 @@ import { useWebSocket } from '../hooks/useWebSocket';
 
 const { Title } = Typography;
 
+const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled']);
+
+function notifyBrowser(title: string, body: string) {
+  if (typeof Notification === 'undefined') return;
+  if (Notification.permission === 'granted') {
+    new Notification(title, { body });
+  } else if (Notification.permission !== 'denied') {
+    Notification.requestPermission().then((perm) => {
+      if (perm === 'granted') new Notification(title, { body });
+    });
+  }
+}
+
 export function AnalysisProgress() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -36,19 +49,36 @@ export function AnalysisProgress() {
   const [stepProgressMessage, setStepProgressMessage] = useState('连接中...');
   const [dimensions, setDimensions] = useState<Record<string, string>>({});
   const [currentStep, setCurrentStep] = useState(0);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const notifiedRef = useRef(false);
 
-  const fetchTask = async () => {
+  const fetchTask = async (silent = false) => {
     if (!id) return;
     try {
       const data = await getAnalysis(id);
       setTask(data);
+      if (data.progress_snapshot && Object.keys(data.progress_snapshot).length > 0) {
+        setDimensions(data.progress_snapshot);
+      }
+      if (data.current_step && data.current_step > 0) {
+        setCurrentStep(data.current_step);
+      }
       if (data.status === 'failed') {
         setError(data.error_message || '分析失败');
       }
+      if (TERMINAL_STATUSES.has(data.status) && !notifiedRef.current) {
+        notifiedRef.current = true;
+        if (data.status === 'completed') {
+          notifyBrowser('ReqRadar', `分析任务 #${data.id} 已完成`);
+          message.success('分析完成，报告已生成');
+        } else if (data.status === 'failed') {
+          notifyBrowser('ReqRadar', `分析任务 #${data.id} 失败`);
+        }
+      }
     } catch {
-      setError('加载分析信息失败');
+      if (!silent) setError('加载分析信息失败');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -61,9 +91,12 @@ export function AnalysisProgress() {
     ? `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/api/analyses/${id}/ws?token=${token}`
     : '';
 
+  const isTerminal = task ? TERMINAL_STATUSES.has(task.status) : false;
+
   const { status: wsStatus } = useWebSocket({
     url: wsUrl,
-    enabled: !!wsUrl,
+    enabled: !!wsUrl && !isTerminal && !loading,
+    maxRetries: 10,
     onMessage: (msg: any) => {
       if (msg.type === 'analysis_started') {
         setStepProgressMessage('分析已启动');
@@ -81,17 +114,28 @@ export function AnalysisProgress() {
       } else if (msg.type === 'dimension_progress') {
         if (msg.dimensions) setDimensions(msg.dimensions);
         if (msg.step) setCurrentStep(msg.step);
-      } else if (msg.type === 'agent_action') {
-        // tool call logged via progress message
       }
     },
   });
+
+  useEffect(() => {
+    if (wsStatus !== 'open' && !isTerminal && task?.status === 'running') {
+      pollRef.current = setInterval(() => fetchTask(true), 5000);
+    }
+    return () => {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+    };
+  }, [wsStatus, isTerminal, task?.status]);
 
   const handleRetry = async () => {
     if (!id) return;
     try {
       await retryAnalysis(id);
       setError(null);
+      notifiedRef.current = false;
       message.success('正在重试分析');
       fetchTask();
     } catch {
@@ -189,7 +233,7 @@ export function AnalysisProgress() {
               ? <span style={{ color: '#22c55e', fontSize: 13 }}>&#9679; 已连接</span>
               : wsStatus === 'reconnecting'
                 ? <span style={{ color: '#eab308', fontSize: 13 }}>&#9679; 重连中</span>
-                : <span style={{ color: '#ef4444', fontSize: 13 }}>&#9679; 断开</span>
+                : <span style={{ color: '#ef4444', fontSize: 13 }}>&#9679; 断开 (轮询中)</span>
             }
           </div>
           <Card style={{ marginBottom: 24 }}>

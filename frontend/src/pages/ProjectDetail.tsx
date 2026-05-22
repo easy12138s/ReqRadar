@@ -26,6 +26,7 @@ import {
   ExperimentOutlined,
   SendOutlined,
   InboxOutlined,
+  SyncOutlined,
 } from '@ant-design/icons';
 import type {
   Project,
@@ -39,6 +40,7 @@ import type {
   RequirementRelease,
 } from '@/types/api';
 import { getProject, updateProject, getProjectMemory, getProjectFiles, deleteProject } from '@/api/projects';
+import { apiClient } from '@/api/client';
 import { listReleases, publishRelease, archiveRelease, deleteRelease } from '@/api/releases';
 
 const { Title, Paragraph } = Typography;
@@ -180,6 +182,20 @@ export function ProjectDetail() {
     });
   };
 
+  const [indexing, setIndexing] = useState(false);
+  const handleRebuildIndex = async () => {
+    if (!id) return;
+    setIndexing(true);
+    try {
+      await apiClient.post(`/projects/${id}/index`);
+      message.success('索引重建已启动，请稍候');
+    } catch {
+      message.error('索引重建触发失败');
+    } finally {
+      setIndexing(false);
+    }
+  };
+
   if (loading) {
     return (
       <div style={{ textAlign: 'center', padding: 48 }}>
@@ -249,6 +265,14 @@ export function ProjectDetail() {
           style={{ marginLeft: 8 }}
         >
           提交分析
+        </Button>
+        <Button
+          icon={<SyncOutlined />}
+          loading={indexing}
+          onClick={handleRebuildIndex}
+          style={{ marginLeft: 8 }}
+        >
+          重建索引
         </Button>
       </div>
       <Descriptions bordered column={1}>

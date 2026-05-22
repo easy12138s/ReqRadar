@@ -101,6 +101,9 @@ export interface AnalysisTask {
   created_at: string;
   started_at?: string;
   completed_at?: string;
+  current_step?: number;
+  progress_snapshot?: Record<string, string>;
+  step_summary?: Record<string, { success: boolean; confidence: number }>;
 }
 
 export interface AnalysisCreate {

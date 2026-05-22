@@ -16,7 +16,9 @@ export function useWebSocket({ url, onMessage, enabled = true, maxRetries = 10 }
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const urlRef = useRef(url);
+  const onMessageRef = useRef(onMessage);
   urlRef.current = url;
+  onMessageRef.current = onMessage;
 
   const cleanup = useCallback(() => {
     if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
@@ -59,7 +61,7 @@ export function useWebSocket({ url, onMessage, enabled = true, maxRetries = 10 }
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          onMessage(data);
+          onMessageRef.current(data);
         } catch {
           // ignore non-JSON
         }
@@ -85,7 +87,7 @@ export function useWebSocket({ url, onMessage, enabled = true, maxRetries = 10 }
         timerRef.current = setTimeout(connect, 2000);
       }
     }
-  }, [enabled, maxRetries, onMessage, cleanup]);
+  }, [enabled, maxRetries, cleanup]);
 
   useEffect(() => {
     if (enabled) {

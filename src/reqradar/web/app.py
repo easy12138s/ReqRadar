@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
@@ -49,6 +50,19 @@ async def lifespan(app: FastAPI):
     web_config = config.web
     paths = get_paths(config)
     ensure_dirs(paths)
+
+    if config.index.hf_mirror:
+        os.environ["HF_ENDPOINT"] = config.index.hf_mirror
+    if config.index.hf_hub_disable_symlinks:
+        os.environ["HF_HUB_DISABLE_SYMLINKS"] = "1"
+
+    from reqradar.infrastructure.logging import setup_logging
+
+    setup_logging(
+        level=getattr(web_config, "log_level", "INFO"),
+        log_file=paths["log_dir"] / "reqradar.log",
+    )
+
     database_url = derive_database_url(config)
     report_storage = ReportStorage(paths["reports"])
 
