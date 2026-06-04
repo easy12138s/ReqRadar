@@ -161,7 +161,7 @@ services:
   output-service:
     build:
       context: .
-      dockerfile: reqradar/output_svc/Dockerfile
+      dockerfile: services/output/Dockerfile
     container_name: reqradar-output
     environment:
       DATABASE_URL: postgresql+asyncpg://reqradar:reqradar_dev@postgres:5432/reqradar

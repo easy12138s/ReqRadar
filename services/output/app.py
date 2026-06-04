@@ -261,7 +261,7 @@ async def get_report_status(task_id: str):
     return result
 
 
-@app.get("/internal/v2/reports/latest/{session_id}")
+@app.get("/internal/v2/reports/{session_id}/latest")
 async def get_latest_report(session_id: str):
     """获取最新报告（I-01 §9.1，供 MCP 使用）。"""
     task = _task_store.get_latest_for_session(session_id)

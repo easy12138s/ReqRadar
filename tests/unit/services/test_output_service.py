@@ -94,7 +94,7 @@ class TestReportStatus:
 class TestLatestReport:
     def test_latest_no_report(self, client: TestClient):
         session_id = str(uuid.uuid4())
-        resp = client.get(f"/internal/v2/reports/latest/{session_id}")
+        resp = client.get(f"/internal/v2/reports/{session_id}/latest")
         assert resp.status_code == 200
         data = resp.json()
         assert data["session_id"] == session_id
@@ -103,7 +103,7 @@ class TestLatestReport:
     def test_latest_after_generate(self, client: TestClient):
         session_id = str(uuid.uuid4())
         _generate_and_complete(client, session_id)
-        resp = client.get(f"/internal/v2/reports/latest/{session_id}")
+        resp = client.get(f"/internal/v2/reports/{session_id}/latest")
         assert resp.status_code == 200
         data = resp.json()
         assert data["session_id"] == session_id
@@ -113,7 +113,7 @@ class TestLatestReport:
         session_id = str(uuid.uuid4())
         _generate_and_complete(client, session_id, output_format="markdown")
         _generate_and_complete(client, session_id, output_format="html")
-        resp = client.get(f"/internal/v2/reports/latest/{session_id}")
+        resp = client.get(f"/internal/v2/reports/{session_id}/latest")
         assert resp.status_code == 200
         data = resp.json()
         assert data["format"] == "html"
