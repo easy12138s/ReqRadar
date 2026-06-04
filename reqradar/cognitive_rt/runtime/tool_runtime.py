@@ -19,6 +19,7 @@ from uuid import uuid4
 from pydantic import BaseModel, Field
 
 from reqradar.cognitive_rt.cognition.tools.security import ToolPermissionChecker
+from reqradar.kernel.enums import CheckpointType, EventLevel, EventType
 
 logger = logging.getLogger(__name__)
 
@@ -319,7 +320,7 @@ class ToolRuntime:
                 if not allowed:
                     self._publish_event(
                         session_id,
-                        "TOOL_PERMISSION_DENIED",
+                        EventType.TOOL_PERMISSION_DENIED,
                         {"tool_id": tool_id, "missing": missing},
                     )
                     return ManagedToolResult(
@@ -340,7 +341,7 @@ class ToolRuntime:
                 if not limiter.acquire():
                     self._publish_event(
                         session_id,
-                        "TOOL_PERMISSION_DENIED",
+                        EventType.TOOL_PERMISSION_DENIED,
                         {"tool_id": tool_id, "reason": "rate_limit"},
                     )
                     return ManagedToolResult(
@@ -373,20 +374,22 @@ class ToolRuntime:
             try:
                 cp = self._checkpoint_mgr.create_checkpoint(
                     session_id=session_id,
-                    checkpoint_type="TOOL_PRE",
+                    checkpoint_type=CheckpointType.TOOL_PRE,
                     state_summary={"tool_id": tool_id, "params_keys": list(params.keys())},
                 )
                 pre_checkpoint_id = cp.checkpoint_id if hasattr(cp, "checkpoint_id") else str(cp)
             except Exception as e:
                 logger.warning(f"前置 Checkpoint 创建失败，降级继续: {e}")
                 self._publish_event(
-                    session_id, "TOOL_CHECKPOINT_FAILED", {"tool_id": tool_id, "error": str(e)}
+                    session_id,
+                    EventType.TOOL_CHECKPOINT_FAILED,
+                    {"tool_id": tool_id, "error": str(e)},
                 )
 
         # Phase 4: 发布 TOOL_INVOKED 事件
         self._publish_event(
             session_id,
-            "TOOL_INVOKED",
+            EventType.TOOL_INVOKED,
             {"tool_id": tool_id, "execution_id": execution_id, "params_keys": list(params.keys())},
         )
 
@@ -416,7 +419,7 @@ class ToolRuntime:
                     backoff = self._compute_backoff(attempt, capability.retry_policy)
                     self._publish_event(
                         session_id,
-                        "TOOL_RETRY",
+                        EventType.TOOL_RETRY,
                         {
                             "tool_id": tool_id,
                             "attempt": attempt + 1,
@@ -428,7 +431,7 @@ class ToolRuntime:
                 else:
                     self._publish_event(
                         session_id,
-                        "TOOL_TIMEOUT",
+                        EventType.TOOL_TIMEOUT,
                         {"tool_id": tool_id, "timeout": effective_timeout},
                     )
 
@@ -439,7 +442,7 @@ class ToolRuntime:
                     backoff = self._compute_backoff(attempt, capability.retry_policy)
                     self._publish_event(
                         session_id,
-                        "TOOL_RETRY",
+                        EventType.TOOL_RETRY,
                         {
                             "tool_id": tool_id,
                             "attempt": attempt + 1,
@@ -483,7 +486,7 @@ class ToolRuntime:
             try:
                 self._checkpoint_mgr.create_checkpoint(
                     session_id=session_id,
-                    checkpoint_type="TOOL_POST",
+                    checkpoint_type=CheckpointType.TOOL_POST,
                     state_summary={
                         "tool_id": tool_id,
                         "success": result_success,
@@ -496,7 +499,7 @@ class ToolRuntime:
         # Phase 5: 发布 TOOL_RETURNED 事件
         self._publish_event(
             session_id,
-            "TOOL_RETURNED",
+            EventType.TOOL_RETURNED,
             {
                 "tool_id": tool_id,
                 "execution_id": execution_id,
@@ -544,7 +547,7 @@ class ToolRuntime:
             self._publisher.publish(
                 session_id=session_id,
                 event_type=event_type,
-                event_level="cognitive",
+                event_level=EventLevel.COGNITIVE,
                 producer="tool_runtime",
                 payload=payload,
             )
