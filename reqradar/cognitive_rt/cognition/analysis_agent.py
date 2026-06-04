@@ -1,12 +1,19 @@
 from __future__ import annotations
 
 import logging
+import os
 from enum import Enum
 
 from reqradar.cognitive_rt.cognition.dimension import DimensionTracker
 from reqradar.cognitive_rt.cognition.evidence import EvidenceCollector
 
 logger = logging.getLogger("reqradar.agent.analysis_agent")
+
+USE_CONTEXT_PIPELINE = os.environ.get("USE_CONTEXT_PIPELINE", "true").lower() in (
+    "true",
+    "1",
+    "yes",
+)
 
 
 class AgentState(Enum):
@@ -115,6 +122,17 @@ class AnalysisAgent:
         )
 
     def get_context_text(self) -> str:
+        """获取推理上下文文本。
+
+        当 USE_CONTEXT_PIPELINE=True 时使用 V2 Context Pipeline，
+        否则使用 V1 f-string 拼接（fallback）。
+        """
+        if USE_CONTEXT_PIPELINE:
+            return self._get_context_text_via_pipeline()
+        return self._get_context_text_fstring()
+
+    def _get_context_text_fstring(self) -> str:
+        """V1 f-string 拼接方式构建上下文（fallback）。"""
         parts = []
         if self.project_memory_text:
             parts.append(f"## 项目画像\n{self.project_memory_text}")
@@ -129,6 +147,74 @@ class AnalysisAgent:
             parts.append(ev_text)
         parts.append(f"## 步骤计数\n已用 {self.step_count}/{self.max_steps} 步")
         return "\n\n".join(parts)
+
+    def _get_context_text_via_pipeline(self) -> str:
+        """V2 Context Pipeline 方式构建上下文。"""
+        try:
+            from reqradar.cognitive_rt.cognition.context_pipeline import ContextPipeline
+            from reqradar.cognitive_rt.cognition.context_strategies import (
+                RiskAnalysisStrategy,
+            )
+            from reqradar.cognitive_rt.cognition.context_sources import (
+                CodeGraphSource,
+                GitHistorySource,
+                ProjectMemorySource,
+                UserMemorySource,
+                VectorResultSource,
+            )
+
+            pipeline = ContextPipeline(
+                sources=[
+                    CodeGraphSource(),
+                    VectorResultSource(),
+                    GitHistorySource(),
+                    ProjectMemorySource(),
+                    UserMemorySource(),
+                ],
+                strategy=RiskAnalysisStrategy(),
+            )
+
+            import asyncio
+
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                import concurrent.futures
+
+                with concurrent.futures.ThreadPoolExecutor() as pool:
+                    future = pool.submit(
+                        asyncio.run,
+                        pipeline.execute(
+                            session_id=f"agent-{id(self)}",
+                            project_id=str(self.project_id),
+                            query=self.requirement_text[:500],
+                            context_budget=128000,
+                        ),
+                    )
+                    result = future.result(timeout=30)
+            else:
+                result = asyncio.run(
+                    pipeline.execute(
+                        session_id=f"agent-{id(self)}",
+                        project_id=str(self.project_id),
+                        query=self.requirement_text[:500],
+                        context_budget=128000,
+                    )
+                )
+
+            parts = [result.context]
+            parts.append(f"## 维度状态\n{self._dimension_status_text()}")
+            ev_text = self.evidence_collector.to_context_text()
+            if ev_text:
+                parts.append(ev_text)
+            parts.append(f"## 步骤计数\n已用 {self.step_count}/{self.max_steps} 步")
+            logger.info(
+                f"Context Pipeline 完成: tokens={result.token_count}, "
+                f"items={result.items_count}, gate_passed={result.quality_gate_result.passed}"
+            )
+            return "\n\n".join(parts)
+        except Exception as e:
+            logger.warning(f"Context Pipeline 执行失败, 回退到 f-string: {e}")
+            return self._get_context_text_fstring()
 
     def _dimension_status_text(self) -> str:
         lines = []
