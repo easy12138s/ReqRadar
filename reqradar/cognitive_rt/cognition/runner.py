@@ -441,6 +441,8 @@ async def run_react_analysis(
     ws_manager: ConnectionManager | None = None,  # type: ignore[name-defined]
     task_id: int | None = None,
     progress_callback=None,
+    event_publisher=None,
+    checkpoint_interval: int = 3,
 ) -> dict:
     session = AnalysisSessionLogger(task_id=task_id)
     session.enter()
@@ -460,6 +462,17 @@ async def run_react_analysis(
         while True:
             agent.step_count += 1
             session.round_start(agent.step_count)
+
+            if event_publisher is not None:
+                from reqradar.kernel.enums import EventLevel, EventType
+
+                event_publisher.publish(
+                    session_id=f"agent-{id(agent)}",
+                    event_type=EventType.STEP_STARTED,
+                    event_level=EventLevel.REASONING,
+                    producer="analysis_runner",
+                    payload={"step": agent.step_count},
+                )
 
             if ws_manager and task_id:
                 await ws_manager.broadcast(
@@ -578,6 +591,40 @@ async def run_react_analysis(
             session.round_end(agent.step_count, tokens_used)
             if progress_callback is not None:
                 await progress_callback(agent.step_count, agent.dimension_tracker.status_summary())
+
+            if event_publisher is not None:
+                from reqradar.kernel.enums import EventLevel, EventType
+
+                event_publisher.publish(
+                    session_id=f"agent-{id(agent)}",
+                    event_type=EventType.STEP_COMPLETED,
+                    event_level=EventLevel.REASONING,
+                    producer="analysis_runner",
+                    payload={"step": agent.step_count, "tokens": tokens_used},
+                )
+
+                if checkpoint_interval > 0 and agent.step_count % checkpoint_interval == 0:
+                    try:
+                        from reqradar.cognitive_rt.runtime.checkpoint import (
+                            CheckpointManager,
+                            StateSummary,
+                        )
+                        from reqradar.kernel.enums import CheckpointType
+
+                        mgr = CheckpointManager()
+                        summary = StateSummary(
+                            current_step=agent.step_count,
+                            total_steps=agent.max_steps,
+                            evidence_count=len(agent.evidence_collector.evidences),
+                            dimension_status=agent.dimension_tracker.status_summary(),
+                        )
+                        mgr.create_checkpoint(
+                            session_id=f"agent-{id(agent)}",
+                            checkpoint_type=CheckpointType.STEP_COMPLETE,
+                            state_summary=summary,
+                        )
+                    except Exception as cp_err:
+                        logger.warning(f"Checkpoint 创建失败: {cp_err}")
 
             if agent.should_terminate():
                 break
