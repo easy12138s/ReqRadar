@@ -7,11 +7,29 @@ import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
 JWT_SECRET = os.environ.get("JWT_SECRET", "dev-secret")
 INTERNAL_API_KEY = os.environ.get("INTERNAL_API_KEY", "dev-internal-key")
+
+
+class VerifyRequest(BaseModel):
+    """JWT 验证请求。"""
+
+    token: str = Field(description="JWT Token 字符串")
+
+
+class IssueRequest(BaseModel):
+    """JWT 签发请求。"""
+
+    user_id: str = Field(description="用户 ID")
+    username: str = Field(description="用户名")
+    email: str = Field(default="", description="用户邮箱")
+    role: str = Field(default="user", description="用户角色")
+    is_active: bool = Field(default=True, description="是否激活")
+    is_superuser: bool = Field(default=False, description="是否超级用户")
 
 
 @asynccontextmanager
@@ -33,27 +51,37 @@ async def health():
     return {"status": "ok", "service": "auth"}
 
 
-@app.get("/internal/v2/auth/verify")
-async def verify_token(token: str = ""):
+@app.post("/internal/v2/auth/verify")
+async def verify_token(req: VerifyRequest):
     """验证 JWT Token，返回用户信息。"""
     from reqradar.infrastructure.auth import decode_jwt_token
 
     try:
-        payload = decode_jwt_token(token, JWT_SECRET)
-        return {"valid": True, "user": payload}
+        payload = decode_jwt_token(req.token, JWT_SECRET)
+        return {
+            "valid": True,
+            "user": {
+                "user_id": payload.get("sub", ""),
+                "username": payload.get("username", ""),
+                "email": payload.get("email", ""),
+                "role": payload.get("role", "user"),
+                "is_active": payload.get("is_active", True),
+                "is_superuser": payload.get("is_superuser", False),
+            },
+        }
     except Exception as e:
         return {"valid": False, "error": str(e)}
 
 
 @app.post("/internal/v2/auth/issue")
-async def issue_token(user_id: str, username: str, is_superuser: bool = False):
+async def issue_token(req: IssueRequest):
     """签发 JWT Token。"""
     from reqradar.infrastructure.auth import create_jwt_token
 
     token = create_jwt_token(
-        user_id=user_id,
-        username=username,
-        is_superuser=is_superuser,
+        user_id=req.user_id,
+        username=req.username,
+        is_superuser=req.is_superuser,
         secret=JWT_SECRET,
     )
     return {"token": token, "token_type": "bearer"}
