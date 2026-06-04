@@ -61,6 +61,11 @@ class ContextItem:
     source_uri: str = ""
     metadata: dict[str, object] = field(default_factory=dict)
 
+    @property
+    def context_kind(self) -> ContextKind:
+        """兼容别名 — Pipeline 使用 context_kind 访问。"""
+        return self.kind
+
 
 @dataclass
 class ScoredContextItem:

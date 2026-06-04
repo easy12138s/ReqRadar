@@ -5,22 +5,11 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from enum import StrEnum
 from uuid import uuid4
 
+from reqradar.kernel.enums import RelationType
+
 logger = logging.getLogger(__name__)
-
-
-class RelationType(StrEnum):
-    """关系类型。"""
-
-    DEPENDS_ON = "depends_on"
-    CONFLICTS_WITH = "conflicts_with"
-    DERIVED_FROM = "derived_from"
-    SUPERSEDES = "supersedes"
-    RELATED_TO = "related_to"
-    IMPACTS = "impacts"
-    MITIGATES = "mitigates"
 
 
 @dataclass
@@ -30,7 +19,7 @@ class KnowledgeRelation:
     id: str = field(default_factory=lambda: str(uuid4()))
     source_type: str = ""
     source_id: str = ""
-    relation_type: RelationType = RelationType.RELATED_TO
+    relation_type: RelationType = RelationType.DEPENDS_ON
     target_type: str = ""
     target_id: str = ""
     confidence: float = 0.5
