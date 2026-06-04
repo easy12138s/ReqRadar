@@ -1,0 +1,82 @@
+# Traefik 动态路由配置 — ReqRadar V2
+# Traefik 从 /etc/traefik/dynamic/ 目录加载此文件
+
+http:
+  routers:
+    # ── Auth Service ─────────────────────────────────────
+    auth-service:
+      rule: "PathPrefix(`/api/v2/auth`) || PathPrefix(`/api/v2/users`)"
+      service: auth-service
+      entryPoints:
+        - web
+
+    # ── API Service (Session / Project / Requirement) ────
+    api-sessions:
+      rule: "PathPrefix(`/api/v2/sessions`)"
+      service: api-service
+      entryPoints:
+        - web
+
+    api-projects:
+      rule: "PathPrefix(`/api/v2/projects`)"
+      service: api-service
+      entryPoints:
+        - web
+
+    api-requirements:
+      rule: "PathPrefix(`/api/v2/requirements`)"
+      service: api-service
+      entryPoints:
+        - web
+
+    api-reports:
+      rule: "PathPrefix(`/api/v2/reports`)"
+      service: api-service
+      entryPoints:
+        - web
+
+    # ── WebSocket 路由 ───────────────────────────────────
+    ws-sessions:
+      rule: "PathPrefix(`/api/v2/ws/sessions`)"
+      service: api-service
+      entryPoints:
+        - web
+      middlewares:
+        - ws-headers
+
+    # ── 内部 API（仅 Docker 内部网络）────────────────────
+    internal-api:
+      rule: "PathPrefix(`/internal/v2/`)"
+      service: api-service
+      entryPoints:
+        - web
+      middlewares:
+        - internal-only
+
+  middlewares:
+    # WebSocket 升级 Header
+    ws-headers:
+      headers:
+        customRequestHeaders:
+          Connection: "Upgrade"
+          Upgrade: "websocket"
+
+    # 内部 API 仅限 Docker 网络
+    internal-only:
+      ipAllowList:
+        sourceRange:
+          - "10.0.0.0/8"
+          - "172.16.0.0/12"
+          - "192.168.0.0/16"
+          - "127.0.0.1/32"
+
+  services:
+    auth-service:
+      loadBalancer:
+        servers:
+          - url: "http://auth-service:8001"
+
+    api-service:
+      loadBalancer:
+        servers:
+          - url: "http://api-service:8000"

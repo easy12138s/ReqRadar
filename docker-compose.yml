@@ -1,0 +1,197 @@
+# ReqRadar V2 — Docker Compose 开发环境配置
+# Traefik 作为边缘网关，Redis 作为事件总线，PostgreSQL 作为持久化存储
+
+version: "3.9"
+
+services:
+  # ── 边缘网关 ──────────────────────────────────────────────
+  traefik:
+    image: traefik:v3.0
+    container_name: reqradar-traefik
+    command:
+      - "--api.insecure=true"
+      - "--api.dashboard=true"
+      - "--providers.file.directory=/etc/traefik/dynamic"
+      - "--providers.file.watch=true"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--log.level=INFO"
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080"  # Traefik Dashboard
+    volumes:
+      - ./infra/traefik:/etc/traefik/dynamic:ro
+    networks:
+      - reqradar-net
+    depends_on:
+      - api-service
+      - auth-service
+
+  # ── PostgreSQL ────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: reqradar-postgres
+    environment:
+      POSTGRES_DB: reqradar
+      POSTGRES_USER: reqradar
+      POSTGRES_PASSWORD: reqradar_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - reqradar-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U reqradar"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ── Redis ─────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: reqradar-redis
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    networks:
+      - reqradar-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ── Auth Service ──────────────────────────────────────────
+  auth-service:
+    build:
+      context: .
+      dockerfile: services/auth/Dockerfile
+    container_name: reqradar-auth
+    environment:
+      DATABASE_URL: postgresql+asyncpg://reqradar:reqradar_dev@postgres:5432/reqradar
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-in-production}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-change-in-production}
+      LOG_LEVEL: INFO
+    expose:
+      - "8001"
+    networks:
+      - reqradar-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ── API Service (Gateway) ─────────────────────────────────
+  api-service:
+    build:
+      context: .
+      dockerfile: reqradar/web/Dockerfile
+    container_name: reqradar-api
+    environment:
+      DATABASE_URL: postgresql+asyncpg://reqradar:reqradar_dev@postgres:5432/reqradar
+      REDIS_URL: redis://redis:6379/0
+      AUTH_SERVICE_URL: http://auth-service:8001
+      COGNITIVE_RT_URL: http://cognitive-rt:8002
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-change-in-production}
+      LOG_LEVEL: INFO
+    expose:
+      - "8000"
+    networks:
+      - reqradar-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+
+  # ── Cognitive Runtime ─────────────────────────────────────
+  cognitive-rt:
+    build:
+      context: .
+      dockerfile: reqradar/cognitive_rt/Dockerfile
+    container_name: reqradar-cognitive-rt
+    environment:
+      DATABASE_URL: postgresql+asyncpg://reqradar:reqradar_dev@postgres:5432/reqradar
+      REDIS_URL: redis://redis:6379/1
+      INDEX_SERVICE_URL: http://index-service:8003
+      OUTPUT_SERVICE_URL: http://output-service:8004
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-change-in-production}
+      LOG_LEVEL: INFO
+    expose:
+      - "8002"
+    networks:
+      - reqradar-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ── Index Service ─────────────────────────────────────────
+  index-service:
+    build:
+      context: .
+      dockerfile: reqradar/index_svc/Dockerfile
+    container_name: reqradar-index
+    environment:
+      DATABASE_URL: postgresql+asyncpg://reqradar:reqradar_dev@postgres:5432/reqradar
+      REDIS_URL: redis://redis:6379/2
+      CHROMADB_URL: http://chromadb:8005
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-change-in-production}
+      LOG_LEVEL: INFO
+    expose:
+      - "8003"
+    networks:
+      - reqradar-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ── Output Service ────────────────────────────────────────
+  output-service:
+    build:
+      context: .
+      dockerfile: reqradar/output_svc/Dockerfile
+    container_name: reqradar-output
+    environment:
+      DATABASE_URL: postgresql+asyncpg://reqradar:reqradar_dev@postgres:5432/reqradar
+      REDIS_URL: redis://redis:6379/3
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-change-in-production}
+      LOG_LEVEL: INFO
+    expose:
+      - "8004"
+    networks:
+      - reqradar-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ── ChromaDB (向量数据库) ──────────────────────────────────
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: reqradar-chromadb
+    ports:
+      - "8005:8000"
+    volumes:
+      - chromadata:/chroma/chroma
+    networks:
+      - reqradar-net
+
+volumes:
+  pgdata:
+  redisdata:
+  chromadata:
+
+networks:
+  reqradar-net:
+    driver: bridge
