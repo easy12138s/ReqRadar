@@ -152,15 +152,15 @@ class AnalysisAgent:
         """V2 Context Pipeline 方式构建上下文。"""
         try:
             from reqradar.cognitive_rt.cognition.context_pipeline import ContextPipeline
-            from reqradar.cognitive_rt.cognition.context_strategies import (
-                RiskAnalysisStrategy,
-            )
             from reqradar.cognitive_rt.cognition.context_sources import (
                 CodeGraphSource,
                 GitHistorySource,
                 ProjectMemorySource,
                 UserMemorySource,
                 VectorResultSource,
+            )
+            from reqradar.cognitive_rt.cognition.context_strategies import (
+                RiskAnalysisStrategy,
             )
 
             pipeline = ContextPipeline(
