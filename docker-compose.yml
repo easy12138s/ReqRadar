@@ -91,7 +91,7 @@ services:
   api-service:
     build:
       context: .
-      dockerfile: reqradar/web/Dockerfile
+      dockerfile: services/api/Dockerfile
     container_name: reqradar-api
     environment:
       DATABASE_URL: postgresql+asyncpg://reqradar:reqradar_dev@postgres:5432/reqradar
