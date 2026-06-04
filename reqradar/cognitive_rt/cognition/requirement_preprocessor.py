@@ -34,7 +34,7 @@ def _load_file_content(file_path: Path, llm_client=None) -> dict:
         result["content"] = file_path.read_text(encoding="utf-8", errors="replace")
     except Exception as e:
         logger.warning("Failed to load file %s: %s", file_path, e)
-        result["content"] = f"[加载失败: {str(e)}]"
+        result["content"] = f"[加载失败: {e!s}]"
 
     return result
 

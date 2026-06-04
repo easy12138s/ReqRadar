@@ -38,7 +38,7 @@ class GetProjectProfileTool(BaseTool):
         if name:
             lines.append(f"项目名称: {name}")
         else:
-            lines.append(f"项目名称: 未知")
+            lines.append("项目名称: 未知")
         if overview:
             lines.append(f"描述: {overview}")
         if architecture:

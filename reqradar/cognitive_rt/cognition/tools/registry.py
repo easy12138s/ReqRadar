@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from reqradar.cognitive_rt.cognition.tools.base import BaseTool, ToolResult
-from reqradar.cognitive_rt.cognition.tools.security import ToolPermissionChecker, check_tool_permissions
+from reqradar.cognitive_rt.cognition.tools.security import (
+    ToolPermissionChecker,
+    check_tool_permissions,
+)
 
 
 class ToolRegistry:

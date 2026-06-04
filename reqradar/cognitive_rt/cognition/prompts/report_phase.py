@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+
 def build_report_generation_prompt(
     requirement_text: str,
     evidence_text: str,
@@ -11,7 +12,7 @@ def build_report_generation_prompt(
         "",
         f"## 需求内容\n{requirement_text}",
         "",
-        f"## 维度状态\n" + "\n".join(f"- {k}: {v}" for k, v in dimension_status.items()),
+        "## 维度状态\n" + "\n".join(f"- {k}: {v}" for k, v in dimension_status.items()),
         "",
         f"## 已收集证据\n{evidence_text}",
     ]

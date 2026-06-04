@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 
 from reqradar.index_svc.memory.project_memory import ProjectMemory
 from reqradar.index_svc.memory.user_memory import UserMemory

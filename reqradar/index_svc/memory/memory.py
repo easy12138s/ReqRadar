@@ -581,9 +581,9 @@ class MemoryManager:
         }
 
 
-from reqradar.index_svc.memory.memory_manager import AnalysisMemoryManager  # noqa: E402
-from reqradar.index_svc.memory.project_memory import ProjectMemory  # noqa: E402
-from reqradar.index_svc.memory.user_memory import UserMemory  # noqa: E402
+from reqradar.index_svc.memory.memory_manager import AnalysisMemoryManager
+from reqradar.index_svc.memory.project_memory import ProjectMemory
+from reqradar.index_svc.memory.user_memory import UserMemory
 
 __all__ = [
     "AnalysisMemoryManager",

@@ -3,7 +3,6 @@ from __future__ import annotations
 import fnmatch
 import logging
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger("reqradar.agent.security")
 

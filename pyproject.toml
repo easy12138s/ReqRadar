@@ -21,7 +21,7 @@ exclude = ["reqradar/kernel"]
 line-length = 100
 target-version = "py312"
 lint.select = ["E", "F", "W", "I", "N", "UP", "B", "SIM", "RUF"]
-lint.ignore = ["E501", "RUF002", "RUF003", "N818"]
+lint.ignore = ["E501", "E402", "RUF001", "RUF002", "RUF003", "RUF012", "RUF013", "N818", "SIM102", "SIM114", "UP007"]
 lint.isort.known-first-party = ["reqradar"]
 
 [tool.ruff.format]

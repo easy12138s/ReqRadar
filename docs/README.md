@@ -142,6 +142,8 @@
 | 04 | 04_IMPLEMENTATION_ROADMAP.md | 实施路线图 | ✅ 已完成 | v1.2 |
 | — | CODE_WIKI.md | V1 代码参考 | ✅ 已完成 | — |
 | — | AGENTS.md | Agent 工作指南（环境 + 工作流 + 命令） | ✅ 已完成 | v2.0 |
+| — | CHECKLIST.md | 开发进度追踪（验收记录） | ✅ 已完成 | v1.0 |
+| — | REVIEW_CHECKLIST.md | Code Review 检查清单 | ✅ 已完成 | v1.0 |
 | C-01 | C-01_CODING_CONVENTIONS.md | 编码规范 | ✅ 已完成 | v1.0 |
 | C-02 | C-02_MODULE_DEPENDENCY_MAP.md | 模块依赖地图 | ✅ 已完成 | v1.0 |
 | C-03 | C-03_CONFIGURATION_REGISTRY.md | 配置注册表 | ✅ 已完成 | v1.0 |

@@ -166,10 +166,8 @@ def _safe_truncate_history(
         if keep_pairs and msg.get("role") == "tool":
             tool_call_id = msg.get("tool_call_id")
             has_parent = any(
-                m.get("role") == "assistant" and any(
-                    tc.get("id") == tool_call_id
-                    for tc in (m.get("tool_calls") or [])
-                )
+                m.get("role") == "assistant"
+                and any(tc.get("id") == tool_call_id for tc in (m.get("tool_calls") or []))
                 for m in truncated
             )
             if not has_parent:
@@ -440,7 +438,7 @@ async def run_react_analysis(
     section_descriptions=None,
     project_memory=None,
     requirement_text: str | None = None,
-    ws_manager: "ConnectionManager | None" = None,  # type: ignore[name-defined]
+    ws_manager: ConnectionManager | None = None,  # type: ignore[name-defined]
     task_id: int | None = None,
     progress_callback=None,
 ) -> dict:
@@ -539,13 +537,21 @@ async def run_react_analysis(
                     conversation_history.append(assistant_msg)
 
                 tool_results = await _execute_tool_calls(
-                    response["tool_calls"], tool_registry, tracker, agent, session, ws_manager, task_id
+                    response["tool_calls"],
+                    tool_registry,
+                    tracker,
+                    agent,
+                    session,
+                    ws_manager,
+                    task_id,
                 )
                 conversation_history.extend(tool_results)
                 agent._consecutive_empty_steps = 0
                 session.round_end(agent.step_count, tokens_used)
                 if progress_callback is not None:
-                    await progress_callback(agent.step_count, agent.dimension_tracker.status_summary())
+                    await progress_callback(
+                        agent.step_count, agent.dimension_tracker.status_summary()
+                    )
                 if agent._cancelled or agent.step_count >= agent.max_steps:
                     break
                 await asyncio.sleep(0)
@@ -603,7 +609,9 @@ async def run_react_analysis(
         )
         if enable_memory_evolution and project_memory is not None:
             try:
-                from reqradar.cognitive_rt.cognition.memory_evolution import evolve_memory_after_analysis
+                from reqradar.cognitive_rt.cognition.memory_evolution import (
+                    evolve_memory_after_analysis,
+                )
 
                 await evolve_memory_after_analysis(agent, project_memory, llm_client)
             except Exception as e:

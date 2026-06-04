@@ -40,4 +40,5 @@ class BaseTool(ABC):
         }
 
     @abstractmethod
-    async def execute(self, **kwargs) -> ToolResult: ...
+    async def execute(self, **kwargs) -> ToolResult:
+        ...

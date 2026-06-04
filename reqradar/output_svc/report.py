@@ -5,8 +5,6 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from jinja2 import Template
-
 logger = logging.getLogger("reqradar.report")
 
 DEFAULT_TEMPLATE_PATH = Path(__file__).parent.parent / "templates" / "report.md.j2"
@@ -42,7 +40,7 @@ class ReportRenderer:
                 custom_path = Path(config.output.report_template)
                 if custom_path.exists():
                     template_path = custom_path
-            with open(template_path, "r", encoding="utf-8") as f:
+            with open(template_path, encoding="utf-8") as f:
                 from jinja2 import Template as JinjaTemplate
 
                 self.template = JinjaTemplate(f.read())
