@@ -1,0 +1,70 @@
+template_definition:
+  name: "性能分析"
+  description: "面向性能优化的需求分析报告，聚焦瓶颈识别、资源消耗和可扩展性评估"
+  sections:
+    - id: "requirement_understanding"
+      title: "需求理解"
+      description: "从性能角度理解需求变更的范围和预期负载特征。"
+      requirements: "100-150字，包含性能指标定义、负载模型和用户行为预测"
+      required: true
+      dimensions: ["understanding"]
+    - id: "performance_baseline"
+      title: "性能基线"
+      description: "建立当前系统的性能基线数据，包括响应时间、吞吐量和资源利用率。"
+      requirements: "包含当前系统性能指标、QPS/TPS基线、P50/P95/P99延迟数据"
+      required: true
+      dimensions: ["evidence"]
+    - id: "bottleneck_analysis"
+      title: "瓶颈分析"
+      description: "识别需求变更可能引入或加剧的性能瓶颈。分析CPU、内存、IO和网络各层面的约束。"
+      requirements: "包含瓶颈点定位、资源竞争分析和热点路径识别"
+      required: true
+      dimensions: ["impact", "risk"]
+    - id: "database_performance"
+      title: "数据库性能"
+      description: "评估需求对数据库查询性能、索引效率和连接池的影响。"
+      requirements: "包含慢查询分析、索引建议、连接池配置和缓存策略评估"
+      required: true
+      dimensions: ["impact", "change"]
+    - id: "caching_strategy"
+      title: "缓存策略"
+      description: "分析缓存需求，推荐合适的缓存层级、策略和失效机制。"
+      requirements: "包含缓存命中率目标、缓存架构建议和数据一致性保证"
+      required: false
+      dimensions: ["impact", "change"]
+    - id: "scalability_assessment"
+      title: "可扩展性评估"
+      description: "评估需求对系统水平扩展和垂直扩展能力的影响。"
+      requirements: "包含扩展瓶颈预测、容量规划建议和分布式架构影响"
+      required: true
+      dimensions: ["impact", "risk"]
+    - id: "resource_planning"
+      title: "资源规划"
+      description: "估算需求实现后的资源消耗增量，包括计算、存储和带宽。"
+      requirements: "包含资源消耗预测、成本估算和容量增长趋势"
+      required: false
+      dimensions: ["impact", "decision"]
+    - id: "risk_assessment"
+      title: "性能风险"
+      description: "识别与性能相关的技术风险，包括雪崩效应、资源泄漏和竞态条件。"
+      requirements: "包含风险列举、触发条件分析和降级策略建议"
+      required: true
+      dimensions: ["risk"]
+    - id: "optimization_recommendations"
+      title: "优化建议"
+      description: "提供具体的性能优化方案和代码级改进建议。"
+      requirements: "按性价比排序，包含具体优化措施、预期提升和实施方案"
+      required: true
+      dimensions: ["decision", "change"]
+    - id: "evidence"
+      title: "证据支撑"
+      description: "列出性能测试数据、profiling结果和基准测试报告。"
+      requirements: "表格形式，标注测试环境、工具和置信度"
+      required: true
+      dimensions: ["evidence"]
+    - id: "appendix"
+      title: "附录"
+      description: "性能测试脚本、监控面板配置、负载测试方案等。"
+      requirements: "结构化展示性能工程知识上下文"
+      required: false
+      dimensions: []

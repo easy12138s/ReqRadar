@@ -1,0 +1,75 @@
+template_definition:
+  name: "技术债务"
+  description: "面向技术债务评估的需求分析报告，聚焦代码质量、架构改进和现代化改造"
+  sections:
+    - id: "requirement_understanding"
+      title: "需求理解"
+      description: "理解需求对现有技术债务和代码质量的影响范围。"
+      requirements: "100-150字，包含变更范围、受影响模块和代码退化风险"
+      required: true
+      dimensions: ["understanding"]
+    - id: "debt_inventory"
+      title: "债务清单"
+      description: "梳理当前代码库中已有的技术债务项目，评估其对需求实现的影响。"
+      requirements: "包含债务分类（代码/架构/依赖/测试）、优先级分级和积累原因"
+      required: true
+      dimensions: ["evidence", "impact"]
+    - id: "code_quality_assessment"
+      title: "代码质量评估"
+      description: "评估需求相关代码的复杂度、重复率、可测试性和编码规范符合度。"
+      requirements: "包含圈复杂度、重复代码率、测试覆盖率和技术栈版本分析"
+      required: true
+      dimensions: ["impact", "risk"]
+    - id: "architecture_review"
+      title: "架构审查"
+      description: "评估当前架构对新需求的适配度，识别架构层面的技术债务。"
+      requirements: "包含架构模式合规性、模块耦合度、SOLID原则符合性和扩展性分析"
+      required: true
+      dimensions: ["impact", "decision"]
+    - id: "dependency_health"
+      title: "依赖健康度"
+      description: "审查第三方库和内部依赖的版本状态、安全漏洞和许可证合规性。"
+      requirements: "包含过期依赖列表、CVE漏洞、依赖冲突和升级影响分析"
+      required: true
+      dimensions: ["risk", "evidence"]
+    - id: "test_debt"
+      title: "测试债务"
+      description: "评估测试覆盖率缺口、测试质量和自动化测试基础设施的短板。"
+      requirements: "包含覆盖率差距分析、脆弱测试识别和测试金字塔健康度评估"
+      required: true
+      dimensions: ["risk", "verification"]
+    - id: "refactoring_opportunities"
+      title: "重构机会"
+      description: "识别需求实现过程中可同时进行的重构机会和代码现代化改造。"
+      requirements: "按投资回报率排序，包含重构技术、影响范围和工作量估算"
+      required: true
+      dimensions: ["change", "decision"]
+    - id: "modernization_roadmap"
+      title: "现代化路线图"
+      description: "规划技术栈升级和架构演进的长期路径。"
+      requirements: "分阶段规划，包含技术选型建议、迁移策略和风险缓解"
+      required: false
+      dimensions: ["decision", "change"]
+    - id: "risk_assessment"
+      title: "技术风险"
+      description: "识别技术债务积累带来的长期风险和维护成本增长趋势。"
+      requirements: "包含风险量化评估、维护成本预测和技术债务偿还ROI分析"
+      required: true
+      dimensions: ["risk"]
+    - id: "improvement_plan"
+      title: "改进计划"
+      description: "制定可执行的技术债务偿还计划，与需求实施形成协同。"
+      requirements: "按影响力和紧急度排列，包含偿还措施、预期收益和验证标准"
+      required: true
+      dimensions: ["decision", "change", "verification"]
+    - id: "evidence"
+      title: "证据支撑"
+      description: "列出静态分析报告、代码审查记录和技术债务度量数据。"
+      requirements: "表格形式，包含工具名称、度量指标和数据时间戳"
+      required: true
+      dimensions: ["evidence"]
+    - id: "appendix"
+      title: "附录"
+      description: "技术债务管理工具配置、度量标准定义和团队规范文档。"
+      required: false
+      dimensions: []

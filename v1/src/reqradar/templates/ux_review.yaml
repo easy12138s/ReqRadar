@@ -1,0 +1,76 @@
+template_definition:
+  name: "用户体验"
+  description: "面向用户交互和界面设计的需求审查，聚焦可用性、可访问性和用户满意度"
+  sections:
+    - id: "requirement_understanding"
+      title: "需求理解"
+      description: "从用户体验角度理解需求，识别目标用户群体和核心使用场景。"
+      requirements: "100-150字，包含用户画像、使用场景和痛点识别"
+      required: true
+      dimensions: ["understanding"]
+    - id: "user_journey_analysis"
+      title: "用户旅程分析"
+      description: "绘制和评估需求涉及的用户旅程，识别交互节点和体验断点。"
+      requirements: "包含用户旅程图、关键触点和体验摩擦点分析"
+      required: true
+      dimensions: ["impact"]
+    - id: "usability_heuristics"
+      title: "可用性评估"
+      description: "基于Nielsen十大可用性原则评估需求设计的界面可用性。"
+      requirements: "逐项评估原则符合度，附具体界面设计建议和最佳实践对比"
+      required: true
+      dimensions: ["verification"]
+    - id: "accessibility_review"
+      title: "可访问性审查"
+      description: "评估需求是否符合WCAG 2.1 AA标准，确保对所有用户的可访问性。"
+      requirements: "包含颜色对比度检查、键盘导航、屏幕阅读器兼容性和ARIA标签审查"
+      required: true
+      dimensions: ["verification"]
+    - id: "visual_design"
+      title: "视觉设计"
+      description: "评估界面布局、色彩方案、排版和图标的一致性和美观性。"
+      requirements: "包含设计系统一致性检查、响应式适配评估和视觉层次分析"
+      required: false
+      dimensions: ["change"]
+    - id: "interaction_design"
+      title: "交互设计"
+      description: "审查交互模式、动画效果和反馈机制是否符合用户预期。"
+      requirements: "包含交互流程审查、状态转换分析和错误处理设计"
+      required: true
+      dimensions: ["impact", "change"]
+    - id: "performance_perception"
+      title: "感知性能"
+      description: "评估加载状态、骨架屏和渐进式渲染对用户感知的影响。"
+      requirements: "包含首屏时间目标、加载状态设计和乐观更新建议"
+      required: false
+      dimensions: ["impact"]
+    - id: "internationalization"
+      title: "国际化适配"
+      description: "评估界面对不同语言、文化和地区的适配能力。"
+      requirements: "包含文本长度变化、日期时间格式和RTL布局支持分析"
+      required: false
+      dimensions: ["change"]
+    - id: "risk_assessment"
+      title: "体验风险"
+      description: "识别可能影响用户满意度和采用率的设计风险。"
+      requirements: "包含用户流失风险、学习曲线评估和竞品体验对比"
+      required: true
+      dimensions: ["risk"]
+    - id: "improvement_recommendations"
+      title: "改进建议"
+      description: "提供具体的用户体验改进方案，按影响力和实施难度排序。"
+      requirements: "包含设计建议、A/B测试方案和用户验证方法"
+      required: true
+      dimensions: ["decision", "change"]
+    - id: "evidence"
+      title: "证据支撑"
+      description: "引用可用性测试数据、用户反馈和行业基准。"
+      requirements: "表格形式，包含用户研究数据和最佳实践参考"
+      required: true
+      dimensions: ["evidence"]
+    - id: "appendix"
+      title: "附录"
+      description: "设计系统文档、用户画像详情、竞品分析等辅助材料。"
+      requirements: "结构化展示UX知识上下文"
+      required: false
+      dimensions: []

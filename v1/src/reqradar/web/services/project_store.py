@@ -1,0 +1,132 @@
+import asyncio
+import json
+import logging
+from collections import OrderedDict
+from pathlib import Path
+from typing import Optional
+
+logger = logging.getLogger("reqradar.web.services.project_store")
+
+
+class ProjectStore:
+    MAX_CACHED_PROJECTS = 10
+
+    def __init__(self):
+        self._code_graphs: OrderedDict[int, object] = OrderedDict()
+        self._vector_stores: OrderedDict[int, object] = OrderedDict()
+        self._git_vector_stores: OrderedDict[int, object] = OrderedDict()
+        self._lock = asyncio.Lock()
+
+    def _evict_lru(self, cache: OrderedDict):
+        while len(cache) > self.MAX_CACHED_PROJECTS:
+            cache.popitem(last=False)
+
+    async def get_code_graph(self, project_id: int, index_path: str) -> Optional[object]:
+        async with self._lock:
+            if project_id in self._code_graphs:
+                self._code_graphs.move_to_end(project_id)
+                return self._code_graphs[project_id]
+
+        code_graph_path = Path(index_path) / "code_graph.json"
+        if not code_graph_path.exists():
+            return None
+
+        try:
+            from reqradar.modules.code_parser import CodeFile, CodeGraph, CodeSymbol
+
+            with open(code_graph_path, encoding="utf-8") as f:
+                graph_data = json.load(f)
+
+            code_graph = CodeGraph(
+                files=[
+                    CodeFile(
+                        path=f["path"],
+                        symbols=[CodeSymbol(**s) for s in f.get("symbols", [])],
+                        imports=f.get("imports", []),
+                    )
+                    for f in graph_data.get("files", [])
+                ]
+            )
+
+            async with self._lock:
+                self._code_graphs[project_id] = code_graph
+                self._evict_lru(self._code_graphs)
+
+            return code_graph
+        except Exception:
+            logger.exception("Failed to load code graph for project %d", project_id)
+            return None
+
+    async def get_vector_store(self, project_id: int, index_path: str) -> Optional[object]:
+        async with self._lock:
+            if project_id in self._vector_stores:
+                self._vector_stores.move_to_end(project_id)
+                return self._vector_stores[project_id]
+
+        vectorstore_path = Path(index_path) / "vectorstore"
+        if not vectorstore_path.exists():
+            return None
+
+        try:
+            from reqradar.modules.vector_store import ChromaVectorStore, CHROMA_AVAILABLE
+
+            if not CHROMA_AVAILABLE:
+                logger.warning(
+                    "chromadb not available, skipping vector store for project %d", project_id
+                )
+                return None
+
+            vector_store = ChromaVectorStore(
+                persist_directory=str(vectorstore_path),
+                use_onnx=True,
+            )
+
+            async with self._lock:
+                self._vector_stores[project_id] = vector_store
+                self._evict_lru(self._vector_stores)
+
+            return vector_store
+        except Exception:
+            logger.exception("Failed to load vector store for project %d", project_id)
+            return None
+
+    async def invalidate(self, project_id: int):
+        async with self._lock:
+            self._code_graphs.pop(project_id, None)
+            self._vector_stores.pop(project_id, None)
+            self._git_vector_stores.pop(project_id, None)
+        logger.info("Project store cache invalidated for project %d", project_id)
+
+    async def get_commits_vector_store(self, project_id: int, index_path: str) -> Optional[object]:
+        async with self._lock:
+            if project_id in self._git_vector_stores:
+                self._git_vector_stores.move_to_end(project_id)
+                return self._git_vector_stores[project_id]
+
+        vectorstore_path = Path(index_path) / "vectorstore"
+        if not vectorstore_path.exists():
+            return None
+
+        try:
+            from reqradar.modules.vector_store import ChromaVectorStore, CHROMA_AVAILABLE
+
+            if not CHROMA_AVAILABLE:
+                return None
+
+            store = ChromaVectorStore(
+                persist_directory=str(vectorstore_path),
+                collection_name="commits",
+                use_onnx=True,
+            )
+
+            async with self._lock:
+                self._git_vector_stores[project_id] = store
+                self._evict_lru(self._git_vector_stores)
+
+            return store
+        except Exception:
+            logger.exception("Failed to load commits vector store for project %d", project_id)
+            return None
+
+
+project_store = ProjectStore()

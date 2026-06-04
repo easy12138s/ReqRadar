@@ -1,0 +1,70 @@
+template_definition:
+  name: "安全审计"
+  description: "面向安全审查的需求分析报告，聚焦威胁建模、漏洞评估和安全合规"
+  sections:
+    - id: "requirement_understanding"
+      title: "需求理解"
+      description: "从安全角度理解需求，识别涉及的安全边界和敏感数据流。"
+      requirements: "100-150字，包含安全边界定义、数据敏感度分类和合规框架"
+      required: true
+      dimensions: ["understanding"]
+    - id: "threat_modeling"
+      title: "威胁建模"
+      description: "基于STRIDE/DREAD等框架识别潜在威胁。列出攻击面、攻击向量和威胁代理。"
+      requirements: "包含威胁列表（含威胁类型、影响等级）、攻击面分析和信任边界"
+      required: true
+      dimensions: ["risk"]
+    - id: "vulnerability_assessment"
+      title: "漏洞评估"
+      description: "识别需求变更可能引入或暴露的现有漏洞。引用CWE分类和已知漏洞模式。"
+      requirements: "包含漏洞清单、严重性评级(CVSS)、利用难度和影响范围"
+      required: true
+      dimensions: ["risk", "impact"]
+    - id: "data_protection"
+      title: "数据保护"
+      description: "评估个人数据和敏感信息的处理方式。分析数据加密、存储和传输安全。"
+      requirements: "包含数据流图、加密状态、访问控制策略和数据留存分析"
+      required: true
+      dimensions: ["impact", "evidence"]
+    - id: "authentication_authorization"
+      title: "认证与授权"
+      description: "审查身份认证机制和访问控制逻辑。检查权限提升风险和会话管理。"
+      requirements: "包含认证流程审查、角色权限矩阵和越权风险评估"
+      required: true
+      dimensions: ["risk", "impact"]
+    - id: "compliance_check"
+      title: "合规检查"
+      description: "检查需求是否符合GDPR、SOC2、ISO27001等法规和标准要求。"
+      requirements: "列出适用法规、合规差距和整改建议"
+      required: true
+      dimensions: ["verification"]
+    - id: "code_security_review"
+      title: "代码安全审查"
+      description: "分析需求涉及的代码变更是否存在注入、XSS、CSRF等常见安全问题。"
+      requirements: "包含安全代码模式检查、输入验证分析和输出编码建议"
+      required: false
+      dimensions: ["risk", "evidence"]
+    - id: "risk_assessment"
+      title: "风险汇总"
+      description: "综合评估所有安全风险，按严重性和可能性排序。给出总体安全风险等级。"
+      requirements: "包含风险矩阵、总体风险等级和关键风险缓解优先级"
+      required: true
+      dimensions: ["risk", "decision"]
+    - id: "remediation_plan"
+      title: "修复建议"
+      description: "针对识别的安全问题提供具体、可操作的修复方案和安全加固建议。"
+      requirements: "按优先级排列，每个建议包含修复步骤、工作量和验证方法"
+      required: true
+      dimensions: ["decision", "change"]
+    - id: "evidence"
+      title: "证据支撑"
+      description: "列出支撑安全分析的所有证据和参考来源。"
+      requirements: "表格形式，包含安全测试结果、代码审计发现和合规文档引用"
+      required: true
+      dimensions: ["evidence"]
+    - id: "appendix"
+      title: "附录"
+      description: "安全框架参考、CVE数据库引用、安全工具配置建议等。"
+      requirements: "结构化展示安全知识上下文"
+      required: false
+      dimensions: []
