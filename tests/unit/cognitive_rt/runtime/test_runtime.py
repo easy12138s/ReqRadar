@@ -19,7 +19,6 @@ from reqradar.cognitive_rt.runtime.checkpoint import (
 )
 from reqradar.cognitive_rt.runtime.checkpoint_recovery import (
     CheckpointRecovery,
-    RecoveryResult,
 )
 from reqradar.cognitive_rt.runtime.checkpoint_storage import (
     CheckpointStorage,
@@ -30,7 +29,6 @@ from reqradar.cognitive_rt.runtime.event_bus import InMemoryEventBus
 from reqradar.cognitive_rt.runtime.events import EventPublisher
 from reqradar.cognitive_rt.runtime.session import (
     IllegalTransitionError,
-    RuntimeState,
     SessionStateMachine,
     create_session,
 )
@@ -134,9 +132,7 @@ class TestSessionStateMachine:
         assert state_machine.status == SessionStatus.RUNNING
         assert state_machine.state.started_at is not None
 
-    def test_running_to_completed_transition(
-        self, state_machine: SessionStateMachine
-    ) -> None:
+    def test_running_to_completed_transition(self, state_machine: SessionStateMachine) -> None:
         """RUNNING -> COMPLETED 转换应成功，且 finished_at 被设置。"""
         state_machine.transition(SessionStatus.READY)
         state_machine.transition(SessionStatus.RUNNING)
@@ -145,9 +141,7 @@ class TestSessionStateMachine:
         assert state_machine.status == SessionStatus.COMPLETED
         assert state_machine.state.finished_at is not None
 
-    def test_invalid_transition_raises_error(
-        self, state_machine: SessionStateMachine
-    ) -> None:
+    def test_invalid_transition_raises_error(self, state_machine: SessionStateMachine) -> None:
         """CREATED -> COMPLETED 是非法转换，应抛出 IllegalTransitionError。"""
         with pytest.raises(IllegalTransitionError) as exc_info:
             state_machine.transition(SessionStatus.COMPLETED)
@@ -164,9 +158,7 @@ class TestSessionStateMachine:
         assert state_machine.status == SessionStatus.RUNNING
         assert result.status == SessionStatus.RUNNING
 
-    def test_terminal_state_no_transition(
-        self, state_machine: SessionStateMachine
-    ) -> None:
+    def test_terminal_state_no_transition(self, state_machine: SessionStateMachine) -> None:
         """COMPLETED 是终态，不应再转换到其他状态。"""
         state_machine.transition(SessionStatus.READY)
         state_machine.transition(SessionStatus.RUNNING)
@@ -305,9 +297,7 @@ class TestEventPublisher:
             producer="test",
         )
 
-        step_events = event_publisher.get_events_by_type(
-            SESSION_ID, EventType.STEP_STARTED
-        )
+        step_events = event_publisher.get_events_by_type(SESSION_ID, EventType.STEP_STARTED)
         assert len(step_events) == 1
         assert step_events[0].event_type == EventType.STEP_STARTED
 
@@ -760,9 +750,7 @@ class TestCheckpointRecovery:
         event3.sequence = 3
         mock_event_store.get_events.return_value = [event1, event2, event3]
 
-        recovery = CheckpointRecovery(
-            storage=mock_storage, event_store=mock_event_store
-        )
+        recovery = CheckpointRecovery(storage=mock_storage, event_store=mock_event_store)
         result = recovery.recover(SESSION_ID)
 
         assert result.success is True
