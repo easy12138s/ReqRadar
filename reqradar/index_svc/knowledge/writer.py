@@ -1,0 +1,143 @@
+"""L3Writer — 统一知识写入接口（append / update / deprecate / supersede）。"""
+
+from __future__ import annotations
+
+import logging
+from datetime import UTC, datetime
+
+from reqradar.index_svc.knowledge.governance import (
+    ConfidenceCalculator,
+    FreshnessManager,
+    KnowledgeChangelog,
+)
+from reqradar.index_svc.knowledge.models import (
+    FreshnessStatus,
+    L3KnowledgeBase,
+)
+
+logger = logging.getLogger(__name__)
+
+
+class L3Writer:
+    """L3 知识写入器 — 7 种知识类型共用的统一写入接口。
+
+    写入语义矩阵（M-03 §7.4）：
+    - append: 新增知识
+    - update: 更新已有知识（字段级变更）
+    - deprecate: 标记为废弃
+    - supersede: 替代旧知识
+    """
+
+    def __init__(
+        self,
+        freshness_manager: FreshnessManager | None = None,
+        confidence_calculator: ConfidenceCalculator | None = None,
+        changelog: KnowledgeChangelog | None = None,
+    ) -> None:
+        self._store: dict[str, L3KnowledgeBase] = {}
+        self._freshness = freshness_manager or FreshnessManager()
+        self._confidence = confidence_calculator or ConfidenceCalculator()
+        self._changelog = changelog or KnowledgeChangelog()
+
+    def append(self, knowledge: L3KnowledgeBase, session_id: str = "") -> L3KnowledgeBase:
+        """新增知识条目。"""
+        knowledge.confidence.confidence_score = self._confidence.calculate(knowledge)
+        self._store[knowledge.id] = knowledge
+        self._changelog.record(
+            knowledge_id=knowledge.id,
+            knowledge_type=knowledge.knowledge_type.value,
+            action="create",
+            session_id=session_id,
+        )
+        logger.info(f"知识新增: {knowledge.id} ({knowledge.knowledge_type.value})")
+        return knowledge
+
+    def update(
+        self,
+        knowledge_id: str,
+        updates: dict,
+        session_id: str = "",
+    ) -> L3KnowledgeBase | None:
+        """更新已有知识（字段级变更追踪）。"""
+        existing = self._store.get(knowledge_id)
+        if existing is None:
+            return None
+
+        field_changes = []
+        for key, new_value in updates.items():
+            old_value = getattr(existing, key, None)
+            if old_value != new_value:
+                field_changes.append(
+                    {
+                        "field": key,
+                        "old": str(old_value)[:200],
+                        "new": str(new_value)[:200],
+                    }
+                )
+                setattr(existing, key, new_value)
+
+        existing.updated_at = datetime.now(UTC)
+        existing.confidence = self._confidence.on_verification(existing, session_id)
+
+        self._changelog.record(
+            knowledge_id=knowledge_id,
+            knowledge_type=existing.knowledge_type.value,
+            action="update",
+            field_changes=field_changes,
+            session_id=session_id,
+        )
+        return existing
+
+    def deprecate(self, knowledge_id: str, session_id: str = "") -> L3KnowledgeBase | None:
+        """标记知识为废弃。"""
+        existing = self._store.get(knowledge_id)
+        if existing is None:
+            return None
+
+        existing.freshness = FreshnessStatus.DEPRECATED
+        existing.updated_at = datetime.now(UTC)
+        self._changelog.record(
+            knowledge_id=knowledge_id,
+            knowledge_type=existing.knowledge_type.value,
+            action="deprecate",
+            session_id=session_id,
+        )
+        return existing
+
+    def supersede(
+        self, old_id: str, new_knowledge: L3KnowledgeBase, session_id: str = ""
+    ) -> L3KnowledgeBase | None:
+        """用新知识替代旧知识。"""
+        old = self._store.get(old_id)
+        if old is None:
+            return self.append(new_knowledge, session_id)
+
+        old.freshness = FreshnessStatus.SUPERSEDED
+        old.superseded_by = new_knowledge.id
+        old.updated_at = datetime.now(UTC)
+
+        new_knowledge = self.append(new_knowledge, session_id)
+        self._changelog.record(
+            knowledge_id=old_id,
+            knowledge_type=old.knowledge_type.value,
+            action="supersede",
+            field_changes=[{"field": "superseded_by", "old": "None", "new": new_knowledge.id}],
+            session_id=session_id,
+        )
+        return new_knowledge
+
+    def get(self, knowledge_id: str) -> L3KnowledgeBase | None:
+        """获取知识条目。"""
+        return self._store.get(knowledge_id)
+
+    def query_active(self, project_id: str) -> list[L3KnowledgeBase]:
+        """查询项目下所有 active 知识。"""
+        return [
+            k
+            for k in self._store.values()
+            if k.project_id == project_id and k.freshness == FreshnessStatus.ACTIVE
+        ]
+
+    def get_all(self) -> list[L3KnowledgeBase]:
+        """获取所有知识。"""
+        return list(self._store.values())
