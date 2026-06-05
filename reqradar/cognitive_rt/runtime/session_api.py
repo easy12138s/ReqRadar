@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import logging
 from dataclasses import dataclass
@@ -61,6 +62,7 @@ class SessionService:
         self._checkpoint_mgr = checkpoint_manager or CheckpointManager()
         self._checkpoint_storage = checkpoint_storage or CheckpointStorage()
         self._sessions: dict[str, SessionStateMachine] = {}
+        self._background_tasks: set[asyncio.Task] = set()
 
     def create(
         self,
@@ -99,11 +101,30 @@ class SessionService:
         logger.info("Session 创建: %s", session_id)
         return self._to_info(sm)
 
-    def start(self, session_id: str) -> SessionInfo:
+    async def start(
+        self,
+        session_id: str,
+        agent: object | None = None,
+        llm_client: object | None = None,
+        tool_registry: object | None = None,
+        config: object = None,
+        section_descriptions: object = None,
+        project_memory: object = None,
+        requirement_text: str | None = None,
+        resume_from: int | None = None,
+    ) -> SessionInfo:
         """启动 Session。
 
         Args:
             session_id: Session ID
+            agent: Runner Agent 实例
+            llm_client: LLM 客户端
+            tool_registry: 工具注册表
+            config: 运行配置
+            section_descriptions: 章节描述
+            project_memory: 项目记忆
+            requirement_text: 需求文本
+            resume_from: 从指定步骤恢复
 
         Returns:
             Session 信息
@@ -123,6 +144,25 @@ class SessionService:
         )
 
         logger.info("Session 启动: %s", session_id)
+
+        # 如果提供了 Runner 参数，异步启动分析
+        if agent is not None and llm_client is not None and tool_registry is not None:
+            task = asyncio.create_task(
+                self._run_analysis(
+                    session_id=session_id,
+                    agent=agent,
+                    llm_client=llm_client,
+                    tool_registry=tool_registry,
+                    config=config,
+                    section_descriptions=section_descriptions,
+                    project_memory=project_memory,
+                    requirement_text=requirement_text,
+                    resume_from=resume_from,
+                )
+            )
+            self._background_tasks.add(task)
+            task.add_done_callback(self._background_tasks.discard)
+
         return self._to_info(sm)
 
     def cancel(self, session_id: str) -> SessionInfo:
@@ -303,6 +343,75 @@ class SessionService:
     def get_events(self, session_id: str) -> list:
         """获取 Session 的事件列表。"""
         return self._publisher.get_events(session_id)
+
+    async def _run_analysis(
+        self,
+        session_id: str,
+        agent,
+        llm_client,
+        tool_registry,
+        config=None,
+        section_descriptions=None,
+        project_memory=None,
+        requirement_text: str | None = None,
+        resume_from: int | None = None,
+    ) -> None:
+        """异步执行分析，完成后驱动状态转换。"""
+        from reqradar.cognitive_rt.cognition.runner import run_react_analysis
+
+        try:
+            await run_react_analysis(
+                agent=agent,
+                llm_client=llm_client,
+                tool_registry=tool_registry,
+                config=config,
+                section_descriptions=section_descriptions,
+                project_memory=project_memory,
+                requirement_text=requirement_text,
+                session_id=session_id,
+                event_publisher=self._publisher,
+                checkpoint_mgr=self._checkpoint_mgr,
+                checkpoint_storage=self._checkpoint_storage,
+                on_complete=self._on_analysis_complete,
+                on_fail=self._on_analysis_fail,
+                on_checkpoint=self._on_analysis_checkpoint,
+            )
+        except Exception as e:
+            logger.error("Runner 执行异常: %s", e)
+            try:
+                self.fail(session_id, str(e))
+            except Exception:
+                logger.error("Session fail 转换也失败: session=%s", session_id)
+
+    async def _on_analysis_complete(self, session_id: str) -> None:
+        """Runner 完成回调。"""
+        try:
+            self.complete(session_id)
+        except Exception as e:
+            logger.error("Session complete 转换失败: session=%s, error=%s", session_id, e)
+
+    async def _on_analysis_fail(self, session_id: str, error_message: str) -> None:
+        """Runner 失败回调。"""
+        try:
+            self.fail(session_id, error_message)
+        except Exception as e:
+            logger.error("Session fail 转换失败: session=%s, error=%s", session_id, e)
+
+    async def _on_analysis_checkpoint(
+        self,
+        session_id: str,
+        checkpoint_type,
+        version: int,
+    ) -> None:
+        """Runner Checkpoint 回调 — 驱动 RUNNING → CHECKPOINTING → RUNNING 转换。"""
+        try:
+            sm = self._get(session_id)
+            if sm.status == SessionStatus.RUNNING:
+                sm.transition(SessionStatus.CHECKPOINTING)
+                sm._state.last_checkpoint_version = version
+                sm.transition(SessionStatus.RUNNING)
+        except Exception as e:
+            logger.error("Checkpoint 回调状态转换失败: session=%s, error=%s", session_id, e)
 
     def _get(self, session_id: str) -> SessionStateMachine:
         """获取 Session 状态机。"""

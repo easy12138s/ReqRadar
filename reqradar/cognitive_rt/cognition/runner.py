@@ -443,9 +443,17 @@ async def run_react_analysis(
     progress_callback=None,
     event_publisher=None,
     checkpoint_interval: int = 3,
+    # ── V2 集成参数 ──
+    session_id: str | None = None,
+    checkpoint_mgr: object | None = None,
+    checkpoint_storage: object | None = None,
+    on_complete: object | None = None,
+    on_fail: object | None = None,
+    on_checkpoint: object | None = None,
 ) -> dict:
     session = AnalysisSessionLogger(task_id=task_id)
     session.enter()
+    effective_session_id = session_id or f"agent-{id(agent)}"
     report_start = time.monotonic()
 
     try:
@@ -467,7 +475,7 @@ async def run_react_analysis(
                 from reqradar.kernel.enums import EventLevel, EventType
 
                 event_publisher.publish(
-                    session_id=f"agent-{id(agent)}",
+                    session_id=effective_session_id,
                     event_type=EventType.STEP_STARTED,
                     event_level=EventLevel.REASONING,
                     producer="analysis_runner",
@@ -596,7 +604,7 @@ async def run_react_analysis(
                 from reqradar.kernel.enums import EventLevel, EventType
 
                 event_publisher.publish(
-                    session_id=f"agent-{id(agent)}",
+                    session_id=effective_session_id,
                     event_type=EventType.STEP_COMPLETED,
                     event_level=EventLevel.REASONING,
                     producer="analysis_runner",
@@ -611,18 +619,26 @@ async def run_react_analysis(
                         )
                         from reqradar.kernel.enums import CheckpointType
 
-                        mgr = CheckpointManager()
+                        mgr = checkpoint_mgr or CheckpointManager()
                         summary = StateSummary(
                             current_step=agent.step_count,
                             total_steps=agent.max_steps,
                             evidence_count=len(agent.evidence_collector.evidences),
                             dimension_status=agent.dimension_tracker.status_summary(),
                         )
-                        mgr.create_checkpoint(
-                            session_id=f"agent-{id(agent)}",
+                        record = mgr.create_checkpoint(
+                            session_id=effective_session_id,
                             checkpoint_type=CheckpointType.STEP_COMPLETE,
                             state_summary=summary,
                         )
+                        if checkpoint_storage is not None:
+                            checkpoint_storage.save(record)
+                        if on_checkpoint is not None:
+                            await on_checkpoint(
+                                effective_session_id,
+                                CheckpointType.STEP_COMPLETE,
+                                record.version,
+                            )
                     except Exception as cp_err:
                         logger.warning("Checkpoint 创建失败: %s", cp_err)
 
@@ -666,10 +682,14 @@ async def run_react_analysis(
 
         agent.state = AgentState.COMPLETED
         session.analysis_done(agent.step_count, "completed")
+        if on_complete is not None:
+            await on_complete(effective_session_id)
         return report_data
 
     except Exception as e:
         session.error("analysis_failed", error=str(e))
+        if on_fail is not None:
+            await on_fail(effective_session_id, str(e))
         raise
     finally:
         session.exit()
