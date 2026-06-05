@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
+from starlette.responses import JSONResponse
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +47,20 @@ app = FastAPI(
 )
 
 
+@app.middleware("http")
+async def verify_internal_api_key(request, call_next):
+    """校验入站请求的 X-Internal-API-Key 头。"""
+    if request.url.path in ("/health", "/docs", "/openapi.json", "/redoc"):
+        return await call_next(request)
+    api_key = request.headers.get("X-Internal-API-Key", "")
+    if api_key != INTERNAL_API_KEY:
+        return JSONResponse(
+            status_code=401,
+            content={"error": {"code": "UNAUTHORIZED", "message": "Invalid Internal API Key"}},
+        )
+    return await call_next(request)
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok", "service": "auth"}
@@ -58,8 +73,16 @@ async def verify_token(req: VerifyRequest):
 
     try:
         payload = decode_jwt_token(req.token, JWT_SECRET)
+        from datetime import UTC, datetime
+
+        exp_timestamp = payload.get("exp", 0)
+        exp_datetime = (
+            datetime.fromtimestamp(exp_timestamp, tz=UTC).isoformat() if exp_timestamp else None
+        )
         return {
             "valid": True,
+            "jti": payload.get("jti", ""),
+            "expires_at": exp_datetime,
             "user": {
                 "user_id": payload.get("sub", ""),
                 "username": payload.get("username", ""),
@@ -70,7 +93,15 @@ async def verify_token(req: VerifyRequest):
             },
         }
     except Exception as e:
-        return {"valid": False, "error": str(e)}
+        reason = "TOKEN_UNKNOWN"
+        error_msg = str(e)
+        if "expired" in error_msg.lower():
+            reason = "TOKEN_EXPIRED"
+        elif "invalid" in error_msg.lower():
+            reason = "TOKEN_INVALID"
+        elif "decode" in error_msg.lower() or "malformed" in error_msg.lower():
+            reason = "TOKEN_MALFORMED"
+        return {"valid": False, "reason": reason}
 
 
 @app.post("/internal/v2/auth/issue")

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import time as _time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
@@ -14,6 +15,8 @@ from fastapi import BackgroundTasks, FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
+
+INTERNAL_API_KEY = os.environ.get("INTERNAL_API_KEY", "dev-internal-key")
 
 
 # ---------------------------------------------------------------------------
@@ -199,6 +202,22 @@ app = FastAPI(
     version="2.0.0",
     lifespan=lifespan,
 )
+
+
+@app.middleware("http")
+async def verify_internal_api_key(request, call_next):
+    """校验入站请求的 X-Internal-API-Key 头。"""
+    if request.url.path in ("/health", "/docs", "/openapi.json", "/redoc"):
+        return await call_next(request)
+    api_key = request.headers.get("X-Internal-API-Key", "")
+    if api_key != INTERNAL_API_KEY:
+        from starlette.responses import JSONResponse
+
+        return JSONResponse(
+            status_code=401,
+            content={"error": {"code": "UNAUTHORIZED", "message": "Invalid Internal API Key"}},
+        )
+    return await call_next(request)
 
 
 def _run_generation(task: ReportTask) -> None:

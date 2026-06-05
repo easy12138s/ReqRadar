@@ -12,7 +12,7 @@ from services.output.app import _task_store, app
 
 @pytest.fixture()
 def client():
-    with TestClient(app) as c:
+    with TestClient(app, headers={"X-Internal-API-Key": "dev-internal-key"}) as c:
         yield c
 
 

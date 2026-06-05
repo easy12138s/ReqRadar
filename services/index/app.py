@@ -1,21 +1,307 @@
-"""Index Service — 向量检索 + Checkpoint 存储 + L3 知识管理。"""
+"""Index Service — 向量检索 + Checkpoint 存储 + L3 知识管理。
+
+对齐 I-01 §3 契约，实现 Checkpoint / 向量检索 / L3 知识的完整端点。
+"""
 
 from __future__ import annotations
 
+import json
 import logging
-import os
+import time
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
+from uuid import uuid4
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
+
+from reqradar.index_svc.knowledge.models import L3KnowledgeBase
+from reqradar.index_svc.knowledge.writer import L3Writer
+from reqradar.kernel.enums import FreshnessStatus, KnowledgeNodeType
 
 logger = logging.getLogger(__name__)
 
-INTERNAL_API_KEY = os.environ.get("INTERNAL_API_KEY", "dev-internal-key")
+
+# ── Pydantic 请求/响应模型 ──────────────────────────────────────────────
+
+
+class ErrorDetail(BaseModel):
+    """错误详情 (I-01 §2.2)。"""
+
+    code: str = Field(description="错误码")
+    message: str = Field(description="错误信息")
+    details: dict = Field(default_factory=dict, description="错误详情")
+
+
+class ErrorResponse(BaseModel):
+    """统一错误响应 (I-01 §2.2)。"""
+
+    error: ErrorDetail = Field(description="错误详情")
+
+
+# ── Checkpoint 模型 (§3.1-3.4) ──────────────────────────────────────────
+
+
+class CheckpointCreateRequest(BaseModel):
+    """创建 Checkpoint 请求体 (§3.1)。"""
+
+    session_id: str = Field(description="会话 ID")
+    version: int = Field(description="版本号，同一 Session 内严格递增")
+    previous_version: int | None = Field(default=None, description="前一版本号")
+    type: str = Field(description="检查点类型: STEP_COMPLETE/TOOL_PRE/TOOL_POST/MANUAL/PERIODIC")
+    state_summary: dict = Field(description="状态摘要，用于列表查询")
+    diff: dict | None = Field(default=None, description="与前一版本的差异")
+    hot_state: dict = Field(description="热状态数据，≤ 1MB")
+    cold_state_json: str | None = Field(default=None, description="冷状态完整 JSON")
+    metadata: dict | None = Field(default=None, description="元数据")
+
+
+class CheckpointCreateResponse(BaseModel):
+    """创建 Checkpoint 响应体 (§3.1)。"""
+
+    checkpoint_id: str = Field(description="检查点 ID")
+    version: int = Field(description="版本号")
+    full_state_uri: str = Field(description="完整状态存储 URI")
+    created_at: str = Field(description="创建时间 (ISO 8601 UTC)")
+
+
+class CheckpointListItem(BaseModel):
+    """Checkpoint 列表条目 (§3.3)。"""
+
+    checkpoint_id: str = Field(description="检查点 ID")
+    version: int = Field(description="版本号")
+    type: str = Field(description="检查点类型")
+    state_summary: dict = Field(description="状态摘要")
+
+
+class CheckpointListResponse(BaseModel):
+    """Checkpoint 列表响应 (§3.3)。"""
+
+    session_id: str = Field(description="会话 ID")
+    total: int = Field(description="总数")
+    items: list[CheckpointListItem] = Field(description="检查点列表")
+    has_more: bool = Field(description="是否有更多数据")
+
+
+class CheckpointDiffVersionItem(BaseModel):
+    """版本差异条目 (§3.4)。"""
+
+    version: int = Field(description="版本号")
+    type: str = Field(description="检查点类型")
+    diff: dict | None = Field(default=None, description="版本差异")
+
+
+class CheckpointDiffResponse(BaseModel):
+    """版本差异响应 (§3.4)。"""
+
+    from_version: int = Field(description="起始版本")
+    to_version: int = Field(description="目标版本")
+    diffs: list[CheckpointDiffVersionItem] = Field(description="差异列表")
+
+
+# ── 向量检索模型 (§3.5) ─────────────────────────────────────────────────
+
+
+class VectorSearchRequest(BaseModel):
+    """向量检索请求体 (§3.5)。"""
+
+    project_id: str = Field(description="项目 ID")
+    collection: str = Field(description="集合名称: requirements / code")
+    query_text: str = Field(description="查询文本")
+    top_k: int = Field(default=10, description="返回数量上限")
+    filters: dict | None = Field(default=None, description="ChromaDB where 条件")
+    min_score: float | None = Field(default=None, description="最低相似度阈值")
+
+
+class VectorSearchResultItem(BaseModel):
+    """向量检索结果条目。"""
+
+    id: str = Field(description="chunk ID")
+    content: str = Field(description="内容")
+    metadata: dict = Field(description="元数据")
+    score: float = Field(description="相似度分数")
+
+
+class VectorSearchResponse(BaseModel):
+    """向量检索响应 (§3.5)。"""
+
+    results: list[VectorSearchResultItem] = Field(description="检索结果")
+    query_time_ms: int = Field(description="查询耗时 (毫秒)")
+
+
+# ── 知识模型 (§3.6-3.10) ────────────────────────────────────────────────
+
+
+class KnowledgeAppendRequest(BaseModel):
+    """追加 L3 知识请求体 (§3.6)。"""
+
+    project_id: str = Field(description="项目 ID")
+    knowledge_type: str = Field(
+        description="知识类型: glossary/module_profile/constraint/decision/risk/requirement/incident"
+    )
+    payload: dict = Field(description="知识内容，各类型结构见 M-03")
+    evidence_ref: str = Field(description="支撑该知识的 L2 Evidence ID")
+    session_id: str = Field(description="触发沉淀的 Session ID")
+
+
+class KnowledgeAppendResponse(BaseModel):
+    """追加 L3 知识响应体 (§3.6)。"""
+
+    id: str = Field(description="知识 ID")
+    knowledge_type: str = Field(description="知识类型")
+    freshness: str = Field(description="新鲜度状态")
+    confidence_score: float = Field(description="置信度评分")
+    created_at: str = Field(description="创建时间 (ISO 8601 UTC)")
+
+
+class KnowledgeUpdateRequest(BaseModel):
+    """更新 L3 知识请求体 (§3.7)。"""
+
+    project_id: str = Field(description="项目 ID")
+    knowledge_type: str = Field(description="知识类型")
+    knowledge_id: str = Field(description="知识 ID")
+    payload: dict = Field(description="更新内容 (patch 语义)")
+    session_id: str = Field(description="触发更新的 Session ID")
+
+
+class KnowledgeUpdateResponse(BaseModel):
+    """更新 L3 知识响应体 (§3.7)。"""
+
+    id: str = Field(description="知识 ID")
+    knowledge_type: str = Field(description="知识类型")
+    freshness: str = Field(description="新鲜度状态")
+    confidence_score: float = Field(description="置信度评分")
+    updated_at: str = Field(description="更新时间 (ISO 8601 UTC)")
+
+
+class KnowledgeDeprecateRequest(BaseModel):
+    """废弃 L3 知识请求体 (§3.8)。"""
+
+    project_id: str = Field(description="项目 ID")
+    knowledge_type: str = Field(description="知识类型")
+    knowledge_id: str = Field(description="知识 ID")
+    reason: str = Field(description="废弃原因")
+
+
+class KnowledgeDeprecateResponse(BaseModel):
+    """废弃 L3 知识响应体 (§3.8)。"""
+
+    id: str = Field(description="知识 ID")
+    knowledge_type: str = Field(description="知识类型")
+    freshness: str = Field(description="新鲜度状态")
+    reason: str = Field(description="废弃原因")
+
+
+class KnowledgeMergeRequest(BaseModel):
+    """合并 L3 知识请求体 (§3.9)。"""
+
+    project_id: str = Field(description="项目 ID")
+    knowledge_type: str = Field(description="知识类型")
+    knowledge_ids: list[str] = Field(description="待合并的知识 ID 列表")
+    strategy: str = Field(default="keep_newer", description="合并策略: keep_newer / keep_older")
+    payload_overrides: dict | None = Field(default=None, description="覆盖字段")
+
+
+class KnowledgeMergeResponse(BaseModel):
+    """合并 L3 知识响应体 (§3.9)。"""
+
+    id: str = Field(description="合并后的知识 ID")
+    merged_from: list[str] = Field(description="原始知识 ID 列表")
+    knowledge_type: str = Field(description="知识类型")
+    freshness: str = Field(description="新鲜度状态")
+    confidence_score: float = Field(description="置信度评分")
+    created_at: str = Field(description="创建时间 (ISO 8601 UTC)")
+
+
+class KnowledgeQueryItem(BaseModel):
+    """知识查询条目 (§3.10)。"""
+
+    id: str = Field(description="知识 ID")
+    knowledge_type: str = Field(description="知识类型")
+    data: dict = Field(description="知识内容")
+    freshness: str = Field(description="新鲜度状态")
+    confidence_score: float = Field(description="置信度评分")
+    verification_count: int = Field(description="验证次数")
+
+
+class KnowledgeQueryResponse(BaseModel):
+    """知识查询响应 (§3.10)。"""
+
+    items: list[KnowledgeQueryItem] = Field(description="知识列表")
+    total: int = Field(description="总数")
+
+
+# ── 辅助函数 ────────────────────────────────────────────────────────────
+
+# 合法的检查点类型集合
+_VALID_CHECKPOINT_TYPES = frozenset(
+    {"STEP_COMPLETE", "TOOL_PRE", "TOOL_POST", "MANUAL", "PERIODIC"}
+)
+
+
+def _iso(dt: datetime | None) -> str | None:
+    """将 datetime 转换为 ISO 8601 UTC 字符串。"""
+    if dt is None:
+        return None
+    return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _http_error(
+    status_code: int, code: str, message: str, details: dict | None = None
+) -> HTTPException:
+    """构造统一格式的 HTTP 错误（对齐 I-01 §2.2）。"""
+    return HTTPException(
+        status_code=status_code,
+        detail={"error": {"code": code, "message": message, "details": details or {}}},
+    )
+
+
+def _validate_checkpoint_type(value: str) -> None:
+    """校验检查点类型是否合法。"""
+    if value not in _VALID_CHECKPOINT_TYPES:
+        raise _http_error(
+            400,
+            "INVALID_CHECKPOINT_TYPE",
+            f"不支持的检查点类型: {value}",
+            {"valid": sorted(_VALID_CHECKPOINT_TYPES)},
+        )
+
+
+def _validate_knowledge_type(value: str) -> KnowledgeNodeType:
+    """校验知识类型并返回枚举值。"""
+    try:
+        return KnowledgeNodeType(value)
+    except ValueError as err:
+        valid = [e.value for e in KnowledgeNodeType]
+        raise _http_error(
+            400, "INVALID_KNOWLEDGE_TYPE", f"不支持的知识类型: {value}", {"valid": valid}
+        ) from err
+
+
+def _knowledge_to_dict(knowledge: L3KnowledgeBase, payloads: dict[str, dict]) -> dict:
+    """将 L3KnowledgeBase 转换为 I-01 §3.10 响应格式。"""
+    payload_data = payloads.get(knowledge.id, {})
+    return {
+        "id": knowledge.id,
+        "knowledge_type": knowledge.knowledge_type.value,
+        "data": payload_data.get("payload", {}),
+        "freshness": knowledge.freshness.value,
+        "confidence_score": knowledge.confidence.confidence_score,
+        "verification_count": knowledge.confidence.verification_count,
+    }
+
+
+# ── 应用生命周期 ────────────────────────────────────────────────────────
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("Index Service 启动")
+    """初始化/清理服务资源。"""
+    logger.info("Index Service 启动 (port 8003)")
+    app.state.checkpoints = {}  # session_id -> list[dict]
+    app.state.knowledge_payloads = {}  # knowledge_id -> {payload, evidence_ref}
+    app.state.writer = L3Writer()
     yield
     logger.info("Index Service 关闭")
 
@@ -27,36 +313,426 @@ app = FastAPI(
 )
 
 
+@app.exception_handler(HTTPException)
+async def _http_exception_handler(_request: Request, exc: HTTPException):
+    """统一错误响应格式，对齐 I-01 §2.2。"""
+    return JSONResponse(status_code=exc.status_code, content=exc.detail)
+
+
+# ── 健康检查 ────────────────────────────────────────────────────────────
+
+
 @app.get("/health")
 async def health():
+    """服务健康检查。"""
     return {"status": "ok", "service": "index"}
 
 
-@app.post("/internal/v2/checkpoints")
-async def create_checkpoint():
-    """创建 Checkpoint。"""
-    return {"checkpoint_id": "stub", "version": 1}
+# ── Checkpoint 端点 (§3.1-3.4) ──────────────────────────────────────────
+
+
+@app.post("/internal/v2/checkpoints", status_code=201, response_model=CheckpointCreateResponse)
+async def create_checkpoint(req: CheckpointCreateRequest, request: Request):
+    """创建 Checkpoint (§3.1)。"""
+    store: dict[str, list[dict]] = request.app.state.checkpoints
+    session_cps = store.setdefault(req.session_id, [])
+
+    _validate_checkpoint_type(req.type)
+
+    # 版本冲突检测
+    if session_cps:
+        latest_version = session_cps[-1]["version"]
+        if req.version <= latest_version:
+            raise _http_error(
+                409,
+                "VERSION_CONFLICT",
+                f"版本冲突: 新版本 {req.version} ≤ 最新版本 {latest_version}",
+                {"expected_gt": latest_version, "actual": req.version},
+            )
+        if req.previous_version is not None and req.previous_version != latest_version:
+            raise _http_error(
+                409,
+                "VERSION_CONFLICT",
+                f"版本链断裂: previous_version={req.previous_version} ≠ 最新版本 {latest_version}",
+                {"expected": latest_version, "actual": req.previous_version},
+            )
+
+    checkpoint_id = str(uuid4())
+    now = datetime.now(UTC)
+
+    checkpoint = {
+        "checkpoint_id": checkpoint_id,
+        "session_id": req.session_id,
+        "version": req.version,
+        "previous_version": req.previous_version,
+        "type": req.type,
+        "state_summary": req.state_summary,
+        "diff": req.diff,
+        "hot_state": req.hot_state,
+        "cold_state_json": req.cold_state_json,
+        "metadata": req.metadata or {},
+        "created_at": now,
+    }
+    session_cps.append(checkpoint)
+    session_cps.sort(key=lambda c: c["version"])
+
+    logger.info(
+        "Checkpoint 创建: session=%s version=%d type=%s", req.session_id, req.version, req.type
+    )
+
+    return CheckpointCreateResponse(
+        checkpoint_id=checkpoint_id,
+        version=req.version,
+        full_state_uri=f"minio://checkpoints/{req.session_id}/v{req.version}/context_snapshot.json",
+        created_at=_iso(now),
+    )
 
 
 @app.get("/internal/v2/checkpoints/{session_id}")
-async def get_checkpoints(session_id: str):
-    """查询 Checkpoint。"""
-    return {"session_id": session_id, "checkpoints": []}
+async def get_checkpoint(
+    session_id: str,
+    request: Request,
+    v: int | None = Query(default=None, description="版本号，null 表示最新"),
+    include_cold: bool = Query(default=False, description="是否返回冷状态数据"),
+    at: str | None = Query(default=None, description="获取特定时间点的最新版本 (ISO 8601 UTC)"),
+):
+    """查询 Checkpoint (§3.2)。"""
+    store: dict[str, list[dict]] = request.app.state.checkpoints
+    session_cps = store.get(session_id, [])
+
+    if not session_cps:
+        raise _http_error(404, "CHECKPOINT_NOT_FOUND", f"Session {session_id} 无 Checkpoint")
+
+    target: dict | None = None
+
+    if v is not None:
+        for cp in session_cps:
+            if cp["version"] == v:
+                target = cp
+                break
+        if target is None:
+            raise _http_error(
+                404, "CHECKPOINT_NOT_FOUND", f"Session {session_id} 无版本 {v} 的 Checkpoint"
+            )
+    elif at is not None:
+        try:
+            at_dt = datetime.fromisoformat(at)
+        except ValueError as err:
+            raise _http_error(400, "INVALID_DATETIME", f"无效的时间格式: {at}") from err
+        for cp in reversed(session_cps):
+            if cp["created_at"] <= at_dt:
+                target = cp
+                break
+        if target is None:
+            raise _http_error(
+                404, "CHECKPOINT_NOT_FOUND", f"Session {session_id} 在 {at} 之前无 Checkpoint"
+            )
+    else:
+        target = session_cps[-1]
+
+    cold_state = None
+    if include_cold and target.get("cold_state_json"):
+        try:
+            cold_state = json.loads(target["cold_state_json"])
+        except (json.JSONDecodeError, TypeError):
+            cold_state = target["cold_state_json"]
+
+    return {
+        "checkpoint_id": target["checkpoint_id"],
+        "session_id": target["session_id"],
+        "version": target["version"],
+        "previous_version": target.get("previous_version"),
+        "created_at": _iso(target["created_at"]),
+        "type": target["type"],
+        "state_summary": target["state_summary"],
+        "diff": target.get("diff"),
+        "hot_state": target["hot_state"],
+        "cold_state": cold_state,
+        "metadata": target.get("metadata"),
+    }
 
 
-@app.post("/internal/v2/vector/search")
-async def search_vector():
-    """向量检索。"""
-    return {"results": []}
+@app.get("/internal/v2/checkpoints", response_model=CheckpointListResponse)
+async def list_checkpoints(
+    request: Request,
+    session_id: str = Query(description="会话 ID"),
+    limit: int = Query(default=20, ge=1, le=100, description="返回数量上限"),
+    offset: int = Query(default=0, ge=0, description="偏移量"),
+    type: str | None = Query(default=None, description="按类型过滤"),
+):
+    """查询版本链列表 (§3.3)。"""
+    store: dict[str, list[dict]] = request.app.state.checkpoints
+    session_cps = store.get(session_id, [])
+
+    filtered = session_cps
+    if type is not None:
+        filtered = [cp for cp in session_cps if cp["type"] == type]
+
+    total = len(filtered)
+    page = filtered[offset : offset + limit]
+    has_more = offset + limit < total
+
+    return CheckpointListResponse(
+        session_id=session_id,
+        total=total,
+        items=[
+            CheckpointListItem(
+                checkpoint_id=cp["checkpoint_id"],
+                version=cp["version"],
+                type=cp["type"],
+                state_summary=cp["state_summary"],
+            )
+            for cp in page
+        ],
+        has_more=has_more,
+    )
 
 
-@app.post("/internal/v2/knowledge")
-async def create_knowledge():
-    """创建 L3 知识。"""
-    return {"knowledge_id": "stub"}
+@app.get("/internal/v2/checkpoints/{session_id}/diff", response_model=CheckpointDiffResponse)
+async def diff_checkpoints(
+    session_id: str,
+    request: Request,
+    from_version: int = Query(alias="from", description="起始版本"),
+    to_version: int = Query(alias="to", description="目标版本"),
+):
+    """比较两个版本的差异 (§3.4)。"""
+    store: dict[str, list[dict]] = request.app.state.checkpoints
+    session_cps = store.get(session_id, [])
+
+    if not session_cps:
+        raise _http_error(404, "CHECKPOINT_NOT_FOUND", f"Session {session_id} 无 Checkpoint")
+
+    in_range = [cp for cp in session_cps if from_version <= cp["version"] <= to_version]
+    in_range.sort(key=lambda c: c["version"])
+
+    if not in_range:
+        raise _http_error(
+            404,
+            "CHECKPOINT_NOT_FOUND",
+            f"Session {session_id} 在版本 {from_version}-{to_version} 范围内无 Checkpoint",
+        )
+
+    return CheckpointDiffResponse(
+        from_version=from_version,
+        to_version=to_version,
+        diffs=[
+            CheckpointDiffVersionItem(
+                version=cp["version"],
+                type=cp["type"],
+                diff=cp.get("diff"),
+            )
+            for cp in in_range
+        ],
+    )
 
 
-@app.get("/internal/v2/knowledge/{project_id}")
-async def get_knowledge(project_id: str):
-    """查询项目 L3 知识。"""
-    return {"project_id": project_id, "knowledge": []}
+# ── 向量检索 (§3.5) ─────────────────────────────────────────────────────
+
+
+@app.post("/internal/v2/search/vector", response_model=VectorSearchResponse)
+async def search_vector(req: VectorSearchRequest, request: Request):
+    """向量检索 (§3.5) — P5 阶段桩实现，待 ChromaDB 接入后替换。"""
+    start = time.monotonic()
+
+    logger.info(
+        "向量检索: project=%s collection=%s query=%s top_k=%d",
+        req.project_id,
+        req.collection,
+        req.query_text[:50],
+        req.top_k,
+    )
+
+    elapsed_ms = int((time.monotonic() - start) * 1000)
+
+    return VectorSearchResponse(results=[], query_time_ms=elapsed_ms)
+
+
+# ── 知识端点 (§3.6-3.10) ────────────────────────────────────────────────
+
+
+@app.post("/internal/v2/knowledge/append", status_code=201, response_model=KnowledgeAppendResponse)
+async def knowledge_append(req: KnowledgeAppendRequest, request: Request):
+    """追加 L3 知识 (§3.6)。"""
+    writer: L3Writer = request.app.state.writer
+    payloads: dict[str, dict] = request.app.state.knowledge_payloads
+
+    knowledge_type = _validate_knowledge_type(req.knowledge_type)
+
+    knowledge = L3KnowledgeBase(
+        project_id=req.project_id,
+        knowledge_type=knowledge_type,
+    )
+    knowledge = writer.append(knowledge, req.session_id)
+    payloads[knowledge.id] = {
+        "payload": req.payload,
+        "evidence_ref": req.evidence_ref,
+    }
+
+    logger.info(
+        "知识追加: id=%s type=%s project=%s", knowledge.id, req.knowledge_type, req.project_id
+    )
+
+    return KnowledgeAppendResponse(
+        id=knowledge.id,
+        knowledge_type=knowledge.knowledge_type.value,
+        freshness=knowledge.freshness.value,
+        confidence_score=knowledge.confidence.confidence_score,
+        created_at=_iso(knowledge.created_at),
+    )
+
+
+@app.post("/internal/v2/knowledge/update", response_model=KnowledgeUpdateResponse)
+async def knowledge_update(req: KnowledgeUpdateRequest, request: Request):
+    """更新 L3 知识 (§3.7)。"""
+    writer: L3Writer = request.app.state.writer
+    payloads: dict[str, dict] = request.app.state.knowledge_payloads
+
+    existing = writer.get(req.knowledge_id)
+    if existing is None:
+        raise _http_error(404, "KNOWLEDGE_NOT_FOUND", f"知识 {req.knowledge_id} 不存在")
+
+    # 触发 L3Writer 的验证计数 + 变更日志
+    updated = writer.update(req.knowledge_id, {}, req.session_id)
+    if updated is None:
+        raise _http_error(404, "KNOWLEDGE_NOT_FOUND", f"知识 {req.knowledge_id} 更新失败")
+
+    # 更新 payload（patch 语义）
+    if req.knowledge_id in payloads:
+        payloads[req.knowledge_id]["payload"].update(req.payload)
+    else:
+        payloads[req.knowledge_id] = {"payload": req.payload, "evidence_ref": ""}
+
+    logger.info("知识更新: id=%s", req.knowledge_id)
+
+    return KnowledgeUpdateResponse(
+        id=updated.id,
+        knowledge_type=updated.knowledge_type.value,
+        freshness=updated.freshness.value,
+        confidence_score=updated.confidence.confidence_score,
+        updated_at=_iso(updated.updated_at),
+    )
+
+
+@app.post("/internal/v2/knowledge/deprecate", response_model=KnowledgeDeprecateResponse)
+async def knowledge_deprecate(req: KnowledgeDeprecateRequest, request: Request):
+    """废弃 L3 知识 (§3.8)。"""
+    writer: L3Writer = request.app.state.writer
+
+    result = writer.deprecate(req.knowledge_id, session_id="")
+    if result is None:
+        raise _http_error(404, "KNOWLEDGE_NOT_FOUND", f"知识 {req.knowledge_id} 不存在")
+
+    logger.info("知识废弃: id=%s reason=%s", req.knowledge_id, req.reason)
+
+    return KnowledgeDeprecateResponse(
+        id=result.id,
+        knowledge_type=result.knowledge_type.value,
+        freshness=result.freshness.value,
+        reason=req.reason,
+    )
+
+
+@app.post("/internal/v2/knowledge/merge", status_code=201, response_model=KnowledgeMergeResponse)
+async def knowledge_merge(req: KnowledgeMergeRequest, request: Request):
+    """合并 L3 知识 (§3.9)。"""
+    writer: L3Writer = request.app.state.writer
+    payloads: dict[str, dict] = request.app.state.knowledge_payloads
+
+    if len(req.knowledge_ids) < 2:
+        raise _http_error(400, "MERGE_REQUIRES_TWO", "合并至少需要 2 条知识")
+
+    knowledge_type = _validate_knowledge_type(req.knowledge_type)
+
+    # 查找所有待合并的知识
+    sources: list[L3KnowledgeBase] = []
+    source_payloads: list[dict] = []
+    for kid in req.knowledge_ids:
+        k = writer.get(kid)
+        if k is None:
+            raise _http_error(404, "KNOWLEDGE_NOT_FOUND", f"知识 {kid} 不存在")
+        sources.append(k)
+        source_payloads.append(payloads.get(kid, {}).get("payload", {}))
+
+    # 合并 payload：按策略决定覆盖顺序
+    merged_payload: dict = {}
+    ordered = reversed(source_payloads) if req.strategy == "keep_newer" else source_payloads
+    for sp in ordered:
+        merged_payload.update(sp)
+    if req.payload_overrides:
+        merged_payload.update(req.payload_overrides)
+
+    # 通过 supersede 关联第一条旧知识，自动写入新条目
+    new_knowledge = L3KnowledgeBase(
+        project_id=req.project_id,
+        knowledge_type=knowledge_type,
+    )
+    result = writer.supersede(sources[0].id, new_knowledge, session_id="")
+    if result is not None:
+        new_knowledge = result
+    payloads[new_knowledge.id] = {"payload": merged_payload, "evidence_ref": ""}
+
+    # 废弃剩余旧知识
+    for old in sources[1:]:
+        writer.deprecate(old.id, session_id="")
+
+    logger.info(
+        "知识合并: ids=%s -> %s strategy=%s", req.knowledge_ids, new_knowledge.id, req.strategy
+    )
+
+    return KnowledgeMergeResponse(
+        id=new_knowledge.id,
+        merged_from=req.knowledge_ids,
+        knowledge_type=new_knowledge.knowledge_type.value,
+        freshness=new_knowledge.freshness.value,
+        confidence_score=new_knowledge.confidence.confidence_score,
+        created_at=_iso(new_knowledge.created_at),
+    )
+
+
+@app.get("/internal/v2/knowledge/query", response_model=KnowledgeQueryResponse)
+async def knowledge_query(
+    request: Request,
+    project_id: str = Query(description="项目 ID"),
+    knowledge_types: str | None = Query(default=None, description="逗号分隔的知识类型"),
+    freshness: str = Query(default="active", description="新鲜度过滤"),
+    min_confidence: float = Query(default=0.6, description="最低置信度"),
+    limit: int = Query(default=50, ge=1, le=200, description="返回数量上限"),
+):
+    """查询 L3 知识 (§3.10)。"""
+    writer: L3Writer = request.app.state.writer
+    payloads: dict[str, dict] = request.app.state.knowledge_payloads
+
+    # 按新鲜度获取项目知识
+    if freshness == "active":
+        items = writer.query_active(project_id)
+    else:
+        items = [k for k in writer.get_all() if k.project_id == project_id]
+
+    # 类型过滤
+    if knowledge_types:
+        type_set = set(knowledge_types.split(","))
+        items = [k for k in items if k.knowledge_type.value in type_set]
+
+    # 新鲜度过滤（非 active 时按指定值过滤）
+    if freshness != "active":
+        try:
+            freshness_enum = FreshnessStatus(freshness)
+        except ValueError as err:
+            raise _http_error(
+                400,
+                "INVALID_FRESHNESS",
+                f"不支持的新鲜度: {freshness}",
+                {"valid": [e.value for e in FreshnessStatus]},
+            ) from err
+        items = [k for k in items if k.freshness == freshness_enum]
+
+    # 置信度过滤
+    items = [k for k in items if k.confidence.confidence_score >= min_confidence]
+
+    total = len(items)
+    page = items[:limit]
+
+    return KnowledgeQueryResponse(
+        items=[KnowledgeQueryItem(**_knowledge_to_dict(k, payloads)) for k in page],
+        total=total,
+    )

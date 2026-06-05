@@ -116,7 +116,7 @@ services:
   cognitive-rt:
     build:
       context: .
-      dockerfile: reqradar/cognitive_rt/Dockerfile
+      dockerfile: services/cognitive-rt/Dockerfile
     container_name: reqradar-cognitive-rt
     environment:
       DATABASE_URL: postgresql+asyncpg://reqradar:reqradar_dev@postgres:5432/reqradar
@@ -139,7 +139,7 @@ services:
   index-service:
     build:
       context: .
-      dockerfile: reqradar/index_svc/Dockerfile
+      dockerfile: services/index/Dockerfile
     container_name: reqradar-index
     environment:
       DATABASE_URL: postgresql+asyncpg://reqradar:reqradar_dev@postgres:5432/reqradar
