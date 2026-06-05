@@ -24,6 +24,7 @@ class Scope(str, Enum):
     GLOBAL = "global"
     PROJECT = "project"
     USER = "user"
+    SESSION = "session"
 
 
 class Domain(str, Enum):

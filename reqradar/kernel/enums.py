@@ -88,14 +88,16 @@ class CheckpointType(str, Enum):
     TOOL_POST = "TOOL_POST"
     MANUAL = "MANUAL"
     PERIODIC = "PERIODIC"
+    CHATBACK_SNAPSHOT = "CHATBACK_SNAPSHOT"
 
 
 class DimensionStatus(str, Enum):
-    """七维度评估状态。"""
+    """七维度评估状态（M-02 §3.1）。"""
 
-    NOT_STARTED = "not_started"
+    PENDING = "pending"
     IN_PROGRESS = "in_progress"
-    COMPLETED = "completed"
+    SUFFICIENT = "sufficient"
+    INSUFFICIENT = "insufficient"
 
 
 class RiskLevel(str, Enum):
