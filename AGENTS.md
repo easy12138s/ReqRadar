@@ -262,12 +262,58 @@ python scripts/check_dependencies.py   # C-02 依赖铁律验证
 
 ## 6. Git 提交规范
 
-- **分支**: `refactor/v2`（主分支）← `refactor/v2-p{N}`（Phase 分支）
-- **提交格式**: `<type>(<scope>): <short description>`
+### 6.1 分支策略
+
+```
+develop（V1 维护）
+    └── refactor/v2（V2 主分支，始终保持最新可工作状态）
+            ├── refactor/v2-p1（Phase 分支）
+            ├── refactor/v2-p2
+            └── ...
+```
+
+**铁律**：
+- **Phase 分支必须从 `refactor/v2` 拉出**：`git checkout -b refactor/v2-p{N} refactor/v2`
+- **Phase 验收通过后必须合并回 `refactor/v2`**：验收人执行合并 + 更新 CHECKLIST.md
+- **合并回主分支后才能开始下一个 Phase**
+- **验收人确认通过后，才能开始下一个 Phase**
+- **严禁 Phase 分支之间直接合并**（必须通过 `refactor/v2` 中转）
+- **master 不动**，等所有 Phase 完成后一次性合并
+
+### 6.2 提交格式
+
+- **格式**: `<type>(<scope>): <short description>`
   - type: `feat` / `fix` / `refactor` / `docs` / `chore` / `style` / `test` / `ci` / `perf`
   - scope: 影响模块名，如 `feat(kernel): add session state machine`
 - **语言**: 英文
-- **PR**: 合并到 `refactor/v2`，所有 Phase 完成后合入 `develop`
+- **每完成一个子任务提交一次**，不要积攒到最后一次性提交
+
+### 6.3 Phase 完成后的标准操作流程
+
+**编码 Agent 负责**：
+```bash
+# 1. 自检
+ruff check reqradar/ tests/ services/ && pytest tests/ -q
+
+# 2. 通知验收人验收
+```
+
+**验收人负责**：
+```bash
+# 3. 验收通过后，执行合并
+git checkout refactor/v2
+git merge refactor/v2-p{N} --no-ff -m "merge: P{N} complete"
+
+# 4. 更新 docs/CHECKLIST.md
+
+# 5. 通知编码 Agent 开始下一个 Phase
+```
+
+**编码 Agent 开始下一个 Phase**：
+```bash
+# 6. 从最新 refactor/v2 拉出新分支
+git checkout -b refactor/v2-p{N+1} refactor/v2
+```
 
 ## 7. 重要提醒
 

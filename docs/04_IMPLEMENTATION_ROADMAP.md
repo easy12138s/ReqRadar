@@ -39,15 +39,37 @@ Phase 的排序遵循一个铁律：**能最早验证核心假设的，优先级
 ```
 develop（V1 维护）
     │
-    └── refactor/v2（V2 重构主分支）
+    └── refactor/v2（V2 重构主分支，始终保持最新可工作状态）
             │
-            ├── refactor/v2-p0（Kernel 抽离）
-            ├── refactor/v2-p1（模块化单体 + Context Pipeline）
-            ├── refactor/v2-p3（Cognitive Runtime Core）
+            ├── refactor/v2-p1（Phase 分支，完成后合并回 refactor/v2）
+            ├── refactor/v2-p2
             └── ...
 ```
 
-每个 Phase 从 `refactor/v2` 拉出特性分支，完成后合并回 `refactor/v2`。所有 Phase 完成后，`refactor/v2` 合并到 `develop`，最终替换 `master`。
+**铁律**：
+- **Phase 分支必须从 `refactor/v2` 拉出**：`git checkout -b refactor/v2-p{N} refactor/v2`
+- **Phase 验收通过后必须合并回 `refactor/v2`**：验收人执行合并 + 更新 CHECKLIST.md
+- **合并回主分支后才能开始下一个 Phase**
+- **严禁 Phase 分支之间直接合并**（必须通过 `refactor/v2` 中转）
+- **master 不动**，等所有 Phase 完成后一次性合并
+
+**验收合并流程**（每个 Phase 完成后必须执行）：
+
+```
+编码 Agent 负责：
+  1. 自检（ruff + pytest）
+  2. 通知验收人验收
+
+验收人负责：
+  3. 验收通过后，执行合并：git checkout refactor/v2 && git merge refactor/v2-p{N} --no-ff
+  4. 更新 docs/CHECKLIST.md
+  5. 通知编码 Agent 开始下一个 Phase
+
+编码 Agent 开始下一个 Phase：
+  6. 从最新 refactor/v2 拉出新分支：git checkout -b refactor/v2-p{N+1} refactor/v2
+```
+
+> **教训**：P0-P9 期间因缺乏此约束，所有 Phase 分支从未合并回 `refactor/v2`，导致主分支停留在 P0 时代，最终需要手动修复。此流程确保类似问题不再发生。
 
 ---
 
