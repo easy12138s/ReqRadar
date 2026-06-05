@@ -241,6 +241,21 @@ def mock_client():
         "completed_at": "2026-06-01T10:05:00Z",
     }
 
+    client.create_mcp_key.return_value = {
+        "key_id": "k1",
+        "raw_key": "rr_mcp_abc123",
+        "name": "test",
+        "scopes": ["read"],
+    }
+
+    client.list_mcp_keys.return_value = {"keys": []}
+
+    client.revoke_mcp_key.return_value = {"key_id": "k1", "revoked": True}
+
+    client.get_mcp_audit.return_value = {"entries": [], "total": 0}
+
+    client.get_mcp_config.return_value = {"mcp_running": True, "mcp_port": 9000}
+
     return client
 
 
@@ -725,3 +740,67 @@ class TestNoDatabaseAccess:
                     assert (
                         "sqlalchemy" not in node.module.lower()
                     ), f"{py_file.name} 从 sqlalchemy 导入: {node.module}"
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# TestMCPProxyRoutes
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+class TestMCPProxyRoutes:
+    """BFF MCP 管理代理路由测试。"""
+
+    def test_create_mcp_key(self, mock_client: AsyncMock, client: TestClient):
+        resp = client.post(
+            "/api/v2/mcp/keys",
+            json={"name": "test"},
+            headers=AUTH_HEADER,
+        )
+        assert resp.status_code == 201
+        body = resp.json()
+        assert body["key_id"] == "k1"
+        assert body["raw_key"] == "rr_mcp_abc123"
+        mock_client.create_mcp_key.assert_called_once()
+
+    def test_list_mcp_keys(self, mock_client: AsyncMock, client: TestClient):
+        resp = client.get(
+            "/api/v2/mcp/keys",
+            headers=AUTH_HEADER,
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["keys"] == []
+        mock_client.list_mcp_keys.assert_called_once()
+
+    def test_revoke_mcp_key(self, mock_client: AsyncMock, client: TestClient):
+        resp = client.post(
+            "/api/v2/mcp/keys/k1/revoke",
+            headers=AUTH_HEADER,
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["key_id"] == "k1"
+        assert body["revoked"] is True
+        mock_client.revoke_mcp_key.assert_called_once()
+
+    def test_get_mcp_audit(self, mock_client: AsyncMock, client: TestClient):
+        resp = client.get(
+            "/api/v2/mcp/audit",
+            headers=AUTH_HEADER,
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["entries"] == []
+        assert body["total"] == 0
+        mock_client.get_mcp_audit.assert_called_once()
+
+    def test_get_mcp_config(self, mock_client: AsyncMock, client: TestClient):
+        resp = client.get(
+            "/api/v2/mcp/config",
+            headers=AUTH_HEADER,
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["mcp_running"] is True
+        assert body["mcp_port"] == 9000
+        mock_client.get_mcp_config.assert_called_once()

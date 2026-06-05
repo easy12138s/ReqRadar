@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -56,9 +56,10 @@ class AuditEntry:
 class AuditLog:
     """MCP 审计日志（内存模式，P3 后迁移到 PG）。"""
 
-    def __init__(self, max_entries: int = 10000) -> None:
+    def __init__(self, max_entries: int = 10000, retention_hours: int = 72) -> None:
         self._entries: list[AuditEntry] = []
         self._max_entries = max_entries
+        self._retention_hours = retention_hours
 
     def clear(self) -> None:
         self._entries.clear()
@@ -114,9 +115,20 @@ class AuditLog:
             for e in filtered[-limit:]
         ]
 
-    def cleanup(self) -> int:
-        """清理全部审计日志，返回清除条数。"""
-        count = len(self._entries)
-        self._entries.clear()
-        logger.info("审计日志已清理: %d 条", count)
-        return count
+    def cleanup(self, retention_hours: int | float | None = None) -> int:
+        """清理过期审计日志。
+
+        Args:
+            retention_hours: 保留时间（小时），None 使用默认值
+
+        Returns:
+            清除的条数
+        """
+        hours = retention_hours if retention_hours is not None else self._retention_hours
+        cutoff = datetime.now(UTC) - timedelta(hours=hours)
+        before = len(self._entries)
+        self._entries = [e for e in self._entries if e.timestamp >= cutoff]
+        removed = before - len(self._entries)
+        if removed > 0:
+            logger.info("审计日志清理: 删除 %d 条过期记录", removed)
+        return removed

@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
-import hashlib
-import hmac
 import logging
 import secrets
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+
+try:
+    import bcrypt
+
+    _HAS_BCRYPT = True
+except ImportError:
+    import hashlib
+
+    _HAS_BCRYPT = False
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +32,11 @@ class AccessKey:
     status: str = "active"
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     revoked_at: datetime | None = None
+    last_used_at: datetime | None = None
+
+    @property
+    def revoked(self) -> bool:
+        return self.status == "revoked"
 
 
 class KeyManager:
@@ -38,6 +50,8 @@ class KeyManager:
 
     @staticmethod
     def _hash_key(raw_key: str) -> str:
+        if _HAS_BCRYPT:
+            return bcrypt.hashpw(raw_key.encode(), bcrypt.gensalt()).decode()
         return hashlib.sha256(raw_key.encode()).hexdigest()
 
     def generate_key(self, name: str, scopes: list[str] | None = None) -> tuple[str, AccessKey]:
@@ -58,10 +72,17 @@ class KeyManager:
         """验证原始密钥，返回 AccessKey 或 None。"""
         if not raw_key.startswith(_KEY_PREFIX):
             return None
-        digest = self._hash_key(raw_key)
         for ak in self._keys.values():
-            if ak.status == "active" and hmac.compare_digest(ak.key_hash, digest):
-                return ak
+            if ak.revoked:
+                continue
+            if _HAS_BCRYPT:
+                if bcrypt.checkpw(raw_key.encode(), ak.key_hash.encode()):
+                    ak.last_used_at = datetime.now(UTC)
+                    return ak
+            else:
+                if hashlib.sha256(raw_key.encode()).hexdigest() == ak.key_hash:
+                    ak.last_used_at = datetime.now(UTC)
+                    return ak
         return None
 
     def revoke_key(self, key_id: str) -> bool:

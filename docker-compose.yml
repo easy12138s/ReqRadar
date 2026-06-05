@@ -98,6 +98,7 @@ services:
       COGNITIVE_RT_URL: http://cognitive-rt:8002
       INDEX_SERVICE_URL: http://index-service:8003
       OUTPUT_SERVICE_URL: http://output-service:8004
+      INTEGRATION_SERVICE_URL: http://integration-service:8005
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-change-in-production}
       LOG_LEVEL: INFO
     expose:

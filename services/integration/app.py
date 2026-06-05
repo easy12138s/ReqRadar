@@ -10,8 +10,11 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
+from services.integration.client import ServiceClient
 from services.integration.mcp_audit import AuditLog
 from services.integration.mcp_keys import KeyManager
+from services.integration.mcp_server import MCPServerManager
+from services.integration.mcp_tools import register_tools
 
 logger = logging.getLogger(__name__)
 
@@ -20,8 +23,10 @@ MCP_HOST = os.environ.get("MCP_HOST", "0.0.0.0")
 MCP_PORT = int(os.environ.get("MCP_PORT", "9000"))
 MCP_PATH = os.environ.get("MCP_PATH", "/mcp")
 
+_service_client = ServiceClient()
 _key_manager = KeyManager()
 _audit_log = AuditLog()
+_mcp_manager = MCPServerManager()
 _start_time: float = 0.0
 
 
@@ -55,10 +60,14 @@ class CreateKeyResponse(BaseModel):
 async def lifespan(app: FastAPI):
     global _start_time
     _start_time = time.time()
-    logger.info("Integration Service 启动: MCP %s:%s%s", MCP_HOST, MCP_PORT, MCP_PATH)
+    logger.info("Integration Service 启动")
+    mcp = _mcp_manager.create_server()
+    if mcp is not None:
+        register_tools(mcp, _service_client, _audit_log, _key_manager)
+        await _mcp_manager.start(host=MCP_HOST, port=int(MCP_PORT))
     yield
-    _key_manager.clear()
-    _audit_log.clear()
+    await _mcp_manager.stop()
+    await _service_client.close()
     logger.info("Integration Service 关闭")
 
 

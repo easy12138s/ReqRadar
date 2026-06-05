@@ -67,10 +67,10 @@ class ServiceClient:
         self, project_id: str, query: str, knowledge_types: str | None = None, top_k: int = 10
     ) -> dict:
         client = await self._get_client()
-        body = {"project_id": project_id, "query": query, "top_k": top_k}
+        params: dict = {"project_id": project_id, "query": query, "top_k": top_k}
         if knowledge_types:
-            body["knowledge_types"] = knowledge_types
-        resp = await client.post(f"{self._index_url}/internal/v2/knowledge/query", json=body)
+            params["knowledge_types"] = knowledge_types
+        resp = await client.get(f"{self._index_url}/internal/v2/memory/query", params=params)
         return resp.json()
 
     # ── Output Service ────────────────────────────────

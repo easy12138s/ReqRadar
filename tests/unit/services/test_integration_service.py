@@ -279,7 +279,7 @@ class TestAuditSanitization:
         log = AuditLog()
         log.record(tool_name="t1", arguments={}, result_summary="ok", duration_ms=10)
         log.record(tool_name="t2", arguments={}, result_summary="ok", duration_ms=20)
-        removed = log.cleanup()
+        removed = log.cleanup(retention_hours=-0.001)
         assert removed == 2
         assert log.query() == []
 
