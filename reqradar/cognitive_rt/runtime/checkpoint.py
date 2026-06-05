@@ -112,8 +112,10 @@ class CheckpointManager:
                 logger.warning("Checkpoint 持久化失败: %s", e)
 
         logger.info(
-            f"Checkpoint 创建: session={session_id}, version={version}, "
-            f"type={checkpoint_type.value}"
+            "Checkpoint 创建: session=%s, version=%s, type=%s",
+            session_id,
+            version,
+            checkpoint_type.value,
         )
         return record
 

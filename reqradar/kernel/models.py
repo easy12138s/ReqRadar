@@ -699,7 +699,7 @@ class DimensionResult(Base):
         ForeignKey("cognitive_sessions.session_id", ondelete="CASCADE"), nullable=False
     )
     dimension_id: Mapped[str] = mapped_column(String(32), nullable=False)
-    status: Mapped[str] = mapped_column(String(20), server_default="not_started", nullable=False)
+    status: Mapped[str] = mapped_column(String(20), server_default="pending", nullable=False)
     risk_level: Mapped[str] = mapped_column(String(20), server_default="none", nullable=False)
     evidence_count: Mapped[int] = mapped_column(Integer, server_default="0", nullable=False)
     summary: Mapped[str] = mapped_column(Text, server_default="", nullable=False)

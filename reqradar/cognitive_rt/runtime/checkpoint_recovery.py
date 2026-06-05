@@ -68,7 +68,9 @@ class CheckpointRecovery:
 
             if not evidence_valid:
                 logger.warning(
-                    f"Evidence 链校验失败: session={session_id}, version={restored_version}"
+                    "Evidence 链校验失败: session=%s, version=%s",
+                    session_id,
+                    restored_version,
                 )
                 # 尝试恢复到上一个版本
                 if restored_version > 1:

@@ -9,7 +9,7 @@ import time
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from reqradar.web.websocket import ConnectionManager
+    from reqradar.cognitive_rt.runtime.ws import ConnectionManager
 
 from reqradar.cognitive_rt.cognition.analysis_agent import AgentState, AnalysisAgent
 from reqradar.cognitive_rt.cognition.llm_utils import (

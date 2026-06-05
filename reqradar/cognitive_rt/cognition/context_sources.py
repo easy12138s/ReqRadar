@@ -54,8 +54,11 @@ class ProjectMemorySource:
     ) -> list[ContextItem]:
         # TODO: P1 stub — 接入 V1 项目记忆数据源（术语表、模块画像、架构约束）
         logger.debug(
-            f"ProjectMemorySource.collect called: "
-            f"session={session_id}, project={project_id}, query={query!r}, max={max_items}"
+            "ProjectMemorySource.collect called: session=%s, project=%s, query=%r, max=%s",
+            session_id,
+            project_id,
+            query,
+            max_items,
         )
         return []
 
@@ -102,8 +105,11 @@ class CodeGraphSource:
     ) -> list[ContextItem]:
         # TODO: P1 stub — 接入 V1 代码图谱数据源（AST 索引、调用链、模块依赖）
         logger.debug(
-            f"CodeGraphSource.collect called: "
-            f"session={session_id}, project={project_id}, query={query!r}, max={max_items}"
+            "CodeGraphSource.collect called: session=%s, project=%s, query=%r, max=%s",
+            session_id,
+            project_id,
+            query,
+            max_items,
         )
         return []
 
@@ -150,7 +156,10 @@ class GitHistorySource:
     ) -> list[ContextItem]:
         # TODO: P1 stub — 接入 V1 Git 历史数据源（提交日志、diff、分支信息）
         logger.debug(
-            f"GitHistorySource.collect called: "
-            f"session={session_id}, project={project_id}, query={query!r}, max={max_items}"
+            "GitHistorySource.collect called: session=%s, project=%s, query=%r, max=%s",
+            session_id,
+            project_id,
+            query,
+            max_items,
         )
         return []

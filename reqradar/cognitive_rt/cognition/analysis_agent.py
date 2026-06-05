@@ -207,8 +207,10 @@ class AnalysisAgent:
                 parts.append(ev_text)
             parts.append(f"## 步骤计数\n已用 {self.step_count}/{self.max_steps} 步")
             logger.info(
-                f"Context Pipeline 完成: tokens={result.token_count}, "
-                f"items={result.items_count}, gate_passed={result.quality_gate_result.passed}"
+                "Context Pipeline 完成: tokens=%s, items=%s, gate_passed=%s",
+                result.token_count,
+                result.items_count,
+                result.quality_gate_result.passed,
             )
             return "\n\n".join(parts)
         except Exception as e:

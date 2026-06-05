@@ -85,8 +85,11 @@ class EventPublisher:
                 logger.warning("事件总线推送失败: %s", e)
 
         logger.debug(
-            f"事件发布: session={session_id}, type={event_type.value}, "
-            f"level={event_level.value}, seq={seq}"
+            "事件发布: session=%s, type=%s, level=%s, seq=%s",
+            session_id,
+            event_type.value,
+            event_level.value,
+            seq,
         )
         return record
 

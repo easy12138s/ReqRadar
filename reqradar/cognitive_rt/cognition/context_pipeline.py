@@ -797,10 +797,14 @@ class ContextPipeline:
 
         strategy_name = type(self.strategy).__name__
         logger.info(
-            f"Pipeline 完成: strategy={strategy_name}, "
-            f"collected={len(collected)}, scored={len(scored)}, "
-            f"selected={len(selected)}, compressed={len(compressed)}, "
-            f"tokens={total_token_count}/{context_budget}"
+            "Pipeline 完成: strategy=%s, collected=%s, scored=%s, selected=%s, compressed=%s, tokens=%s/%s",
+            strategy_name,
+            len(collected),
+            len(scored),
+            len(selected),
+            len(compressed),
+            total_token_count,
+            context_budget,
         )
 
         return PipelineResult(
@@ -852,7 +856,8 @@ class ContextPipeline:
             except Exception:
                 source_name = type(source).__name__
                 logger.warning(
-                    f"ContextSource {source_name} 收集失败, 跳过",
+                    "ContextSource %s 收集失败, 跳过",
+                    source_name,
                     exc_info=True,
                 )
 

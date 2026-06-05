@@ -9,7 +9,11 @@ from reqradar.cognitive_rt.cognition.prompts.requirement_preprocess import (
     build_consolidation_user_prompt,
 )
 from reqradar.cognitive_rt.cognition.schemas import CONSOLIDATION_SCHEMA
-from reqradar.modules.loaders import LoaderRegistry
+
+try:
+    from reqradar.modules.loaders import LoaderRegistry
+except ImportError:
+    LoaderRegistry = None  # type: ignore[assignment,misc]
 
 logger = logging.getLogger("reqradar.agent.preprocessor")
 

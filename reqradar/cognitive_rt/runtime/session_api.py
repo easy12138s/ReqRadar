@@ -158,6 +158,32 @@ class SessionService:
         logger.info("Session 取消: %s", session_id)
         return self._to_info(sm)
 
+    def wait_for_input(self, session_id: str) -> SessionInfo:
+        """将 Session 转换为等待用户输入状态。
+
+        Args:
+            session_id: Session ID
+
+        Returns:
+            Session 信息
+
+        Raises:
+            KeyError: Session 不存在
+            IllegalTransitionError: 非法转换（当前状态非 RUNNING）
+        """
+        sm = self._get(session_id)
+        sm.transition(SessionStatus.WAITING_INPUT)
+
+        self._publisher.publish(
+            session_id=session_id,
+            event_type=EventType.SESSION_WAITING_INPUT,
+            event_level=EventLevel.SESSION,
+            producer="session_service",
+        )
+
+        logger.info("Session 等待用户输入: %s", session_id)
+        return self._to_info(sm)
+
     def complete(self, session_id: str) -> SessionInfo:
         """完成 Session。
 

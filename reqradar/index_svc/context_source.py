@@ -99,8 +99,10 @@ class L3ContextSource:
             )
 
         logger.info(
-            f"L3 知识收集: project={project_id}, qualified={len(qualified)}, "
-            f"returned={len(items)}"
+            "L3 知识收集: project=%s, qualified=%s, returned=%s",
+            project_id,
+            len(qualified),
+            len(items),
         )
         return items
 
