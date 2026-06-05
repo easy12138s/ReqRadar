@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 
 from reqradar.cognitive_rt.cognition.tools.security import ToolPermissionChecker
 from reqradar.kernel.enums import CheckpointType, EventLevel, EventType
+from reqradar.kernel.exceptions import ReqRadarException
 
 logger = logging.getLogger(__name__)
 
@@ -99,7 +100,7 @@ class ManagedToolResult:
 # ---------------------------------------------------------------------------
 
 
-class ToolRuntimeError(Exception):
+class ToolRuntimeError(ReqRadarException):
     """ToolRuntime 基础异常。"""
 
     def __init__(
@@ -109,11 +110,9 @@ class ToolRuntimeError(Exception):
         execution_id: str = "",
         cause: Exception | None = None,
     ) -> None:
-        super().__init__(message)
+        super().__init__(message, cause=cause)
         self.tool_id = tool_id
         self.execution_id = execution_id
-        if cause is not None:
-            self.__cause__ = cause
 
 
 class ToolNotFoundError(ToolRuntimeError):
@@ -332,7 +331,7 @@ class ToolRuntime:
                         duration_ms=(time.monotonic() - start_time) * 1000,
                     )
         except Exception as e:
-            logger.warning(f"权限校验异常，降级继续: {e}")
+            logger.warning("权限校验异常，降级继续: %s", e)
 
         # Phase 2: 限流检查
         try:
@@ -353,7 +352,7 @@ class ToolRuntime:
                         duration_ms=(time.monotonic() - start_time) * 1000,
                     )
         except Exception as e:
-            logger.warning(f"限流检查异常，降级继续: {e}")
+            logger.warning("限流检查异常，降级继续: %s", e)
 
         # 缓存检查
         cache_key = ""
@@ -379,7 +378,7 @@ class ToolRuntime:
                 )
                 pre_checkpoint_id = cp.checkpoint_id if hasattr(cp, "checkpoint_id") else str(cp)
             except Exception as e:
-                logger.warning(f"前置 Checkpoint 创建失败，降级继续: {e}")
+                logger.warning("前置 Checkpoint 创建失败，降级继续: %s", e)
                 self._publish_event(
                     session_id,
                     EventType.TOOL_CHECKPOINT_FAILED,
@@ -494,7 +493,7 @@ class ToolRuntime:
                     },
                 )
             except Exception as e:
-                logger.warning(f"后置 Checkpoint 创建失败，降级继续: {e}")
+                logger.warning("后置 Checkpoint 创建失败，降级继续: %s", e)
 
         # Phase 5: 发布 TOOL_RETURNED 事件
         self._publish_event(
@@ -552,4 +551,4 @@ class ToolRuntime:
                 payload=payload,
             )
         except Exception as e:
-            logger.warning(f"事件发布失败，降级继续: {e}")
+            logger.warning("事件发布失败，降级继续: %s", e)
