@@ -9,6 +9,10 @@ import time
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
+    from reqradar.cognitive_rt.runtime.checkpoint import CheckpointManager
+    from reqradar.cognitive_rt.runtime.checkpoint_storage import CheckpointStorage
     from reqradar.cognitive_rt.runtime.ws import ConnectionManager
 
 from reqradar.cognitive_rt.cognition.analysis_agent import AgentState, AnalysisAgent
@@ -50,7 +54,7 @@ class AnalysisSessionLogger:
     def enter(self):
         from reqradar.infrastructure.logging import set_log_context
 
-        set_log_context(task_id=self.task_id)
+        set_log_context(session_id=str(self.task_id or ""))
         self.info("analysis_started")
 
     def exit(self):
@@ -445,11 +449,11 @@ async def run_react_analysis(
     checkpoint_interval: int = 3,
     # ── V2 集成参数 ──
     session_id: str | None = None,
-    checkpoint_mgr: object | None = None,
-    checkpoint_storage: object | None = None,
-    on_complete: object | None = None,
-    on_fail: object | None = None,
-    on_checkpoint: object | None = None,
+    checkpoint_mgr: CheckpointManager | None = None,
+    checkpoint_storage: CheckpointStorage | None = None,
+    on_complete: Callable[[str], Awaitable[None]] | None = None,
+    on_fail: Callable[[str, str], Awaitable[None]] | None = None,
+    on_checkpoint: Callable[[str, object, int], Awaitable[None]] | None = None,
 ) -> dict:
     session = AnalysisSessionLogger(task_id=task_id)
     session.enter()

@@ -410,6 +410,18 @@ class SessionService:
                 sm.transition(SessionStatus.CHECKPOINTING)
                 sm._state.last_checkpoint_version = version
                 sm.transition(SessionStatus.RUNNING)
+            self._publisher.publish(
+                session_id=session_id,
+                event_type=EventType.SESSION_CHECKPOINTED,
+                event_level=EventLevel.SESSION,
+                producer="session_service",
+                payload={
+                    "version": version,
+                    "checkpoint_type": checkpoint_type.value
+                    if hasattr(checkpoint_type, "value")
+                    else str(checkpoint_type),
+                },
+            )
         except Exception as e:
             logger.error("Checkpoint 回调状态转换失败: session=%s, error=%s", session_id, e)
 
