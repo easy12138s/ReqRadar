@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
 
 
 @dataclass
@@ -12,7 +11,7 @@ class Evidence:
     content: str
     confidence: str = "medium"
     dimensions: list[str] = field(default_factory=list)
-    timestamp: Optional[str] = None
+    timestamp: str | None = None
 
 
 class EvidenceCollector:

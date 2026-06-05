@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
+
+from reqradar.kernel.enums import DimensionStatus
 
 DEFAULT_DIMENSIONS = [
     "understanding",
@@ -17,19 +18,19 @@ DEFAULT_DIMENSIONS = [
 @dataclass
 class DimensionState:
     id: str
-    status: str = "pending"
+    status: DimensionStatus = DimensionStatus.PENDING
     evidence_ids: list[str] = field(default_factory=list)
-    draft_content: Optional[str] = None
+    draft_content: str | None = None
 
     def mark_in_progress(self) -> None:
-        if self.status == "pending":
-            self.status = "in_progress"
+        if self.status == DimensionStatus.PENDING:
+            self.status = DimensionStatus.IN_PROGRESS
 
     def mark_sufficient(self) -> None:
-        self.status = "sufficient"
+        self.status = DimensionStatus.SUFFICIENT
 
     def mark_insufficient(self) -> None:
-        self.status = "insufficient"
+        self.status = DimensionStatus.INSUFFICIENT
 
     def add_evidence(self, evidence_id: str) -> None:
         if evidence_id not in self.evidence_ids:
@@ -63,11 +64,12 @@ class DimensionTracker:
         return [
             dim_id
             for dim_id, state in self.dimensions.items()
-            if state.status in ("pending", "in_progress", "insufficient")
+            if state.status
+            in (DimensionStatus.PENDING, DimensionStatus.IN_PROGRESS, DimensionStatus.INSUFFICIENT)
         ]
 
     def all_sufficient(self) -> bool:
-        return all(s.status == "sufficient" for s in self.dimensions.values())
+        return all(s.status == DimensionStatus.SUFFICIENT for s in self.dimensions.values())
 
     def status_summary(self) -> dict[str, str]:
         return {dim_id: state.status for dim_id, state in self.dimensions.items()}
