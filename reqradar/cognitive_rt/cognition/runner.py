@@ -624,7 +624,7 @@ async def run_react_analysis(
                             state_summary=summary,
                         )
                     except Exception as cp_err:
-                        logger.warning(f"Checkpoint 创建失败: {cp_err}")
+                        logger.warning("Checkpoint 创建失败: %s", cp_err)
 
             if agent.should_terminate():
                 break

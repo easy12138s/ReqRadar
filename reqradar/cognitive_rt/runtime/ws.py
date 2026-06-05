@@ -43,7 +43,7 @@ class ConnectionManager:
             self._connections[session_id] = []
         self._connections[session_id].append(conn)
 
-        logger.info(f"WS 连接建立: {connection_id} -> session={session_id}")
+        logger.info("WS 连接建立: %s -> session=%s", connection_id, session_id)
         return conn
 
     def disconnect(self, connection_id: str, session_id: str) -> None:
@@ -59,7 +59,7 @@ class ConnectionManager:
         if not self._connections[session_id]:
             del self._connections[session_id]
 
-        logger.info(f"WS 连接断开: {connection_id}")
+        logger.info("WS 连接断开: %s", connection_id)
 
     async def broadcast(self, session_id: str, event_data: dict) -> int:
         """向指定 Session 的所有连接广播事件。
@@ -80,7 +80,7 @@ class ConnectionManager:
                     await conn.send_queue.put(json.dumps(event_data, ensure_ascii=False))
                     sent += 1
                 except Exception as e:
-                    logger.warning(f"WS 推送失败: {e}")
+                    logger.warning("WS 推送失败: %s", e)
                     conn.connected = False
 
         return sent

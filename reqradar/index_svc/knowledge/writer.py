@@ -49,7 +49,7 @@ class L3Writer:
             action="create",
             session_id=session_id,
         )
-        logger.info(f"知识新增: {knowledge.id} ({knowledge.knowledge_type.value})")
+        logger.info("知识新增: %s (%s)", knowledge.id, knowledge.knowledge_type.value)
         return knowledge
 
     def update(

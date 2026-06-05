@@ -66,7 +66,7 @@ class InMemoryEventBus:
             try:
                 subscriber.on_message(msg)
             except Exception as e:
-                logger.warning(f"订阅者处理消息失败: {e}")
+                logger.warning("订阅者处理消息失败: %s", e)
 
         return msg.message_id
 

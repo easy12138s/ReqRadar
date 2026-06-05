@@ -82,7 +82,7 @@ class EventPublisher:
             try:
                 self._bus.publish(record)
             except Exception as e:
-                logger.warning(f"事件总线推送失败: {e}")
+                logger.warning("事件总线推送失败: %s", e)
 
         logger.debug(
             f"事件发布: session={session_id}, type={event_type.value}, "
@@ -94,9 +94,7 @@ class EventPublisher:
         """获取指定 Session 的所有事件。"""
         return list(self._events.get(session_id, []))
 
-    def get_events_by_type(
-        self, session_id: str, event_type: EventType
-    ) -> list[EventRecord]:
+    def get_events_by_type(self, session_id: str, event_type: EventType) -> list[EventRecord]:
         """按事件类型过滤。"""
         return [e for e in self.get_events(session_id) if e.event_type == event_type]
 

@@ -64,7 +64,7 @@ class L3ContextSource:
         try:
             all_knowledge = self._store.query_active(project_id)
         except Exception as e:
-            logger.warning(f"L3 知识查询失败: {e}")
+            logger.warning("L3 知识查询失败: %s", e)
             return []
 
         qualified = []

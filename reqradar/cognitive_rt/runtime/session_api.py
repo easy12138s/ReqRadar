@@ -96,7 +96,7 @@ class SessionService:
             payload={"project_id": project_id, "user_id": user_id},
         )
 
-        logger.info(f"Session 创建: {session_id}")
+        logger.info("Session 创建: %s", session_id)
         return self._to_info(sm)
 
     def start(self, session_id: str) -> SessionInfo:
@@ -122,7 +122,7 @@ class SessionService:
             producer="session_service",
         )
 
-        logger.info(f"Session 启动: {session_id}")
+        logger.info("Session 启动: %s", session_id)
         return self._to_info(sm)
 
     def cancel(self, session_id: str) -> SessionInfo:
@@ -155,7 +155,7 @@ class SessionService:
             producer="session_service",
         )
 
-        logger.info(f"Session 取消: {session_id}")
+        logger.info("Session 取消: %s", session_id)
         return self._to_info(sm)
 
     def complete(self, session_id: str) -> SessionInfo:
@@ -177,7 +177,7 @@ class SessionService:
             producer="session_service",
         )
 
-        logger.info(f"Session 完成: {session_id}")
+        logger.info("Session 完成: %s", session_id)
         return self._to_info(sm)
 
     def fail(self, session_id: str, error_message: str, error_type: str = "unknown") -> SessionInfo:
@@ -202,7 +202,7 @@ class SessionService:
             payload={"error_message": error_message, "error_type": error_type},
         )
 
-        logger.info(f"Session 失败: {session_id}, error={error_message}")
+        logger.info("Session 失败: %s, error=%s", session_id, error_message)
         return self._to_info(sm)
 
     def checkpoint(

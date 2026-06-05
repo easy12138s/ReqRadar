@@ -9,11 +9,10 @@ from reqradar.cognitive_rt.cognition.evidence import EvidenceCollector
 
 logger = logging.getLogger("reqradar.agent.analysis_agent")
 
-USE_CONTEXT_PIPELINE = os.environ.get("USE_CONTEXT_PIPELINE", "true").lower() in (
-    "true",
-    "1",
-    "yes",
-)
+
+def _use_context_pipeline() -> bool:
+    """是否启用 Context Pipeline（延迟读取环境变量，避免模块级绑定）。"""
+    return os.environ.get("USE_CONTEXT_PIPELINE", "true").lower() in ("true", "1", "yes")
 
 
 class AgentState(Enum):
@@ -124,10 +123,10 @@ class AnalysisAgent:
     def get_context_text(self) -> str:
         """获取推理上下文文本。
 
-        当 USE_CONTEXT_PIPELINE=True 时使用 V2 Context Pipeline，
+        当 _use_context_pipeline()=True 时使用 V2 Context Pipeline，
         否则使用 V1 f-string 拼接（fallback）。
         """
-        if USE_CONTEXT_PIPELINE:
+        if _use_context_pipeline():
             return self._get_context_text_via_pipeline()
         return self._get_context_text_fstring()
 
@@ -213,7 +212,7 @@ class AnalysisAgent:
             )
             return "\n\n".join(parts)
         except Exception as e:
-            logger.warning(f"Context Pipeline 执行失败, 回退到 f-string: {e}")
+            logger.warning("Context Pipeline 执行失败, 回退到 f-string: %s", e)
             return self._get_context_text_fstring()
 
     def _dimension_status_text(self) -> str:

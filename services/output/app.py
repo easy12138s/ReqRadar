@@ -141,9 +141,9 @@ class ReportGenerator:
             for f in self._template_dir.glob("*.md.j2"):
                 try:
                     self._templates[f.stem] = f.read_text(encoding="utf-8")
-                    logger.info(f"模板加载: {f.name}")
+                    logger.info("模板加载: %s", f.name)
                 except Exception as e:
-                    logger.warning(f"模板加载失败: {f.name}: {e}")
+                    logger.warning("模板加载失败: %s: %s", f.name, e)
         return len(self._templates)
 
     def generate(
@@ -218,7 +218,7 @@ def _run_generation(task: ReportTask) -> None:
     except Exception as e:
         task.status = "failed"
         task.error = str(e)
-        logger.error(f"报告生成失败: {e}")
+        logger.error("报告生成失败: %s", e)
 
 
 @app.get("/health")

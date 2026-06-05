@@ -94,7 +94,7 @@ async def get_current_user(request: Request) -> dict:
     try:
         result = await service_client.verify_token(token)
     except httpx.HTTPError as exc:
-        logger.error(f"auth-service 调用失败: {exc}")
+        logger.error("auth-service 调用失败: %s", exc)
         raise HTTPException(
             status_code=503,
             detail={"error": {"code": "AUTH_SERVICE_UNAVAILABLE", "message": "认证服务不可用"}},

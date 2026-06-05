@@ -48,7 +48,9 @@ class FreshnessManager:
         """更新知识新鲜度状态。"""
         new_status = self.check_staleness(knowledge)
         if new_status != knowledge.freshness:
-            logger.info(f"知识 {knowledge.id} 新鲜度变更: {knowledge.freshness} -> {new_status}")
+            logger.info(
+                "知识 %s 新鲜度变更: %s -> %s", knowledge.id, knowledge.freshness, new_status
+            )
             knowledge.freshness = new_status
             knowledge.updated_at = datetime.now(UTC)
         return knowledge
