@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import time
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
@@ -317,6 +318,23 @@ app = FastAPI(
 async def _http_exception_handler(_request: Request, exc: HTTPException):
     """统一错误响应格式，对齐 I-01 §2.2。"""
     return JSONResponse(status_code=exc.status_code, content=exc.detail)
+
+
+INTERNAL_API_KEY = os.environ.get("INTERNAL_API_KEY", "dev-internal-key")
+
+
+@app.middleware("http")
+async def verify_internal_api_key(request: Request, call_next):
+    """校验入站请求的 X-Internal-API-Key 头。"""
+    if request.url.path in ("/health", "/docs", "/openapi.json", "/redoc"):
+        return await call_next(request)
+    api_key = request.headers.get("X-Internal-API-Key", "")
+    if api_key != INTERNAL_API_KEY:
+        return JSONResponse(
+            status_code=401,
+            content={"error": {"code": "UNAUTHORIZED", "message": "Invalid Internal API Key"}},
+        )
+    return await call_next(request)
 
 
 # ── 健康检查 ────────────────────────────────────────────────────────────

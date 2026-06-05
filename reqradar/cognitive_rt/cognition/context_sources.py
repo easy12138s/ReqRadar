@@ -81,8 +81,11 @@ class UserMemorySource:
     ) -> list[ContextItem]:
         # TODO: P1 stub — 接入 V1 用户记忆数据源（偏好设置、历史决策记录）
         logger.debug(
-            f"UserMemorySource.collect called: "
-            f"session={session_id}, project={project_id}, query={query!r}, max={max_items}"
+            "UserMemorySource.collect called: session=%s, project=%s, query=%r, max=%s",
+            session_id,
+            project_id,
+            query,
+            max_items,
         )
         return []
 
@@ -132,8 +135,11 @@ class VectorResultSource:
     ) -> list[ContextItem]:
         # TODO: P1 stub — 接入 V1 向量检索数据源（ChromaDB 需求/设计文档相似度搜索）
         logger.debug(
-            f"VectorResultSource.collect called: "
-            f"session={session_id}, project={project_id}, query={query!r}, max={max_items}"
+            "VectorResultSource.collect called: session=%s, project=%s, query=%r, max=%s",
+            session_id,
+            project_id,
+            query,
+            max_items,
         )
         return []
 
