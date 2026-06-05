@@ -700,3 +700,84 @@ async def get_report_status(
         return await service_client.get_report_status(task_id, jwt)
     except httpx.HTTPStatusError as exc:
         raise await _proxy_error(exc) from exc
+
+
+# ---------------------------------------------------------------------------
+# MCP 管理路由（代理到 integration-service）
+# ---------------------------------------------------------------------------
+
+
+@app.post("/api/v2/mcp/keys", status_code=201)
+async def api_create_mcp_key(
+    request: Request,
+    user: CurrentUser,
+):
+    """创建 MCP 访问密钥。"""
+    jwt = _extract_jwt(request)
+    body = await request.json()
+    try:
+        return await service_client.create_mcp_key(
+            name=body.get("name", ""),
+            scopes=body.get("scopes", ["read"]),
+            jwt=jwt,
+        )
+    except httpx.HTTPStatusError as exc:
+        raise await _proxy_error(exc) from exc
+
+
+@app.get("/api/v2/mcp/keys")
+async def api_list_mcp_keys(
+    request: Request,
+    user: CurrentUser,
+):
+    """列出所有 MCP 密钥。"""
+    jwt = _extract_jwt(request)
+    try:
+        return await service_client.list_mcp_keys(jwt=jwt)
+    except httpx.HTTPStatusError as exc:
+        raise await _proxy_error(exc) from exc
+
+
+@app.post("/api/v2/mcp/keys/{key_id}/revoke")
+async def api_revoke_mcp_key(
+    key_id: str,
+    request: Request,
+    user: CurrentUser,
+):
+    """撤销 MCP 密钥。"""
+    jwt = _extract_jwt(request)
+    try:
+        return await service_client.revoke_mcp_key(key_id, jwt=jwt)
+    except httpx.HTTPStatusError as exc:
+        raise await _proxy_error(exc) from exc
+
+
+@app.get("/api/v2/mcp/audit")
+async def api_get_mcp_audit(
+    request: Request,
+    user: CurrentUser,
+    tool_name: str | None = Query(default=None, description="按工具名过滤"),
+    key_id: str | None = Query(default=None, description="按密钥 ID 过滤"),
+    limit: int = Query(default=100, description="返回条数上限"),
+):
+    """查询 MCP 审计日志。"""
+    jwt = _extract_jwt(request)
+    try:
+        return await service_client.get_mcp_audit(
+            tool_name=tool_name, key_id=key_id, limit=limit, jwt=jwt
+        )
+    except httpx.HTTPStatusError as exc:
+        raise await _proxy_error(exc) from exc
+
+
+@app.get("/api/v2/mcp/config")
+async def api_get_mcp_config(
+    request: Request,
+    user: CurrentUser,
+):
+    """查询 MCP 运行时配置。"""
+    jwt = _extract_jwt(request)
+    try:
+        return await service_client.get_mcp_config(jwt=jwt)
+    except httpx.HTTPStatusError as exc:
+        raise await _proxy_error(exc) from exc

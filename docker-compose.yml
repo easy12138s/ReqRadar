@@ -176,6 +176,30 @@ services:
       postgres:
         condition: service_healthy
 
+  # ── Integration Service (MCP) ────────────────────────────
+  integration-service:
+    build:
+      context: .
+      dockerfile: services/integration/Dockerfile
+    container_name: reqradar-integration
+    environment:
+      COGNITIVE_RT_URL: http://cognitive-rt:8002
+      INDEX_SERVICE_URL: http://index-service:8003
+      OUTPUT_SERVICE_URL: http://output-service:8004
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-change-in-production}
+      MCP_HOST: "0.0.0.0"
+      MCP_PORT: "9000"
+      MCP_PATH: "/mcp"
+      LOG_LEVEL: INFO
+    expose:
+      - "8005"
+      - "9000"
+    networks:
+      - reqradar-net
+    depends_on:
+      redis:
+        condition: service_healthy
+
   # ── ChromaDB (向量数据库) ──────────────────────────────────
   chromadb:
     image: chromadb/chroma:latest

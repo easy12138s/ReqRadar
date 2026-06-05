@@ -22,6 +22,7 @@ class ServiceClient:
         self._cognitive_rt_url = os.environ.get("COGNITIVE_RT_URL", "http://localhost:8002")
         self._index_url = os.environ.get("INDEX_SERVICE_URL", "http://localhost:8003")
         self._output_url = os.environ.get("OUTPUT_SERVICE_URL", "http://localhost:8004")
+        self._integration_url = os.environ.get("INTEGRATION_SERVICE_URL", "http://localhost:8005")
         self._client: httpx.AsyncClient | None = None
 
     async def _get_client(self) -> httpx.AsyncClient:
@@ -411,6 +412,77 @@ class ServiceClient:
         client = await self._get_client()
         resp = await client.get(
             f"{self._output_url}/internal/v2/reports/{task_id}/status",
+            headers=self._headers(jwt),
+        )
+        return resp.json()
+
+    # ── Integration Service (MCP) ───────────────────────
+
+    async def create_mcp_key(
+        self, name: str, scopes: list[str] | None = None, jwt: str | None = None
+    ) -> dict:
+        """创建 MCP 访问密钥。"""
+        client = await self._get_client()
+        resp = await client.post(
+            f"{self._integration_url}/internal/v2/mcp/keys",
+            json={"name": name, "scopes": scopes or ["read"]},
+            headers=self._headers(jwt),
+        )
+        return resp.json()
+
+    async def list_mcp_keys(self, jwt: str | None = None) -> dict:
+        """列出所有 MCP 密钥。"""
+        client = await self._get_client()
+        resp = await client.get(
+            f"{self._integration_url}/internal/v2/mcp/keys",
+            headers=self._headers(jwt),
+        )
+        return resp.json()
+
+    async def revoke_mcp_key(self, key_id: str, jwt: str | None = None) -> dict:
+        """撤销 MCP 密钥。"""
+        client = await self._get_client()
+        resp = await client.post(
+            f"{self._integration_url}/internal/v2/mcp/keys/{key_id}/revoke",
+            headers=self._headers(jwt),
+        )
+        return resp.json()
+
+    async def get_mcp_audit(
+        self,
+        tool_name: str | None = None,
+        key_id: str | None = None,
+        limit: int = 100,
+        jwt: str | None = None,
+    ) -> dict:
+        """查询 MCP 审计日志。"""
+        client = await self._get_client()
+        params: dict = {"limit": limit}
+        if tool_name:
+            params["tool_name"] = tool_name
+        if key_id:
+            params["key_id"] = key_id
+        resp = await client.get(
+            f"{self._integration_url}/internal/v2/mcp/audit",
+            params=params,
+            headers=self._headers(jwt),
+        )
+        return resp.json()
+
+    async def cleanup_mcp_audit(self, jwt: str | None = None) -> dict:
+        """清理 MCP 审计日志。"""
+        client = await self._get_client()
+        resp = await client.post(
+            f"{self._integration_url}/internal/v2/mcp/audit/cleanup",
+            headers=self._headers(jwt),
+        )
+        return resp.json()
+
+    async def get_mcp_config(self, jwt: str | None = None) -> dict:
+        """查询 MCP 运行时配置。"""
+        client = await self._get_client()
+        resp = await client.get(
+            f"{self._integration_url}/internal/v2/mcp/config",
             headers=self._headers(jwt),
         )
         return resp.json()
