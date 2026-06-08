@@ -6,7 +6,7 @@ COPY reqradar/kernel/ reqradar/kernel/
 COPY reqradar/infrastructure/ reqradar/infrastructure/
 COPY services/auth/ services/auth/
 
-RUN pip install --no-cache-dir fastapi uvicorn pyjwt sqlalchemy aiosqlite
+RUN pip install --no-cache-dir --break-system-packages -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com fastapi uvicorn pyjwt sqlalchemy aiosqlite
 
 EXPOSE 8001
 

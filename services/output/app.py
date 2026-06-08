@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
-import time as _time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
+import httpx
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
@@ -129,11 +131,22 @@ class TaskStore:
 
 
 class ReportGenerator:
-    """报告生成器 — 基于模板渲染报告。"""
+    """报告生成器 — LLM 驱动的报告生成，模板作为降级方案。"""
 
-    def __init__(self, template_dir: str | Path | None = None) -> None:
+    def __init__(
+        self,
+        template_dir: str | Path | None = None,
+        llm_client: Any | None = None,
+        service_url: str = "",
+        internal_api_key: str = "",
+    ) -> None:
         self._template_dir = Path(template_dir) if template_dir else None
         self._templates: dict[str, str] = {}
+        self._llm_client = llm_client
+        self._service_url = service_url or os.environ.get(
+            "COGNITIVE_RT_URL", "http://localhost:8002"
+        )
+        self._internal_api_key = internal_api_key or os.environ.get("INTERNAL_API_KEY", "")
 
     @property
     def template_count(self) -> int:
@@ -149,7 +162,110 @@ class ReportGenerator:
                     logger.warning("模板加载失败: %s: %s", f.name, e)
         return len(self._templates)
 
-    def generate(
+    async def generate(
+        self,
+        session_id: str,
+        template_id: str | None = None,
+        output_format: str = "markdown",
+    ) -> str:
+        try:
+            session_data, events, evidence = await self._fetch_session_data(session_id)
+            if self._llm_client and session_data:
+                return await self._generate_with_llm(
+                    session_id, session_data, events, evidence, output_format
+                )
+        except Exception as e:
+            logger.warning("LLM 报告生成失败，降级到模板: %s", e)
+
+        return self._generate_from_template(session_id, template_id, output_format)
+
+    async def _fetch_session_data(
+        self, session_id: str
+    ) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
+        headers = {"X-Internal-API-Key": self._internal_api_key}
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            session_resp = await client.get(
+                f"{self._service_url}/internal/v2/sessions/{session_id}",
+                headers=headers,
+            )
+            session_resp.raise_for_status()
+            session_data = session_resp.json()
+
+            events_resp = await client.get(
+                f"{self._service_url}/internal/v2/sessions/{session_id}/events",
+                headers=headers,
+                params={"limit": 200},
+            )
+            events = events_resp.json() if events_resp.status_code == 200 else []
+
+            evidence_resp = await client.get(
+                f"{self._service_url}/internal/v2/sessions/{session_id}/evidence",
+                headers=headers,
+            )
+            evidence = evidence_resp.json() if evidence_resp.status_code == 200 else []
+
+        return session_data, events, evidence
+
+    async def _generate_with_llm(
+        self,
+        session_id: str,
+        session_data: dict[str, Any],
+        events: list[dict[str, Any]],
+        evidence: list[dict[str, Any]],
+        output_format: str,
+    ) -> str:
+        prompt = self._build_report_prompt(
+            session_id, session_data, events, evidence, output_format
+        )
+        messages: list[dict[str, str]] = [
+            {
+                "role": "system",
+                "content": (
+                    "你是一名资深需求分析专家。根据提供的会话数据、事件和证据，"
+                    "生成一份结构清晰、内容详实的 Markdown 分析报告。"
+                    "报告应包含：摘要、关键发现、风险评估、建议措施。"
+                ),
+            },
+            {"role": "user", "content": prompt},
+        ]
+        result = await self._llm_client.complete(messages, temperature=0.3, max_tokens=4096)
+        if not result:
+            raise ValueError("LLM 返回空内容")
+        return result
+
+    def _build_report_prompt(
+        self,
+        session_id: str,
+        session_data: dict[str, Any],
+        events: list[dict[str, Any]],
+        evidence: list[dict[str, Any]],
+        output_format: str,
+    ) -> str:
+        sections: list[str] = [
+            f"## 会话信息\n- Session ID: {session_id}",
+            f"- 状态: {session_data.get('status', 'unknown')}",
+            f"- 创建时间: {session_data.get('created_at', 'N/A')}",
+        ]
+
+        if events:
+            event_lines = [
+                f"- [{e.get('type', '?')}] {e.get('summary', e.get('detail', ''))}"
+                for e in events[:50]
+            ]
+            sections.append("## 事件记录\n" + "\n".join(event_lines))
+
+        if evidence:
+            evidence_lines = [
+                f"- [{ev.get('source', '?')}] {ev.get('content', '')[:200]}" for ev in evidence[:30]
+            ]
+            sections.append("## 证据列表\n" + "\n".join(evidence_lines))
+
+        sections.append(
+            f"## 输出要求\n- 格式: {output_format}\n- 语言: 中文\n- 请生成完整的分析报告。"
+        )
+        return "\n\n".join(sections)
+
+    def _generate_from_template(
         self,
         session_id: str,
         template_id: str | None = None,
@@ -182,18 +298,26 @@ class ReportGenerator:
 
 
 _task_store = TaskStore()
-_report_generator = ReportGenerator(
-    template_dir=Path(__file__).parent / "templates",
-)
+_report_generator: ReportGenerator | None = None
 _generate_sleep_sec = 0.5
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global _report_generator
     _task_store.clear()
+
+    from reqradar.cognitive_rt.cognition.llm_client import LiteLLMClient
+
+    llm_client = LiteLLMClient()
+    _report_generator = ReportGenerator(
+        template_dir=Path(__file__).parent / "templates",
+        llm_client=llm_client,
+    )
     logger.info("Output Service 启动")
     _report_generator.load_templates()
     yield
+    await llm_client.close()
     _task_store.clear()
     logger.info("Output Service 关闭")
 
@@ -221,11 +345,13 @@ async def verify_internal_api_key(request, call_next):
     return await call_next(request)
 
 
-def _run_generation(task: ReportTask) -> None:
+async def _run_generation(task: ReportTask) -> None:
     task.status = "running"
-    _time.sleep(_generate_sleep_sec)
+    await asyncio.sleep(_generate_sleep_sec)
     try:
-        content = _report_generator.generate(
+        if _report_generator is None:
+            raise RuntimeError("ReportGenerator 未初始化")
+        content = await _report_generator.generate(
             task.session_id,
             task.template_id,
             task.output_format,
@@ -302,6 +428,8 @@ async def get_latest_report(session_id: str):
 @app.post("/internal/v2/reports/reload-templates")
 async def reload_templates():
     """热更新模板（不重启服务）。"""
+    if _report_generator is None:
+        return {"status": "error", "message": "ReportGenerator 未初始化"}
     count = _report_generator.load_templates()
     return {"status": "ok", "templates_loaded": count}
 

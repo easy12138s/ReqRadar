@@ -7,7 +7,7 @@ COPY reqradar/index_svc/ reqradar/index_svc/
 COPY reqradar/infrastructure/ reqradar/infrastructure/
 COPY services/index/ services/index/
 
-RUN pip install --no-cache-dir fastapi uvicorn httpx
+RUN pip install --no-cache-dir --break-system-packages -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com fastapi uvicorn httpx sqlalchemy aiosqlite
 
 EXPOSE 8003
 

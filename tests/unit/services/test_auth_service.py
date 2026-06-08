@@ -7,11 +7,18 @@ from httpx import ASGITransport, AsyncClient
 
 
 @pytest.fixture
-def app():
+async def app():
+    from reqradar.kernel.database import Base, create_engine, create_session_factory
     from services.auth.app import app
 
-    app.state._users = {}
-    return app
+    engine = create_engine("sqlite+aiosqlite://")
+    session_factory = create_session_factory(engine)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    app.state.db_session_factory = session_factory
+    app.state.db_engine = engine
+    yield app
+    await engine.dispose()
 
 
 @pytest.fixture

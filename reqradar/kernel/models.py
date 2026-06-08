@@ -717,3 +717,24 @@ class DimensionResult(Base):
     __table_args__ = (
         UniqueConstraint("session_id", "dimension_id", name="uq_dimension_session_id"),
     )
+
+
+class L3Knowledge(Base):
+    """L3 知识持久化表 — 持久层知识存储。"""
+
+    __tablename__ = "l3_knowledge"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    project_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    knowledge_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    freshness: Mapped[str] = mapped_column(String(20), server_default="active", nullable=False)
+    confidence_score: Mapped[float] = mapped_column(Float, server_default="0.5", nullable=False)
+    confidence_data: Mapped[dict] = mapped_column(JSON, server_default="{}", nullable=False)
+    source_session_ids: Mapped[list] = mapped_column(JSON, server_default="[]", nullable=False)
+    superseded_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"), nullable=False
+    )

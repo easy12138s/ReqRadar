@@ -6,7 +6,7 @@ COPY reqradar/kernel/ reqradar/kernel/
 COPY reqradar/output_svc/ reqradar/output_svc/
 COPY services/output/ services/output/
 
-RUN pip install --no-cache-dir fastapi uvicorn jinja2
+RUN pip install --no-cache-dir --break-system-packages -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com fastapi uvicorn jinja2
 
 EXPOSE 8004
 

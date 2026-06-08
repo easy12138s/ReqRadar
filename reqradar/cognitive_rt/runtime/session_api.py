@@ -7,7 +7,7 @@ import contextlib
 import logging
 from dataclasses import dataclass
 from datetime import datetime
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from reqradar.cognitive_rt.runtime.checkpoint import CheckpointManager, StateSummary
 from reqradar.cognitive_rt.runtime.checkpoint_storage import CheckpointStorage
@@ -50,6 +50,7 @@ class SessionService:
         event_publisher: EventPublisher | None = None,
         checkpoint_manager: CheckpointManager | None = None,
         checkpoint_storage: CheckpointStorage | None = None,
+        db_session_factory: object | None = None,
     ) -> None:
         """初始化服务。
 
@@ -57,10 +58,12 @@ class SessionService:
             event_publisher: 事件发布器
             checkpoint_manager: Checkpoint 管理器
             checkpoint_storage: Checkpoint 存储
+            db_session_factory: 可选的数据库会话工厂（PG 持久化）
         """
         self._publisher = event_publisher or EventPublisher()
         self._checkpoint_mgr = checkpoint_manager or CheckpointManager()
         self._checkpoint_storage = checkpoint_storage or CheckpointStorage()
+        self._db_session_factory = db_session_factory
         self._sessions: dict[str, SessionStateMachine] = {}
         self._background_tasks: set[asyncio.Task] = set()
 
@@ -99,6 +102,18 @@ class SessionService:
         )
 
         logger.info("Session 创建: %s", session_id)
+
+        if self._db_session_factory:
+            try:
+                loop = asyncio.get_running_loop()
+                task = loop.create_task(
+                    self._persist_session_to_pg(session_id, project_id, user_id, sm.status, config)
+                )
+                self._background_tasks.add(task)
+                task.add_done_callback(self._background_tasks.discard)
+            except RuntimeError:
+                logger.debug("无运行事件循环，跳过 Session PG 持久化")
+
         return self._to_info(sm)
 
     async def start(
@@ -480,3 +495,29 @@ class SessionService:
             total_reasoning_steps=sm.state.total_reasoning_steps,
             last_checkpoint_version=sm.state.last_checkpoint_version,
         )
+
+    async def _persist_session_to_pg(
+        self,
+        session_id: str,
+        project_id: str,
+        user_id: str,
+        status: SessionStatus,
+        config: dict | None,
+    ) -> None:
+        """将 Session 持久化到 PostgreSQL。"""
+        try:
+            from reqradar.kernel.models import CognitiveSession
+
+            async with self._db_session_factory() as db_session:
+                db_session.add(
+                    CognitiveSession(
+                        session_id=UUID(session_id),
+                        project_id=UUID(project_id) if project_id else None,
+                        user_id=UUID(user_id) if user_id else None,
+                        status=status.value,
+                        config=config or {},
+                    )
+                )
+                await db_session.commit()
+        except Exception as e:
+            logger.warning("Session PG 持久化失败: %s", e)

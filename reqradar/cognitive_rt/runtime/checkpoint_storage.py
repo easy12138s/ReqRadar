@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from pathlib import Path
+from uuid import UUID
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +116,7 @@ class CheckpointStorage:
         cold_storage: ColdStateStorage | None = None,
         archive_days: int = 30,
         delete_days: int = 90,
+        db_session_factory: object | None = None,
     ) -> None:
         """初始化存储管理器。
 
@@ -122,17 +125,55 @@ class CheckpointStorage:
             cold_storage: 冷状态存储
             archive_days: 归档天数
             delete_days: 删除天数
+            db_session_factory: 可选的数据库会话工厂（PG 持久化）
         """
         self.hot = hot_storage or HotStateStorage()
         self.cold = cold_storage or ColdStateStorage()
         self._archive_days = archive_days
         self._delete_days = delete_days
+        self._db_session_factory = db_session_factory
+        self._pending_tasks: set[asyncio.Task] = set()
 
     def save(self, checkpoint_record: object) -> None:
         """保存 Checkpoint 到热区和冷区。"""
         self.hot.save(checkpoint_record)
         uri = self.cold.save(checkpoint_record)
         logger.debug("Checkpoint 存储: hot + cold (uri=%s)", uri)
+
+        if self._db_session_factory:
+            try:
+                loop = asyncio.get_running_loop()
+                task = loop.create_task(self._persist_to_pg(checkpoint_record))
+                self._pending_tasks.add(task)
+                task.add_done_callback(self._pending_tasks.discard)
+            except RuntimeError:
+                logger.debug("无运行事件循环，跳过 Checkpoint PG 持久化")
+
+    async def _persist_to_pg(self, checkpoint_record: object) -> None:
+        """将 Checkpoint 持久化到 PostgreSQL。"""
+        try:
+            from reqradar.kernel.models import Checkpoint as CheckpointModel
+
+            session_id = getattr(checkpoint_record, "session_id", "")
+            state_summary = _serialize(getattr(checkpoint_record, "state_summary", {}))
+            hot_state = getattr(checkpoint_record, "hot_state", {})
+            cp_type = getattr(checkpoint_record, "checkpoint_type", None)
+            type_str = (
+                cp_type.value if hasattr(cp_type, "value") else str(cp_type or "step_complete")
+            )
+            async with self._db_session_factory() as db_session:
+                db_session.add(
+                    CheckpointModel(
+                        session_id=UUID(session_id),
+                        version=getattr(checkpoint_record, "version", 0),
+                        type=type_str,
+                        state_summary=state_summary if isinstance(state_summary, dict) else {},
+                        hot_state=hot_state if isinstance(hot_state, dict) else {},
+                    )
+                )
+                await db_session.commit()
+        except Exception as e:
+            logger.warning("Checkpoint PG 持久化失败: %s", e)
 
     def load_latest(self, session_id: str) -> dict | None:
         """加载最新的热状态。"""
