@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Card, Tabs, Table, Tag, Typography, Empty, Spin, Progress, Input, Space, Badge } from 'antd';
+import { Card, Tabs, Table, Typography, Empty, Spin, Progress, Input, Space, Badge } from 'antd';
 import { SearchOutlined } from '@ant-design/icons';
 import { getProjectKnowledge } from '@/api/knowledge';
 import type { KnowledgeType, FreshnessStatus } from '@/types';
@@ -17,18 +17,7 @@ const knowledgeTypeLabels: Record<KnowledgeType, string> = {
   requirement: '需求',
 };
 
-const knowledgeTypeColors: Record<KnowledgeType, string> = {
-  glossary: 'blue',
-  module_profile: 'green',
-  constraint: 'red',
-  pattern: 'purple',
-  decision: 'gold',
-  risk: 'orange',
-  incident: 'magenta',
-  requirement: 'cyan',
-};
-
-const freshnessColors: Record<FreshnessStatus, string> = {
+const freshnessColors: Record<FreshnessStatus, 'success' | 'default' | 'warning' | 'error'> = {
   active: 'success',
   historical: 'default',
   superseded: 'warning',

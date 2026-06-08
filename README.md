@@ -4,10 +4,9 @@
 
 # ReqRadar
 
-**项目认知运行时系统 — 让组织不再失忆**
+**需求透镜 — AI 编程时代的项目需求中间层**
 
-> ⚠️ **当前状态：V2 重构中。** V1 (v0.8.0) 源码已归档至 [`v1/`](v1/) 目录。V2 设计文档见 [`docs/`](docs/)。
-> 编码 Agent 请从 [`AGENTS.md`](AGENTS.md) 开始。
+**业务即产品**：统一团队对需求的理解口径，为每位开发者的 AI 编码助手提供一致、准确的项目上下文
 
 [![Version: 0.8.0](https://img.shields.io/badge/version-0.8.0-blue.svg)](https://github.com/easy12138s/reqradar/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
@@ -17,33 +16,21 @@
 
 ---
 
-## 开发环境（V2）
+## 快速开始
 
 ```bash
-# 1. 激活 conda 环境
-conda activate reqradar
-
-# 2. 安装内核包（可编辑模式，修改即生效）
-pip install -e reqradar/kernel
-
-# 3. 安装开发工具
-pip install ruff mypy pytest pytest-asyncio pytest-cov coverage
-
-# 4. 创建 .env（从模板复制，本地开发使用 SQLite）
-copy .env.example .env
-
-# 5. 运行 P0 测试验证环境
-pytest tests/unit/kernel/ -v
-
-# 6. 代码质量检查
-ruff check reqradar/ tests/
-ruff format --check reqradar/ tests/
-mypy reqradar/kernel/
+pip install reqradar && reqradar serve
 ```
 
-**环境要求：** Python 3.12+ | conda env: `reqradar` | 包管理器: pip（已配国内镜像）
+启动后访问：
 
-Agent 编码入口：[`AGENTS.md`](AGENTS.md) | 设计文档：[`docs/`](docs/) | ADR：[`docs/adr/`](docs/adr/)
+| 服务 | 地址 |
+|------|------|
+| Web UI | http://localhost:8000/app/ |
+| API 文档 | http://localhost:8000/docs |
+| MCP Server | http://localhost:8765/mcp |
+
+默认账号: `admin@reqradar.io` / `Admin12138%`
 
 ---
 

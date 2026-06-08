@@ -125,7 +125,8 @@ opencode.json
 
 .trae/
 
-# Docs
+# Docs (design specs, requirements, issues 鈥?managed separately)
 docs/.superpowers/
+docs/
 .superpowers/
 .worktrees/

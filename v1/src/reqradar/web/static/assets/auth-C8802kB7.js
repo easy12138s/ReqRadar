@@ -1,1 +1,0 @@
-import{t as e}from"./client-CilNMYxN.js";async function t(t){return(await e.post(`/auth/login`,t)).data}async function n(t){return(await e.post(`/auth/register`,t)).data}async function r(){return(await e.get(`/auth/me`)).data}export{t as n,n as r,r as t};

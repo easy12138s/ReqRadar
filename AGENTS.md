@@ -65,7 +65,36 @@ ruff check reqradar/kernel/          # 无 lint 错误
 - PostgreSQL（用 SQLite 替代）
 - Redis（P3 才需要）
 - MinIO（P3 才需要）
-- Docker（P2 才需要）
+- Docker（P2 才需要，但 P2+ 阶段可用于集成测试）
+
+### 0.6 Docker 开发环境（P2+ 阶段可选）
+
+本地已安装 Docker 时，可用于多服务集成测试：
+
+```bash
+# 复制环境变量模板
+cp .env.example .env
+
+# 启动全部服务（Traefik + PG + Redis + Auth + API + Cognitive-RT + Index + Output）
+docker compose up -d
+
+# 查看服务状态
+docker compose ps
+
+# 查看某个服务日志
+docker compose logs -f api-service
+
+# 重建单个服务（代码修改后）
+docker compose build cognitive-rt && docker compose up -d cognitive-rt
+
+# 停止全部服务
+docker compose down
+
+# 停止并清除数据卷（重置数据库）
+docker compose down -v
+```
+
+> **日常开发仍用 conda**，Docker 用于验证多服务集成、Traefik 路由、服务间通信等场景。
 
 ## 1. 文档体系使用规则
 
@@ -229,6 +258,11 @@ alembic downgrade -1                   # 回滚一步
 
 # === 部署（P2+） ===
 docker compose up -d                   # 启动全部服务
+docker compose ps                      # 查看服务状态
+docker compose logs -f api-service     # 查看服务日志
+docker compose build cognitive-rt      # 重建单个服务
+docker compose down                    # 停止全部服务
+docker compose down -v                 # 停止并清除数据卷
 docker compose exec api-service alembic upgrade head  # 迁移
 
 # === 依赖合规检查 ===

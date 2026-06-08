@@ -123,7 +123,8 @@
 | Phase | 文档 | 状态 |
 |-------|------|------|
 | P6 拆 output-service | 04 路线图 P6 节 | 概述已有，详细待补充 |
-| P6 拆 ingestion-service | 04 路线图 P6 节 | 概述已有；ADR [009](adr/009-ingestion-independent.md) 说明为什么独立 |
+| P6 拆 ingestion-service | 04 路线图 P6 节 + [INGESTION_SERVICE_PLAN](detailed/INGESTION_SERVICE_PLAN.md) | ✅ 详细规划已完成；ADR [009](adr/009-ingestion-independent.md) 说明为什么独立 |
+| 项目管理模块 | [PROJECT_MANAGEMENT_PLAN](detailed/PROJECT_MANAGEMENT_PLAN.md) | ✅ 详细规划已完成（三种创建场景 + 代码索引 + 项目画像 + 需求摄取） |
 | P7 BFF 独立 | 04 路线图 P7 节 | 概述已有；ADR [010](adr/010-api-bff-pattern.md) 说明 BFF 模式 |
 | P8 前端改造 | 04 路线图 P8 节 + [F-01](detailed/F-01_FRONTEND_DESIGN.md) | ✅ 功能架构设计已完成，UI 美化延后 |
 | P9 MCP 独立 | 04 路线图 P9 节 | 概述已有，详细待补充 |
@@ -164,6 +165,8 @@
 | I-03 | I-03_DATA_MIGRATION_PLAN.md | 数据迁移方案 | ✅ 已完成 | v1.0 |
 | S-01 | S-01_SECURITY_DESIGN.md | 安全设计专篇 | ✅ 已完成 | v1.0 |
 | F-01 | F-01_FRONTEND_DESIGN.md | 前端功能架构设计 | ✅ 已完成 | v1.0 |
+| — | INGESTION_SERVICE_PLAN.md | ingestion-service 实施规划 | ✅ 已完成 | v1.0 |
+| — | PROJECT_MANAGEMENT_PLAN.md | 项目管理模块规划 | ✅ 已完成 | v1.0 |
 | — | adr/ | 架构决策记录（16 条） | ✅ 已完成 | v1.0 |
 
 ---
