@@ -12,13 +12,15 @@ Create Date: 2026-06-04
 """
 from __future__ import annotations
 
-from typing import Sequence, Union
+from collections.abc import Sequence
+from typing import Union
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision: str = "a3f7c2e1b9d4"
-down_revision: Union[str, None] = "V2_P1_create_base_tables"
+down_revision: Union[str, None] = "c1a2b3d4e5f6"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
@@ -63,13 +65,9 @@ def upgrade() -> None:
             name="ck_raw_context_source",
         ),
     )
-    op.create_index(
-        "idx_raw_context_project", "raw_context", ["project_id", "type"]
-    )
+    op.create_index("idx_raw_context_project", "raw_context", ["project_id", "type"])
     op.create_index("idx_raw_context_hash", "raw_context", ["content_hash"])
-    op.create_index(
-        "idx_raw_context_superseded", "raw_context", ["superseded_by"]
-    )
+    op.create_index("idx_raw_context_superseded", "raw_context", ["superseded_by"])
 
     # 2.2 chunks — L1 文档 Chunk
     op.create_table(
@@ -119,14 +117,10 @@ def upgrade() -> None:
             name="ck_chunks_type",
         ),
     )
-    op.create_index(
-        "idx_chunks_project", "chunks", ["project_id", "chunk_type"]
-    )
+    op.create_index("idx_chunks_project", "chunks", ["project_id", "chunk_type"])
     op.create_index("idx_chunks_raw_context", "chunks", ["raw_context_id"])
     op.create_index("idx_chunks_embedding", "chunks", ["embedding_id"])
-    op.create_index(
-        "idx_chunks_stale", "chunks", ["project_id", "is_stale"]
-    )
+    op.create_index("idx_chunks_stale", "chunks", ["project_id", "is_stale"])
 
     # 2.3 code_modules — L1 代码模块/类/函数
     op.create_table(
@@ -180,15 +174,9 @@ def upgrade() -> None:
         "code_modules",
         ["project_id", "qualified_name"],
     )
-    op.create_index(
-        "idx_code_modules_file", "code_modules", ["project_id", "file_path"]
-    )
-    op.create_index(
-        "idx_code_modules_embedding", "code_modules", ["embedding_id"]
-    )
-    op.create_index(
-        "idx_code_modules_stale", "code_modules", ["project_id", "is_stale"]
-    )
+    op.create_index("idx_code_modules_file", "code_modules", ["project_id", "file_path"])
+    op.create_index("idx_code_modules_embedding", "code_modules", ["embedding_id"])
+    op.create_index("idx_code_modules_stale", "code_modules", ["project_id", "is_stale"])
 
     # 2.4 code_dependencies — L1 代码依赖关系
     op.create_table(
@@ -234,12 +222,8 @@ def upgrade() -> None:
             name="ck_code_deps_no_self",
         ),
     )
-    op.create_index(
-        "idx_code_deps_source", "code_dependencies", ["source_module_id"]
-    )
-    op.create_index(
-        "idx_code_deps_target", "code_dependencies", ["target_module_id"]
-    )
+    op.create_index("idx_code_deps_source", "code_dependencies", ["source_module_id"])
+    op.create_index("idx_code_deps_target", "code_dependencies", ["target_module_id"])
     op.create_index(
         "idx_code_deps_project",
         "code_dependencies",
@@ -287,9 +271,7 @@ def upgrade() -> None:
         ["project_id", "commit_hash"],
         unique=True,
     )
-    op.create_index(
-        "idx_git_commits_author", "git_commits", ["project_id", "author"]
-    )
+    op.create_index("idx_git_commits_author", "git_commits", ["project_id", "author"])
 
     # 2.6 requirement_code_links — L1 需求-代码关联
     op.create_table(
@@ -347,9 +329,7 @@ def upgrade() -> None:
         "requirement_code_links",
         ["project_id", "link_type"],
     )
-    op.create_index(
-        "idx_req_code_links_chunk", "requirement_code_links", ["chunk_id"]
-    )
+    op.create_index("idx_req_code_links_chunk", "requirement_code_links", ["chunk_id"])
     op.create_index(
         "idx_req_code_links_module",
         "requirement_code_links",

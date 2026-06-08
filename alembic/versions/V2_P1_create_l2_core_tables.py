@@ -12,9 +12,11 @@ Create Date: 2026-06-04
 """
 from __future__ import annotations
 
-from typing import Sequence, Union
+from collections.abc import Sequence
+from typing import Union
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision: str = "b5d8e3f2a1c6"
@@ -69,9 +71,7 @@ def upgrade() -> None:
             nullable=False,
             server_default="0",
         ),
-        sa.Column(
-            "status_history", sa.JSON(), nullable=False, server_default="[]"
-        ),
+        sa.Column("status_history", sa.JSON(), nullable=False, server_default="[]"),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -111,13 +111,9 @@ def upgrade() -> None:
         "idx_sessions_recoverable",
         "cognitive_sessions",
         ["status", "last_checkpoint_version"],
-        postgresql_where=sa.text(
-            "status IN ('FAILED','TIMEOUT') AND last_checkpoint_version > 0"
-        ),
+        postgresql_where=sa.text("status IN ('FAILED','TIMEOUT') AND last_checkpoint_version > 0"),
     )
-    op.create_index(
-        "idx_sessions_updated_at", "cognitive_sessions", ["updated_at"]
-    )
+    op.create_index("idx_sessions_updated_at", "cognitive_sessions", ["updated_at"])
     # JSONB 表达式索引（仅 PostgreSQL 生效）
     op.create_index(
         "idx_sessions_config_strategy",
@@ -152,9 +148,7 @@ def upgrade() -> None:
             nullable=False,
             server_default=sa.func.now(),
         ),
-        sa.UniqueConstraint(
-            "session_id", "sequence", name="uq_events_session_sequence"
-        ),
+        sa.UniqueConstraint("session_id", "sequence", name="uq_events_session_sequence"),
         sa.CheckConstraint(
             "event_type IN ("
             "'SESSION_CREATED','SESSION_STARTED','SESSION_CHECKPOINTED',"
@@ -174,18 +168,10 @@ def upgrade() -> None:
             name="ck_events_event_level",
         ),
     )
-    op.create_index(
-        "idx_events_session_sequence", "events", ["session_id", "sequence"]
-    )
-    op.create_index(
-        "idx_events_session_type", "events", ["session_id", "event_type"]
-    )
-    op.create_index(
-        "idx_events_session_level", "events", ["session_id", "event_level"]
-    )
-    op.create_index(
-        "idx_events_session_timestamp", "events", ["session_id", "timestamp"]
-    )
+    op.create_index("idx_events_session_sequence", "events", ["session_id", "sequence"])
+    op.create_index("idx_events_session_type", "events", ["session_id", "event_type"])
+    op.create_index("idx_events_session_level", "events", ["session_id", "event_level"])
+    op.create_index("idx_events_session_timestamp", "events", ["session_id", "timestamp"])
     # JSONB 表达式索引（仅 PostgreSQL 生效）
     op.create_index(
         "idx_events_payload_step",
@@ -235,9 +221,7 @@ def upgrade() -> None:
         sa.Column("hot_state", sa.JSON(), nullable=False, server_default="{}"),
         sa.Column("full_state_uri", sa.String(512), nullable=True),
         sa.Column("metadata", sa.JSON(), nullable=False, server_default="{}"),
-        sa.UniqueConstraint(
-            "session_id", "version", name="uq_checkpoint_session_version"
-        ),
+        sa.UniqueConstraint("session_id", "version", name="uq_checkpoint_session_version"),
         sa.CheckConstraint(
             "type IN ('STEP_COMPLETE','TOOL_PRE','TOOL_POST','MANUAL','PERIODIC')",
             name="ck_checkpoint_type",
@@ -258,9 +242,7 @@ def upgrade() -> None:
         "checkpoints",
         ["session_id", sa.text("version DESC")],
     )
-    op.create_index(
-        "idx_checkpoints_session_type", "checkpoints", ["session_id", "type"]
-    )
+    op.create_index("idx_checkpoints_session_type", "checkpoints", ["session_id", "type"])
     op.create_index(
         "idx_checkpoints_session_created",
         "checkpoints",
@@ -314,9 +296,7 @@ def upgrade() -> None:
             nullable=False,
             server_default="medium",
         ),
-        sa.Column(
-            "confidence_basis", sa.Text(), nullable=False, server_default=""
-        ),
+        sa.Column("confidence_basis", sa.Text(), nullable=False, server_default=""),
         sa.Column("source_context_kind", sa.String(32), nullable=False),
         sa.Column("source_uri", sa.Text(), nullable=False),
         sa.Column(
@@ -327,14 +307,10 @@ def upgrade() -> None:
         ),
         sa.Column("content", sa.String(200), nullable=False),
         sa.Column("detail", sa.JSON(), nullable=False, server_default="{}"),
-        sa.Column(
-            "dimension_refs", sa.JSON(), nullable=False, server_default="[]"
-        ),
+        sa.Column("dimension_refs", sa.JSON(), nullable=False, server_default="[]"),
         sa.Column("step_id", sa.Integer(), nullable=True),
         sa.Column("tool_call_id", sa.String(64), nullable=True),
-        sa.Column(
-            "verified_by", sa.String(64), nullable=False, server_default=""
-        ),
+        sa.Column("verified_by", sa.String(64), nullable=False, server_default=""),
         sa.Column("verified_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column(
             "created_at",
@@ -376,9 +352,7 @@ def upgrade() -> None:
             name="ck_evidence_context_kind",
         ),
     )
-    op.create_index(
-        "idx_evidence_session", "evidence_records", ["session_id"]
-    )
+    op.create_index("idx_evidence_session", "evidence_records", ["session_id"])
     op.create_index(
         "idx_evidence_session_type",
         "evidence_records",
@@ -401,9 +375,7 @@ def upgrade() -> None:
         "evidence_records",
         ["session_id", "confidence_score"],
     )
-    op.create_index(
-        "idx_evidence_source_uri", "evidence_records", ["source_uri"]
-    )
+    op.create_index("idx_evidence_source_uri", "evidence_records", ["source_uri"])
     op.create_index("idx_evidence_created", "evidence_records", ["created_at"])
     # GIN 索引（仅 PostgreSQL 生效）
     op.create_index(
@@ -437,12 +409,8 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.Column("relation_type", sa.String(16), nullable=False),
-        sa.Column(
-            "confidence", sa.Float(), nullable=False, server_default="1.0"
-        ),
-        sa.Column(
-            "rationale", sa.Text(), nullable=False, server_default=""
-        ),
+        sa.Column("confidence", sa.Float(), nullable=False, server_default="1.0"),
+        sa.Column("rationale", sa.Text(), nullable=False, server_default=""),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -512,9 +480,7 @@ def upgrade() -> None:
             nullable=False,
             server_default="none",
         ),
-        sa.Column(
-            "evidence_count", sa.Integer(), nullable=False, server_default="0"
-        ),
+        sa.Column("evidence_count", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("summary", sa.Text(), nullable=False, server_default=""),
         sa.Column("detail", sa.JSON(), nullable=False, server_default="{}"),
         sa.Column("evaluated_at", sa.DateTime(timezone=True), nullable=True),
@@ -530,9 +496,7 @@ def upgrade() -> None:
             nullable=False,
             server_default=sa.func.now(),
         ),
-        sa.UniqueConstraint(
-            "session_id", "dimension_id", name="uq_dimension_session_id"
-        ),
+        sa.UniqueConstraint("session_id", "dimension_id", name="uq_dimension_session_id"),
         sa.CheckConstraint(
             "status IN ('not_started','in_progress','completed')",
             name="ck_dimension_status",
@@ -542,16 +506,10 @@ def upgrade() -> None:
             name="ck_dimension_risk_level",
         ),
     )
-    op.create_index(
-        "idx_dimension_session_id", "dimension_results", ["session_id"]
-    )
+    op.create_index("idx_dimension_session_id", "dimension_results", ["session_id"])
     op.create_index("idx_dimension_status", "dimension_results", ["status"])
-    op.create_index(
-        "idx_dimension_risk_level", "dimension_results", ["risk_level"]
-    )
-    op.create_index(
-        "idx_dimension_dimension_id", "dimension_results", ["dimension_id"]
-    )
+    op.create_index("idx_dimension_risk_level", "dimension_results", ["risk_level"])
+    op.create_index("idx_dimension_dimension_id", "dimension_results", ["dimension_id"])
 
 
 def downgrade() -> None:

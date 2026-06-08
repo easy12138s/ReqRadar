@@ -801,3 +801,30 @@ async def memory_query(
     except Exception as e:
         logger.warning("知识查询失败: project=%s, query=%s, error=%s", project_id, query, e)
         return {"project_id": project_id}
+
+
+# ── Graph 端点 ──────────────────────────────────────────────
+
+
+@app.get("/internal/v2/graph/neighbors")
+async def graph_neighbors(
+    project_id: str = Query(...), node_id: str = Query(...), depth: int = Query(1)
+):
+    """查询知识图谱节点邻居 (I-01 §8)。"""
+    return {"project_id": project_id, "node_id": node_id, "neighbors": []}
+
+
+@app.get("/internal/v2/graph/path")
+async def graph_path(
+    project_id: str = Query(...), source_id: str = Query(...), target_id: str = Query(...)
+):
+    """查询两节点间路径 (I-01 §8)。"""
+    return {"project_id": project_id, "source_id": source_id, "target_id": target_id, "path": []}
+
+
+@app.get("/internal/v2/graph/subgraph")
+async def graph_subgraph(
+    project_id: str = Query(...), center_id: str = Query(...), radius: int = Query(2)
+):
+    """查询子图 (I-01 §8)。"""
+    return {"project_id": project_id, "center_id": center_id, "nodes": [], "edges": []}

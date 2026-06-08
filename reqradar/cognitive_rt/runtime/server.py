@@ -194,6 +194,44 @@ async def get_dimensions(session_id: str):
     return {"session_id": session_id, "dimensions": data}
 
 
+@app.get("/internal/v2/sessions/{session_id}/trace")
+async def get_trace(session_id: str):
+    """查询推理链 Trace。"""
+    try:
+        _service.get(session_id)
+    except KeyError as e:
+        raise HTTPException(
+            status_code=404, detail={"error": {"code": "SESSION_NOT_FOUND", "message": str(e)}}
+        ) from e
+
+    events = _service.get_events(session_id, limit=500) if hasattr(_service, "get_events") else []
+
+    steps = []
+    current_step = None
+    for evt in events:
+        evt_type = (
+            evt.get("event_type", "") if isinstance(evt, dict) else getattr(evt, "event_type", "")
+        )
+        payload = evt.get("payload", {}) if isinstance(evt, dict) else getattr(evt, "payload", {})
+        created_at = (
+            evt.get("created_at", "") if isinstance(evt, dict) else getattr(evt, "created_at", "")
+        )
+
+        if evt_type == "STEP_STARTED":
+            current_step = {
+                "step_id": payload.get("step_id", ""),
+                "started_at": str(created_at),
+                "tools": [],
+            }
+        elif evt_type == "STEP_COMPLETED" and current_step:
+            current_step["completed_at"] = str(created_at)
+            current_step["result_summary"] = payload.get("result_summary", "")
+            steps.append(current_step)
+            current_step = None
+
+    return {"session_id": session_id, "steps": steps, "total": len(steps)}
+
+
 # ── 工具函数 ─────────────────────────────────────────────────────────────
 
 
