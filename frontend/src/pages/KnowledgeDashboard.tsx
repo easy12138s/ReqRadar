@@ -7,35 +7,43 @@ import { getProjectKnowledge } from '@/api/knowledge';
 import type { KnowledgeType, FreshnessStatus } from '@/types';
 
 const knowledgeTypeLabels: Record<KnowledgeType, string> = {
-  terminology: '术语表',
+  glossary: '术语表',
   module_profile: '模块画像',
-  architecture_constraint: '架构约束',
-  code_pattern: '代码模式',
-  historical_decision: '历史决策',
-  risk_record: '风险记录',
-  incident_record: '事故记录',
+  constraint: '架构约束',
+  pattern: '代码模式',
+  decision: '历史决策',
+  risk: '风险记录',
+  incident: '事故记录',
+  requirement: '需求',
 };
 
 const knowledgeTypeColors: Record<KnowledgeType, string> = {
-  terminology: 'blue',
+  glossary: 'blue',
   module_profile: 'green',
-  architecture_constraint: 'red',
-  code_pattern: 'purple',
-  historical_decision: 'gold',
-  risk_record: 'orange',
-  incident_record: 'magenta',
+  constraint: 'red',
+  pattern: 'purple',
+  decision: 'gold',
+  risk: 'orange',
+  incident: 'magenta',
+  requirement: 'cyan',
 };
 
 const freshnessColors: Record<FreshnessStatus, string> = {
-  fresh: 'success',
-  stale: 'warning',
+  active: 'success',
+  historical: 'default',
+  superseded: 'warning',
   deprecated: 'default',
+  stale: 'warning',
+  conflicted: 'error',
 };
 
 const freshnessLabels: Record<FreshnessStatus, string> = {
-  fresh: '新鲜',
-  stale: '过期',
+  active: '活跃',
+  historical: '历史',
+  superseded: '已替代',
   deprecated: '已废弃',
+  stale: '过期',
+  conflicted: '冲突',
 };
 
 const knowledgeColumns = [

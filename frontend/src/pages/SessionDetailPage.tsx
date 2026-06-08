@@ -7,31 +7,31 @@ import { getSessionEvidence } from '@/api/evidence';
 import type { SessionStatus, EventRecord, DimensionStatus } from '@/types';
 
 const statusColors: Record<SessionStatus, string> = {
-  created: 'default',
-  ready: 'blue',
-  running: 'processing',
-  waiting_input: 'warning',
-  checkpointing: 'purple',
-  completed: 'success',
-  failed: 'error',
-  cancelled: 'default',
-  cancelling: 'orange',
-  paused: 'default',
-  timeout: 'error',
+  CREATED: 'default',
+  READY: 'blue',
+  RUNNING: 'processing',
+  WAITING_INPUT: 'warning',
+  CHECKPOINTING: 'purple',
+  COMPLETED: 'success',
+  FAILED: 'error',
+  CANCELLED: 'default',
+  CANCELLING: 'orange',
+  TIMEOUT: 'error',
+  ABORTED: 'error',
 };
 
 const statusLabels: Record<SessionStatus, string> = {
-  created: '已创建',
-  ready: '就绪',
-  running: '运行中',
-  waiting_input: '等待输入',
-  checkpointing: '检查点中',
-  completed: '已完成',
-  failed: '失败',
-  cancelled: '已取消',
-  cancelling: '取消中',
-  paused: '已暂停',
-  timeout: '超时',
+  CREATED: '已创建',
+  READY: '就绪',
+  RUNNING: '运行中',
+  WAITING_INPUT: '等待输入',
+  CHECKPOINTING: '检查点中',
+  COMPLETED: '已完成',
+  FAILED: '失败',
+  CANCELLED: '已取消',
+  CANCELLING: '取消中',
+  TIMEOUT: '超时',
+  ABORTED: '已中止',
 };
 
 const dimensionLabels: Record<string, string> = {
@@ -61,7 +61,7 @@ export default function SessionDetailPage() {
     enabled: !!sessionId,
     refetchInterval: (query) => {
       const status = query.state.data?.status;
-      return status === 'running' || status === 'checkpointing' ? 3000 : false;
+      return status === 'RUNNING' || status === 'CHECKPOINTING' ? 3000 : false;
     },
   });
 
@@ -69,7 +69,7 @@ export default function SessionDetailPage() {
     queryKey: ['session-events', sessionId],
     queryFn: () => getSessionEvents(sessionId!, 50),
     enabled: !!sessionId,
-    refetchInterval: session?.status === 'running' ? 5000 : false,
+    refetchInterval: session?.status === 'RUNNING' ? 5000 : false,
   });
 
   const { data: evidenceData } = useQuery({
@@ -100,7 +100,7 @@ export default function SessionDetailPage() {
     { title: '内容摘要', dataIndex: 'content' as const, key: 'content', ellipsis: true },
   ];
 
-  const isRunning = session.status === 'running' || session.status === 'checkpointing';
+  const isRunning = session.status === 'RUNNING' || session.status === 'CHECKPOINTING';
 
   return (
     <div>

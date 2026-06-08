@@ -7,31 +7,31 @@ import { listSessions } from '@/api/sessions';
 import type { SessionResponse, SessionStatus } from '@/types';
 
 const statusColors: Record<SessionStatus, string> = {
-  created: 'default',
-  ready: 'blue',
-  running: 'processing',
-  waiting_input: 'warning',
-  checkpointing: 'purple',
-  completed: 'success',
-  failed: 'error',
-  cancelled: 'default',
-  cancelling: 'orange',
-  paused: 'default',
-  timeout: 'error',
+  CREATED: 'default',
+  READY: 'blue',
+  RUNNING: 'processing',
+  WAITING_INPUT: 'warning',
+  CHECKPOINTING: 'purple',
+  COMPLETED: 'success',
+  FAILED: 'error',
+  CANCELLED: 'default',
+  CANCELLING: 'orange',
+  TIMEOUT: 'error',
+  ABORTED: 'error',
 };
 
 const statusLabels: Record<SessionStatus, string> = {
-  created: '已创建',
-  ready: '就绪',
-  running: '运行中',
-  waiting_input: '等待输入',
-  checkpointing: '检查点中',
-  completed: '已完成',
-  failed: '失败',
-  cancelled: '已取消',
-  cancelling: '取消中',
-  paused: '已暂停',
-  timeout: '超时',
+  CREATED: '已创建',
+  READY: '就绪',
+  RUNNING: '运行中',
+  WAITING_INPUT: '等待输入',
+  CHECKPOINTING: '检查点中',
+  COMPLETED: '已完成',
+  FAILED: '失败',
+  CANCELLED: '已取消',
+  CANCELLING: '取消中',
+  TIMEOUT: '超时',
+  ABORTED: '已中止',
 };
 
 export default function DashboardPage() {
@@ -46,8 +46,8 @@ export default function DashboardPage() {
   });
 
   const sessions = data?.sessions ?? [];
-  const runningCount = sessions.filter((s) => s.status === 'running').length;
-  const completedCount = sessions.filter((s) => s.status === 'completed').length;
+  const runningCount = sessions.filter((s) => s.status === 'RUNNING').length;
+  const completedCount = sessions.filter((s) => s.status === 'COMPLETED').length;
 
   const columns = [
     {

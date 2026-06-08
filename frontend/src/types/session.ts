@@ -1,15 +1,15 @@
 export type SessionStatus =
-  | 'created'
-  | 'ready'
-  | 'running'
-  | 'waiting_input'
-  | 'checkpointing'
-  | 'completed'
-  | 'failed'
-  | 'cancelled'
-  | 'cancelling'
-  | 'paused'
-  | 'timeout';
+  | 'CREATED'
+  | 'READY'
+  | 'RUNNING'
+  | 'CHECKPOINTING'
+  | 'COMPLETED'
+  | 'FAILED'
+  | 'CANCELLING'
+  | 'CANCELLED'
+  | 'TIMEOUT'
+  | 'ABORTED'
+  | 'WAITING_INPUT';
 
 export interface SessionResponse {
   session_id: string;

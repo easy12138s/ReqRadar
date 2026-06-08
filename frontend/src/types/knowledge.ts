@@ -1,13 +1,20 @@
 export type KnowledgeType =
-  | 'terminology'
+  | 'glossary'
   | 'module_profile'
-  | 'architecture_constraint'
-  | 'code_pattern'
-  | 'historical_decision'
-  | 'risk_record'
-  | 'incident_record';
+  | 'constraint'
+  | 'decision'
+  | 'risk'
+  | 'requirement'
+  | 'incident'
+  | 'pattern';
 
-export type FreshnessStatus = 'fresh' | 'stale' | 'deprecated';
+export type FreshnessStatus =
+  | 'active'
+  | 'historical'
+  | 'superseded'
+  | 'deprecated'
+  | 'stale'
+  | 'conflicted';
 
 export interface KnowledgeEntry {
   knowledge_id: string;
