@@ -793,7 +793,11 @@ async def memory_query(
                     "updated_at": _iso(r.updated_at),
                 }
             )
-        return {"items": items, "total": len(items)}
+        # I-01 §8.1：按知识类型分组返回
+        grouped: dict[str, list] = {"project_id": project_id}
+        for item in items:
+            grouped.setdefault(item["knowledge_type"], []).append(item)
+        return grouped
     except Exception as e:
         logger.warning("知识查询失败: project=%s, query=%s, error=%s", project_id, query, e)
-        return {"items": [], "total": 0}
+        return {"project_id": project_id}

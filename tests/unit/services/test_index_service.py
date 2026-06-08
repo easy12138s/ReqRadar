@@ -60,8 +60,7 @@ class TestMemoryQuery:
         )
         assert resp.status_code == 200
         data = resp.json()
-        assert "items" in data
-        assert "total" in data
+        assert "project_id" in data
 
     @pytest.mark.anyio
     async def test_memory_query_with_types(self, client):

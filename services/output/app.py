@@ -265,7 +265,10 @@ async def get_report_status(task_id: str):
     """查询报告生成状态（I-01 §4.2）。"""
     task = _task_store.get(task_id)
     if task is None:
-        raise HTTPException(status_code=404, detail=f"任务不存在: {task_id}")
+        raise HTTPException(
+            status_code=404,
+            detail={"error": {"code": "TASK_NOT_FOUND", "message": f"任务不存在: {task_id}"}},
+        )
 
     result: dict = {
         "task_id": task.task_id,

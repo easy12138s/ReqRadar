@@ -208,7 +208,7 @@ services:
     image: chromadb/chroma:latest
     container_name: reqradar-chromadb
     ports:
-      - "8005:8000"
+      - "8006:8000"
     volumes:
       - chromadata:/chroma/chroma
     networks:
