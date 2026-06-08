@@ -20,3 +20,15 @@ export interface VerifyTokenResponse {
   valid: boolean;
   user: UserProfile | null;
 }
+
+export interface ApiError {
+  detail: string;
+  code?: string;
+}
+
+export type { SessionStatus, SessionResponse, CreateSessionRequest, StartSessionRequest } from './session';
+export type { EventType, EventLevel, EventRecord } from './event';
+export type { DimensionStatus, DimensionState, DimensionSummary } from './dimension';
+export type { CheckpointType, CheckpointRecord } from './checkpoint';
+export type { KnowledgeType, FreshnessStatus, KnowledgeEntry, KnowledgeQueryParams } from './knowledge';
+export type { WsEvent, WsConnectionState } from './ws';
