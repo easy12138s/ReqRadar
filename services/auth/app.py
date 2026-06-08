@@ -121,9 +121,15 @@ async def issue_token(req: IssueRequest):
     token = create_jwt_token(
         user_id=req.user_id,
         username=req.username,
-        is_superuser=req.is_superuser,
         secret=JWT_SECRET,
     )
+    app.state._users[req.user_id] = {
+        "username": req.username,
+        "email": req.email,
+        "role": req.role,
+        "is_active": req.is_active,
+        "is_superuser": req.is_superuser,
+    }
     return {"token": token, "token_type": "bearer"}
 
 

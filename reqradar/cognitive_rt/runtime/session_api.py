@@ -358,8 +358,8 @@ class SessionService:
         events = self._publisher.get_events(session_id)
         evidence = []
         for evt in events:
-            if evt.get("event_type") == "EVIDENCE_ADDED":
-                payload = evt.get("payload", {})
+            if evt.event_type == "EVIDENCE_ADDED":
+                payload = evt.payload or {}
                 if evidence_type and payload.get("evidence_type") != evidence_type:
                     continue
                 evidence.append(payload)
@@ -373,7 +373,7 @@ class SessionService:
         sm = self._get(session_id)
         events = self._publisher.get_events(session_id)
         for evt in reversed(events):
-            payload = evt.get("payload", {})
+            payload = evt.payload or {}
             if "dimension_status" in payload:
                 return payload["dimension_status"]
         if sm._state.last_checkpoint_version > 0:
