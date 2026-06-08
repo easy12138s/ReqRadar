@@ -18,7 +18,7 @@
 | — | **P6** — 拆 output-service | ✅ **验收通过** | 2026-06-04 | output-service 独立服务 + 报告生成/状态/最新 API + 模板热更新 + Jinja2，2 项缺陷已修复（15b6da9） |
 | — | **P7** — BFF 独立 | ✅ **验收通过** | 2026-06-04 | api-service BFF 聚合层 + 27 个端点 + JWT 校验 + Internal-API-Key 注入，2 项缺陷已修复（508f79d） |
 | — | **P9** — MCP 独立 | ✅ **验收通过** | 2026-06-05 | integration-service + FastMCP Server + 7 个 MCP 工具 + Access Key 管理 + 审计日志，2 次提交 |
-| M4 | **P8** — 前端改造 | ⬜ 未开始 | — | — |
+| M4 | **P8** — 前端改造 | ✅ **验收通过** | 2026-06-08 | 全新 V2 前端：独立容器化 + /app/v2/ 路由 + /api/v2/ API + WebSocket 实时事件 + 认知仪表盘（7 Tab）+ Checkpoint 回放，M4 里程碑达成 |
 | — | **P10** — 性能升级 | ⬜ 未开始 | — | — |
 
 ---
@@ -131,6 +131,38 @@
 
 ---
 
+## P8 — 前端改造（M4 里程碑）
+
+**验收日期**：2026-06-08
+
+**验收结论**：✅ **验收通过**（M4 里程碑达成）
+
+**代码基线**：`18d7bbb`（合并提交）+ `7f5dc7f`（C1 review fixes）
+
+**交付物**：
+
+| Wave | 内容 | 交付 |
+|------|------|------|
+| Wave 1 | 基础设施 | Dockerfile + nginx.conf + vite.config.ts + 类型定义 + API 客户端 + 路由骨架 + AuthGuard + AppLayout |
+| Wave 2 | 核心主流程 | LoginPage + DashboardPage + AnalysisCreatePage + SessionDetailPage |
+| Wave 3 | 实时事件 | useSessionWebSocket Hook + WsContext + SessionEventsPage |
+| Wave 4 | 报告 + 认知仪表盘 | ReportPage + KnowledgeDashboard（7 Tab：总览/术语/模块/约束/决策/风险/事故） |
+| Wave 5 | 可降级 | CheckpointsPage + 前端测试 |
+
+**验收指标**：
+
+| 标准 | 结果 |
+|------|------|
+| 独立容器化 | ✅ Nginx + Traefik 路由 `/app/*` |
+| API 路径 `/api/v2/` | ✅ 全部替换 |
+| 路由 basename `/app/v2` | ✅ 全部替换 |
+| WebSocket 实时推送 | ✅ 三级 23 种事件 |
+| 认知仪表盘 | ✅ 7 Tab L3 知识可视化 |
+| Checkpoint 回放 | ✅ 版本链 + 对比 + 恢复 |
+| 无 V1 类型引用 | ✅ 全部重写 |
+
+---
+
 ## 跨 Phase 缺陷修复
 
 > 全部 18/18 项已闭环。
@@ -144,6 +176,64 @@
 | 批次五 INT-4a~5b | INT-4+INT-5 验收后补修 | 2d29b20 | ✅ |
 
 **当前测试基线**：ruff 0 errors，pytest 全部通过
+
+---
+
+## 第二轮质量缺陷（2026-06-08 发现，已修复）
+
+> 验收 Agent 全面审查发现，共 13 项。**全部 13/13 已闭环。**
+
+### A 类：I-01 API 契约不匹配（严重）
+
+| # | 缺失端点 | I-01 条目 | 位置 | 状态 |
+|---|---------|----------|------|------|
+| A1a | `GET /internal/v2/sessions/{id}/evidence` | §6.5 | `server.py` L173 | ✅ 已修复（c04729e） |
+| A1b | `GET /internal/v2/sessions/{id}/dimensions` | §6.6 | `server.py` L185 | ✅ 已修复（c04729e） |
+| A2 | `GET /internal/v2/memory/query` | §8.1 | `services/index/app.py` L759 | ✅ 已修复（c04729e + ffe78ac） |
+| A3a | `POST /internal/v2/auth/check-permission` | §5.2 | `services/auth/app.py` L142 | ✅ 已修复（c04729e） |
+| A3b | `GET /internal/v2/users/{user_id}` | §5.3 | `services/auth/app.py` L167 | ✅ 已修复（c04729e） |
+
+### B 类：错误格式不一致（中等）
+
+| # | 问题 | 位置 | 状态 |
+|---|------|------|------|
+| B1 | output-service HTTPException 用字符串 detail | `services/output/app.py` L268/L310/L312 | ✅ 已修复（c04729e + ffe78ac） |
+| B2 | integration-service HTTPException 用字符串 detail | `services/integration/app.py` L144 | ✅ 已修复（c04729e） |
+
+### C 类：编码规范违规（中等）
+
+| # | 问题 | 位置 | 状态 |
+|---|------|------|------|
+| C1 | output-service 静默吞异常 | `services/output/app.py` L171 | ✅ 已修复（c04729e） |
+| C2 | vector_store.py 裸吞异常 | `reqradar/index_svc/vector_store.py` L66-67, L237-238 | ✅ 已修复（c04729e） |
+| C3 | output-service 异常无 cause 链 | `services/output/app.py` L267/L310/L312 | ⚠️ 非 re-raise，建议性，暂不修复 |
+| C4 | BFF config/patch 用 `dict` 无 Schema 验证 | `services/api/app.py` L31, L68 | ⚠️ 已补充 CreateProjectRequest/UpdateProjectRequest，原始 config/patch 裸 dict 保留（P2 优先级） |
+
+### D 类：Docker 配置问题（中等）
+
+| # | 问题 | 位置 | 状态 |
+|---|------|------|------|
+| D1 | ChromaDB 宿主机端口冲突 | `docker-compose.yml` L211 | ✅ 已修复（ffe78ac）：8005→8006 |
+| D2 | api-service 和 cognitive-rt 都用端口 8002 | `services/api/Dockerfile` L11-13 | ✅ 已修复（c04729e）：api-service 改 8000 |
+
+### E 类：测试覆盖缺失（中等）
+
+| # | 问题 | 状态 |
+|---|------|------|
+| E1 | auth-service 无独立测试 | ✅ 已修复（4925ca6）：7 测试 |
+| E2 | index-service 无独立测试 | ✅ 已修复（4925ca6）：7 测试 |
+| E3 | cognitive-rt server.py 无 HTTP 端点测试 | ✅ 已修复（4925ca6）：12 测试 |
+
+### 测试过程中发现并修复的 Bug
+
+| Bug | 位置 | 状态 |
+|-----|------|------|
+| create_jwt_token() 传入不存在的 is_superuser 参数 | `auth/app.py` | ✅ 已修复（4925ca6） |
+| get_evidence()/get_dimensions() 对 EventRecord 用 dict.get() | `session_api.py` | ✅ 已修复（4925ca6） |
+
+**修复 commit**：c04729e + 4925ca6 + ffe78ac
+
+**当前测试基线**：ruff 0 errors，pytest 全部通过（新增 26 测试）
 
 ---
 
