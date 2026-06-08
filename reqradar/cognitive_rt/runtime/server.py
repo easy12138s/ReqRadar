@@ -170,6 +170,30 @@ async def get_events(session_id: str, limit: int = 100):
     return {"session_id": session_id, "events": events[-limit:], "total": len(events)}
 
 
+@app.get("/internal/v2/sessions/{session_id}/evidence")
+async def get_evidence(session_id: str, type: str | None = None, limit: int = 50):
+    """获取 Session 的证据列表 (I-01 §6.5)。"""
+    try:
+        items = _service.get_evidence(session_id, evidence_type=type, limit=limit)
+    except KeyError as e:
+        raise HTTPException(
+            status_code=404, detail={"error": {"code": "SESSION_NOT_FOUND", "message": str(e)}}
+        ) from e
+    return {"session_id": session_id, "items": items, "total": len(items)}
+
+
+@app.get("/internal/v2/sessions/{session_id}/dimensions")
+async def get_dimensions(session_id: str):
+    """获取 Session 的七维度状态 (I-01 §6.6)。"""
+    try:
+        data = _service.get_dimensions(session_id)
+    except KeyError as e:
+        raise HTTPException(
+            status_code=404, detail={"error": {"code": "SESSION_NOT_FOUND", "message": str(e)}}
+        ) from e
+    return {"session_id": session_id, "dimensions": data}
+
+
 # ── 工具函数 ─────────────────────────────────────────────────────────────
 
 

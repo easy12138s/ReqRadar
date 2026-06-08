@@ -63,8 +63,8 @@ def _check_index_compatibility(persist_directory: Path) -> bool:
                 persist_directory,
             )
             return False
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("索引版本文件读取失败: %s", e)
     return True
 
 
@@ -234,8 +234,8 @@ class ChromaVectorStore(VectorStore):
             count = self.collection.count()
             if count == 0:
                 return []
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("查询集合数量失败: %s", e)
 
         results = self.collection.query(
             query_texts=query,

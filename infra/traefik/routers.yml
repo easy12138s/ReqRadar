@@ -79,4 +79,4 @@ http:
     api-service:
       loadBalancer:
         servers:
-          - url: "http://api-service:8002"
+          - url: "http://api-service:8000"

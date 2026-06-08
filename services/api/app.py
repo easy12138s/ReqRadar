@@ -77,6 +77,22 @@ class DeprecateKnowledgeRequest(BaseModel):
     reason: str = Field(description="废弃原因")
 
 
+class CreateProjectRequest(BaseModel):
+    """创建项目请求。"""
+
+    name: str = Field(description="项目名称")
+    description: str = Field(default="", description="项目描述")
+    config: dict = Field(default_factory=dict, description="项目配置")
+
+
+class UpdateProjectRequest(BaseModel):
+    """更新项目请求。"""
+
+    name: str | None = Field(default=None, description="项目名称")
+    description: str | None = Field(default=None, description="项目描述")
+    config: dict | None = Field(default=None, description="项目配置")
+
+
 # ---------------------------------------------------------------------------
 # 认证依赖
 # ---------------------------------------------------------------------------

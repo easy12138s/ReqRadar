@@ -102,7 +102,9 @@ services:
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-change-in-production}
       LOG_LEVEL: INFO
     expose:
-      - "8002"
+      - "8000"
+    ports:
+      - "8000:8000"
     networks:
       - reqradar-net
     depends_on:

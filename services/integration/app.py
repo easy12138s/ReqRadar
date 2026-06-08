@@ -141,7 +141,10 @@ async def list_mcp_keys():
 async def revoke_mcp_key(key_id: str):
     """撤销 MCP 密钥。"""
     if not _key_manager.revoke_key(key_id):
-        raise HTTPException(status_code=404, detail=f"密钥不存在或已撤销: {key_id}")
+        raise HTTPException(
+            status_code=404,
+            detail={"error": {"code": "KEY_NOT_FOUND", "message": f"密钥不存在或已撤销: {key_id}"}},
+        )
     return {"revoked": True, "key_id": key_id}
 
 

@@ -754,3 +754,46 @@ async def knowledge_query(
         items=[KnowledgeQueryItem(**_knowledge_to_dict(k, payloads)) for k in page],
         total=total,
     )
+
+
+@app.get("/internal/v2/memory/query")
+async def memory_query(
+    project_id: str = Query(..., description="项目 ID"),
+    query: str = Query(..., description="查询文本"),
+    knowledge_types: str | None = Query(None, description="知识类型，逗号分隔"),
+    top_k: int = Query(10, description="返回数量"),
+):
+    """查询项目记忆/知识 (I-01 §8.1)。"""
+    try:
+        writer: L3Writer = app.state.writer
+        types_list = knowledge_types.split(",") if knowledge_types else None
+
+        # 使用 writer 的现有方法查询知识
+        all_knowledge = writer.query_active(project_id)
+
+        # 按类型过滤
+        if types_list:
+            all_knowledge = [k for k in all_knowledge if k.knowledge_type.value in types_list]
+
+        # 简单的内存查询：返回所有符合条件的知识
+        results = all_knowledge[:top_k]
+
+        items = []
+        for r in results:
+            items.append(
+                {
+                    "knowledge_id": r.id,
+                    "project_id": project_id,
+                    "knowledge_type": r.knowledge_type.value,
+                    "topic": r.topic if hasattr(r, "topic") else "",
+                    "content": r.content if hasattr(r, "content") else "",
+                    "confidence": r.confidence.confidence_score,
+                    "freshness": r.freshness.value,
+                    "created_at": _iso(r.created_at),
+                    "updated_at": _iso(r.updated_at),
+                }
+            )
+        return {"items": items, "total": len(items)}
+    except Exception as e:
+        logger.warning("知识查询失败: project=%s, query=%s, error=%s", project_id, query, e)
+        return {"items": [], "total": 0}

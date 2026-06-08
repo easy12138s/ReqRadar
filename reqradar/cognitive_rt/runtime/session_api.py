@@ -344,6 +344,42 @@ class SessionService:
         """获取 Session 的事件列表。"""
         return self._publisher.get_events(session_id)
 
+    def get_evidence(
+        self,
+        session_id: str,
+        evidence_type: str | None = None,
+        limit: int = 50,
+    ) -> list[dict]:
+        """获取 Session 的证据列表。
+
+        从 EventPublisher 的事件历史中提取 EVIDENCE_ADDED 事件。
+        """
+        self._get(session_id)
+        events = self._publisher.get_events(session_id)
+        evidence = []
+        for evt in events:
+            if evt.get("event_type") == "EVIDENCE_ADDED":
+                payload = evt.get("payload", {})
+                if evidence_type and payload.get("evidence_type") != evidence_type:
+                    continue
+                evidence.append(payload)
+        return evidence[-limit:]
+
+    def get_dimensions(self, session_id: str) -> dict:
+        """获取 Session 的维度状态。
+
+        从最新的 CHECKPOINTED 事件中提取维度状态。
+        """
+        sm = self._get(session_id)
+        events = self._publisher.get_events(session_id)
+        for evt in reversed(events):
+            payload = evt.get("payload", {})
+            if "dimension_status" in payload:
+                return payload["dimension_status"]
+        if sm._state.last_checkpoint_version > 0:
+            return {"status": "available", "version": sm._state.last_checkpoint_version}
+        return {"status": "no_data"}
+
     async def _run_analysis(
         self,
         session_id: str,

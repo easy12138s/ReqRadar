@@ -168,7 +168,8 @@ class ReportGenerator:
                 timestamp=datetime.now(UTC).isoformat(),
                 format=output_format,
             )
-        except Exception:
+        except Exception as e:
+            logger.warning("模板渲染失败: %s", e)
             return template_content
 
     def _get_default_template(self, session_id: str, output_format: str) -> str:
@@ -307,9 +308,17 @@ async def get_report_content(task_id: str):
     """获取报告内容。"""
     task = _task_store.get(task_id)
     if task is None:
-        raise HTTPException(status_code=404, detail=f"任务不存在: {task_id}")
+        raise HTTPException(
+            status_code=404,
+            detail={"error": {"code": "TASK_NOT_FOUND", "message": f"任务不存在: {task_id}"}},
+        )
     if task.status != "completed":
-        raise HTTPException(status_code=400, detail=f"任务未完成: {task.status}")
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": {"code": "TASK_NOT_COMPLETED", "message": f"任务未完成: {task.status}"}
+            },
+        )
     return {
         "task_id": task.task_id,
         "content": task.content,

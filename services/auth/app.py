@@ -33,9 +33,18 @@ class IssueRequest(BaseModel):
     is_superuser: bool = Field(default=False, description="是否超级用户")
 
 
+class CheckPermissionRequest(BaseModel):
+    """权限检查请求。"""
+
+    user_id: str = Field(description="用户 ID")
+    resource: str = Field(description="资源路径")
+    action: str = Field(description="操作类型")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Auth Service 启动")
+    app.state._users = {}
     yield
     logger.info("Auth Service 关闭")
 
@@ -122,3 +131,50 @@ async def issue_token(req: IssueRequest):
 async def get_current_user():
     """获取当前用户信息（需 JWT）。"""
     return {"user_id": "demo", "username": "demo_user"}
+
+
+@app.post("/internal/v2/auth/check-permission")
+async def check_permission(req: CheckPermissionRequest):
+    """检查用户权限 (I-01 §5.2)。"""
+
+    _users = app.state._users
+    # 从已知用户中查找
+    for uid, u in _users.items():
+        if uid == req.user_id:
+            allowed = u.get("is_superuser", False) or req.action in ("read", "list")
+            return {
+                "user_id": req.user_id,
+                "resource": req.resource,
+                "action": req.action,
+                "allowed": allowed,
+                "reason": "superuser" if u.get("is_superuser") else "role_check",
+            }
+    return {
+        "user_id": req.user_id,
+        "resource": req.resource,
+        "action": req.action,
+        "allowed": False,
+        "reason": "user_not_found",
+    }
+
+
+@app.get("/internal/v2/users/{user_id}")
+async def get_user(user_id: str):
+    """查询用户信息 (I-01 §5.3)。"""
+    from fastapi import HTTPException
+
+    _users = app.state._users
+    u = _users.get(user_id)
+    if u is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": {"code": "USER_NOT_FOUND", "message": f"用户不存在: {user_id}"}},
+        )
+    return {
+        "user_id": user_id,
+        "username": u.get("username", ""),
+        "email": u.get("email", ""),
+        "role": u.get("role", "user"),
+        "is_active": u.get("is_active", True),
+        "is_superuser": u.get("is_superuser", False),
+    }
