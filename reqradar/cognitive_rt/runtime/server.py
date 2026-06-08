@@ -9,20 +9,41 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
+from reqradar.cognitive_rt.cognition.llm_client import LiteLLMClient
 from reqradar.cognitive_rt.runtime.checkpoint import CheckpointManager
 from reqradar.cognitive_rt.runtime.checkpoint_storage import CheckpointStorage
 from reqradar.cognitive_rt.runtime.events import EventPublisher
+from reqradar.cognitive_rt.runtime.runner_factory import (
+    create_runner_components,
+)
 from reqradar.cognitive_rt.runtime.session_api import SessionInfo, SessionService
+from reqradar.kernel.database import Base, create_engine, create_session_factory
 
 logger = logging.getLogger(__name__)
 
 INTERNAL_API_KEY = os.environ.get("INTERNAL_API_KEY", "dev-internal-key")
 
 
+DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite+aiosqlite:///./reqradar_dev.db")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Cognitive-RT Service 启动")
+
+    engine = create_engine(DATABASE_URL)
+    app.state.db_session_factory = create_session_factory(engine)
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    app.state.llm_client = LiteLLMClient()
+
+    _service._db_session_factory = app.state.db_session_factory
+
     yield
+
+    await engine.dispose()
     logger.info("Cognitive-RT Service 关闭")
 
 
@@ -92,17 +113,35 @@ async def create_session(body: dict):
 
 @app.post("/internal/v2/sessions/{session_id}/start")
 async def start_session(session_id: str, body: dict):
-    """启动 Session — 转换状态并异步运行分析。
-
-    Runner 参数由 cognitive-rt 内部构造（工厂函数桩），
-    BFF 只传递业务语义参数。
-    """
+    """启动 Session — 创建 Runner 组件并触发真实推理。"""
     resume_from = body.get("resume_from")
-    requirement_text = body.get("requirement_text")
+    requirement_text = body.get("requirement_text", "")
+    config = body.get("config", {})
+
+    try:
+        info = _service.get(session_id)
+    except KeyError as e:
+        raise HTTPException(
+            status_code=404, detail={"error": {"code": "SESSION_NOT_FOUND", "message": str(e)}}
+        ) from e
+
+    project_id = info.project_id if hasattr(info, "project_id") else "default"
+    user_id = info.user_id if hasattr(info, "user_id") else "system"
+
+    agent, llm_client, tool_registry = create_runner_components(
+        session_id=session_id,
+        requirement_text=requirement_text,
+        project_id=str(project_id),
+        user_id=str(user_id),
+        config=config,
+    )
 
     try:
         info = await _service.start(
             session_id,
+            agent=agent,
+            llm_client=llm_client,
+            tool_registry=tool_registry,
             requirement_text=requirement_text,
             resume_from=resume_from,
         )

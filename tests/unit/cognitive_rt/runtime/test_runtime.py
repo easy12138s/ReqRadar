@@ -344,7 +344,8 @@ class TestEventPublisher:
 class TestInMemoryEventBus:
     """内存事件总线的单元测试。"""
 
-    def test_publish_creates_message(self, event_bus: InMemoryEventBus) -> None:
+    @pytest.mark.asyncio
+    async def test_publish_creates_message(self, event_bus: InMemoryEventBus) -> None:
         """publish() 应返回 message_id。"""
         mock_event = MagicMock()
         mock_event.session_id = SESSION_ID
@@ -354,11 +355,12 @@ class TestInMemoryEventBus:
         mock_event.timestamp = "2026-01-01T00:00:00Z"
         mock_event.payload = {}
 
-        msg_id = event_bus.publish(mock_event)
+        msg_id = await event_bus.publish(event_record=mock_event)
         assert msg_id
         assert isinstance(msg_id, str)
 
-    def test_get_messages(self, event_bus: InMemoryEventBus) -> None:
+    @pytest.mark.asyncio
+    async def test_get_messages(self, event_bus: InMemoryEventBus) -> None:
         """get_messages() 应返回已发布的消息。"""
         mock_event = MagicMock()
         mock_event.session_id = SESSION_ID
@@ -368,7 +370,7 @@ class TestInMemoryEventBus:
         mock_event.timestamp = "2026-01-01T00:00:00Z"
         mock_event.payload = {}
 
-        event_bus.publish(mock_event)
+        await event_bus.publish(event_record=mock_event)
         channel = f"events:{SESSION_ID}"
         messages = event_bus.get_messages(channel)
 
@@ -376,7 +378,8 @@ class TestInMemoryEventBus:
         assert messages[0].channel == channel
         assert messages[0].data["event_id"] == "evt-001"
 
-    def test_max_len_truncation(self) -> None:
+    @pytest.mark.asyncio
+    async def test_max_len_truncation(self) -> None:
         """消息数超过 max_len 时应被截断。"""
         bus = InMemoryEventBus(max_len=3)
         channel = f"events:{SESSION_ID}"
@@ -389,15 +392,17 @@ class TestInMemoryEventBus:
             mock_event.sequence = i + 1
             mock_event.timestamp = "2026-01-01T00:00:00Z"
             mock_event.payload = {}
-            bus.publish(mock_event)
+            await bus.publish(event_record=mock_event)
 
         messages = bus.get_messages(channel)
         assert len(messages) == 3
         assert messages[0].data["event_id"] == "evt-002"
 
-    def test_subscribe_and_notify(self, event_bus: InMemoryEventBus) -> None:
+    @pytest.mark.asyncio
+    async def test_subscribe_and_notify(self, event_bus: InMemoryEventBus) -> None:
         """订阅者应收到消息通知。"""
         subscriber = MagicMock()
+        subscriber.on_message = MagicMock()
         channel = f"events:{SESSION_ID}"
         event_bus.subscribe(channel, subscriber)
 
@@ -409,7 +414,7 @@ class TestInMemoryEventBus:
         mock_event.timestamp = "2026-01-01T00:00:00Z"
         mock_event.payload = {}
 
-        event_bus.publish(mock_event)
+        await event_bus.publish(event_record=mock_event)
 
         subscriber.on_message.assert_called_once()
         received_msg = subscriber.on_message.call_args[0][0]

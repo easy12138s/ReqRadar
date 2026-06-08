@@ -85,10 +85,15 @@ class EventPublisher:
             self._events[session_id] = []
         self._events[session_id].append(record)
 
-        # 推送到外部总线
+        # 推送到外部总线（兼容同步/异步 bus）
         if self._bus is not None:
             try:
-                self._bus.publish(record)
+                result = self._bus.publish(record)
+                if asyncio.iscoroutine(result):
+                    loop = asyncio.get_running_loop()
+                    task = loop.create_task(result)
+                    self._pending_tasks.add(task)
+                    task.add_done_callback(self._pending_tasks.discard)
             except Exception as e:
                 logger.warning("事件总线推送失败: %s", e)
 

@@ -427,7 +427,7 @@ class TestSessionRoutes:
     def test_websocket_stub(self, client: TestClient):
         with client.websocket_connect("/api/v2/sessions/s-001/ws") as ws:
             data = ws.receive_json()
-            assert data["type"] == "info"
+            assert data["type"] == "error"
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

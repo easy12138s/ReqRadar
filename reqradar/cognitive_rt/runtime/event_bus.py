@@ -1,8 +1,10 @@
-"""Event Bus 内存模拟 — P3 阶段的事件总线实现。"""
+"""Event Bus — 支持内存模式与 Redis Stream 模式。"""
 
 from __future__ import annotations
 
+import json
 import logging
+import os
 from collections import defaultdict
 from dataclasses import dataclass
 
@@ -19,54 +21,96 @@ class BusMessage:
 
 
 class InMemoryEventBus:
-    """内存事件总线 — P3 阶段模拟 Redis Streams/Pub-Sub。"""
+    """事件总线 — 内存模式 + Redis Stream 双模式。"""
 
-    def __init__(self, max_len: int = 10000) -> None:
-        """初始化内存事件总线。
+    def __init__(self, max_len: int = 10000, redis_url: str = "") -> None:
+        """初始化事件总线。
 
         Args:
             max_len: 每个 channel 的最大消息数
+            redis_url: Redis 连接地址，为空时使用内存模式
         """
         self._max_len = max_len
+        self._redis_url = redis_url or os.environ.get("REDIS_URL", "")
+        self._redis = None
         self._channels: dict[str, list[BusMessage]] = defaultdict(list)
         self._subscribers: dict[str, list[object]] = defaultdict(list)
+        self._connected = False
 
-    def publish(self, event_record: object) -> str:
+    async def connect(self) -> None:
+        """连接 Redis，失败时降级为内存模式。"""
+        if not self._redis_url:
+            logger.warning("Redis URL 未配置，使用内存模式")
+            return
+        try:
+            import redis.asyncio as aioredis
+
+            self._redis = aioredis.from_url(self._redis_url, decode_responses=True)
+            await self._redis.ping()
+            self._connected = True
+            logger.info("EventBus Redis 连接成功: %s", self._redis_url)
+        except Exception as e:
+            logger.warning("EventBus Redis 连接失败，降级为内存模式: %s", e)
+            self._redis = None
+            self._connected = False
+
+    async def publish(
+        self,
+        channel: str = "",
+        message: BusMessage | None = None,
+        event_record: object | None = None,
+    ) -> str:
         """发布事件到总线。
 
-        Args:
-            event_record: 事件记录对象（需有 session_id 和 event_type 属性）
+        支持两种调用方式：
+          1. publish(channel="...", message=BusMessage(...)) — 新接口
+          2. publish(event_record=obj) — 兼容旧接口（从 event_record 提取 channel）
 
         Returns:
             消息 ID
         """
-        session_id = getattr(event_record, "session_id", "unknown")
-        channel = f"events:{session_id}"
+        if message is None and event_record is not None:
+            session_id = getattr(event_record, "session_id", "unknown")
+            channel = f"events:{session_id}"
+            message = BusMessage(
+                channel=channel,
+                data={
+                    "event_id": getattr(event_record, "event_id", ""),
+                    "event_type": str(getattr(event_record, "event_type", "")),
+                    "sequence": getattr(event_record, "sequence", 0),
+                    "timestamp": str(getattr(event_record, "timestamp", "")),
+                    "payload": getattr(event_record, "payload", {}),
+                },
+                message_id=f"msg-{len(self._channels[channel])}",
+            )
+        elif message is None:
+            logger.warning("publish 调用缺少 message 或 event_record")
+            return ""
 
-        msg = BusMessage(
-            channel=channel,
-            data={
-                "event_id": getattr(event_record, "event_id", ""),
-                "event_type": str(getattr(event_record, "event_type", "")),
-                "sequence": getattr(event_record, "sequence", 0),
-                "timestamp": str(getattr(event_record, "timestamp", "")),
-                "payload": getattr(event_record, "payload", {}),
-            },
-            message_id=f"msg-{len(self._channels[channel])}",
-        )
+        msg = message
+        if not msg.message_id:
+            msg.message_id = f"msg-{len(self._channels[channel])}"
 
         self._channels[channel].append(msg)
 
-        # 限制消息数量
         if len(self._channels[channel]) > self._max_len:
             self._channels[channel] = self._channels[channel][-self._max_len :]
 
-        # 通知订阅者
         for subscriber in self._subscribers.get(channel, []):
+            if hasattr(subscriber, "on_message"):
+                try:
+                    await subscriber.on_message(msg)
+                except Exception as e:
+                    logger.warning("订阅者处理消息失败: %s", e)
+
+        if self._connected and self._redis:
             try:
-                subscriber.on_message(msg)
+                await self._redis.xadd(
+                    "reqradar:events:%s" % channel,
+                    {"data": json.dumps(msg.data, default=str)},
+                )
             except Exception as e:
-                logger.warning("订阅者处理消息失败: %s", e)
+                logger.warning("Redis xadd 失败: %s", e)
 
         return msg.message_id
 
@@ -91,3 +135,8 @@ class InMemoryEventBus:
         """清除所有消息和订阅。"""
         self._channels.clear()
         self._subscribers.clear()
+
+    async def close(self) -> None:
+        """关闭 Redis 连接。"""
+        if self._redis:
+            await self._redis.close()
