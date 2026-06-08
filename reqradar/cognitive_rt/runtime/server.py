@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 from reqradar.cognitive_rt.cognition.llm_client import LiteLLMClient
 from reqradar.cognitive_rt.runtime.checkpoint import CheckpointManager
 from reqradar.cognitive_rt.runtime.checkpoint_storage import CheckpointStorage
+from reqradar.cognitive_rt.runtime.event_bus import InMemoryEventBus
 from reqradar.cognitive_rt.runtime.events import EventPublisher
 from reqradar.cognitive_rt.runtime.runner_factory import (
     create_runner_components,
@@ -39,10 +40,20 @@ async def lifespan(app: FastAPI):
 
     app.state.llm_client = LiteLLMClient()
 
+    # 注入 EventBus（Redis Stream 模式，降级为内存模式）
+    redis_url = os.environ.get("REDIS_URL", "")
+    _event_bus = InMemoryEventBus(redis_url=redis_url)
+    await _event_bus.connect()
+
+    # 注入 db_session_factory 到所有需要 PG 持久化的组件
+    _publisher._bus = _event_bus
+    _publisher._db_session_factory = app.state.db_session_factory
+    _checkpoint_storage._db_session_factory = app.state.db_session_factory
     _service._db_session_factory = app.state.db_session_factory
 
     yield
 
+    await _event_bus.close()
     await engine.dispose()
     logger.info("Cognitive-RT Service 关闭")
 
@@ -243,7 +254,7 @@ async def get_trace(session_id: str):
             status_code=404, detail={"error": {"code": "SESSION_NOT_FOUND", "message": str(e)}}
         ) from e
 
-    events = _service.get_events(session_id, limit=500) if hasattr(_service, "get_events") else []
+    events = _service.get_events(session_id) if hasattr(_service, "get_events") else []
 
     steps = []
     current_step = None

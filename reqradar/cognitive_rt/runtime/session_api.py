@@ -431,8 +431,8 @@ class SessionService:
             logger.error("Runner 执行异常: %s", e)
             try:
                 self.fail(session_id, str(e))
-            except Exception:
-                logger.error("Session fail 转换也失败: session=%s", session_id)
+            except Exception as e:
+                logger.error("Session fail 转换也失败: session=%s", session_id, exc_info=True)
 
     async def _on_analysis_complete(self, session_id: str) -> None:
         """Runner 完成回调。"""
@@ -508,16 +508,25 @@ class SessionService:
         try:
             from reqradar.kernel.models import CognitiveSession
 
+            # project_id/user_id 可能不是合法 UUID，安全转换
+            def _safe_uuid(val: str | None) -> UUID | None:
+                if not val:
+                    return None
+                try:
+                    return UUID(val)
+                except ValueError:
+                    return None
+
             async with self._db_session_factory() as db_session:
                 db_session.add(
                     CognitiveSession(
                         session_id=UUID(session_id),
-                        project_id=UUID(project_id) if project_id else None,
-                        user_id=UUID(user_id) if user_id else None,
+                        project_id=_safe_uuid(project_id),
+                        user_id=_safe_uuid(user_id),
                         status=status.value,
                         config=config or {},
                     )
                 )
                 await db_session.commit()
         except Exception as e:
-            logger.warning("Session PG 持久化失败: %s", e)
+            logger.warning("Session PG 持久化失败: %s", e, exc_info=True)

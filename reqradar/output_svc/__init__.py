@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from reqradar.output_svc.report import ReportRenderer, _risk_level_to_badge
+from reqradar.output_svc.report import ReportRenderer
 
 __all__ = [
     "ReportRenderer",
-    "_risk_level_to_badge",
 ]

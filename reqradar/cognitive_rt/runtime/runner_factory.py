@@ -111,8 +111,7 @@ def create_context_sources(
     ]
 
     for src in sources:
-        src._service_url = url
-        src._internal_api_key = key
+        src.configure(service_url=url, internal_api_key=key)
 
     logger.info("Context Sources 创建完成: count=%d, service_url=%s", len(sources), url)
     return sources

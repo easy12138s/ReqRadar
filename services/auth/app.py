@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 from contextlib import asynccontextmanager
 from uuid import NAMESPACE_DNS, UUID, uuid5
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 from starlette.responses import JSONResponse
 
@@ -16,6 +17,7 @@ from reqradar.kernel.models import User
 
 logger = logging.getLogger(__name__)
 
+_start_time: float = 0.0
 JWT_SECRET = os.environ.get("JWT_SECRET", "")
 if not JWT_SECRET:
     logging.getLogger("reqradar.auth").warning("JWT_SECRET 未配置，使用不安全的默认密钥")
@@ -58,6 +60,8 @@ def _str_to_uuid(s: str) -> UUID:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global _start_time
+    _start_time = time.time()
     logger.info("Auth Service 启动")
     database_url = os.environ.get("DATABASE_URL", "sqlite+aiosqlite:///./reqradar_dev.db")
     engine = create_engine(database_url)
@@ -94,7 +98,7 @@ async def verify_internal_api_key(request, call_next):
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "auth"}
+    return {"status": "ok", "service": "auth", "uptime_seconds": int(time.time() - _start_time)}
 
 
 @app.post("/internal/v2/auth/verify")
@@ -180,9 +184,54 @@ async def issue_token(req: IssueRequest):
 
 
 @app.get("/api/v2/users/me")
-async def get_current_user():
+async def get_current_user(request: Request):
     """获取当前用户信息（需 JWT）。"""
-    return {"user_id": "demo", "username": "demo_user"}
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(
+            status_code=401,
+            detail={"error": {"code": "UNAUTHORIZED", "message": "缺少 Authorization header"}},
+        )
+
+    token = auth_header[7:]
+    try:
+        from reqradar.infrastructure.auth import decode_jwt_token
+
+        user_info = decode_jwt_token(token, JWT_SECRET)
+        if isinstance(user_info, dict) and not user_info.get("valid", True):
+            raise HTTPException(
+                status_code=401,
+                detail={"error": {"code": "TOKEN_INVALID", "message": "Token 无效"}},
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=401, detail={"error": {"code": "TOKEN_INVALID", "message": str(e)}}
+        ) from e
+
+    user_id = user_info.get("user", {}).get("user_id", "") if isinstance(user_info, dict) else ""
+    if user_id and hasattr(request.app.state, "db_session_factory"):
+        try:
+            from reqradar.kernel.models import User as UserModel
+
+            async with request.app.state.db_session_factory() as session:
+                user = await session.get(UserModel, user_id)
+                if user:
+                    return {
+                        "user_id": str(user.id),
+                        "username": user.username,
+                        "email": user.email,
+                        "is_active": user.is_active,
+                    }
+        except Exception:
+            pass
+
+    return (
+        user_info.get("user", {"user_id": user_id})
+        if isinstance(user_info, dict)
+        else {"user_id": ""}
+    )
 
 
 @app.post("/internal/v2/auth/check-permission")

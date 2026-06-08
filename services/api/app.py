@@ -143,8 +143,8 @@ async def _proxy_error(exc: httpx.HTTPStatusError) -> HTTPException:
     resp = exc.response
     try:
         body = resp.json()
-    except Exception:
-        body = {"error": {"code": "DOWNSTREAM_ERROR", "message": resp.text}}
+    except Exception as e:
+        body = {"error": {"code": "DOWNSTREAM_ERROR", "message": resp.text, "detail": str(e)}}
     return HTTPException(status_code=resp.status_code, detail=body)
 
 

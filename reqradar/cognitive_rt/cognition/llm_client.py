@@ -84,8 +84,7 @@ class LiteLLMClient:
 
                 if resp.status_code >= 400:
                     raise LLMError(
-                        "LLM API 错误: status=%d, body=%s"
-                        % (resp.status_code, resp.text[:500])
+                        "LLM API 错误: status=%d, body=%s" % (resp.status_code, resp.text[:500])
                     )
 
                 data = resp.json()
@@ -118,9 +117,7 @@ class LiteLLMClient:
             "LLM 调用失败，已重试 %d 次: %s" % (self._max_retries, last_error)
         ) from last_error
 
-    async def complete(
-        self, messages: list[dict[str, str]], **kwargs: Any
-    ) -> str | None:
+    async def complete(self, messages: list[dict[str, str]], **kwargs: Any) -> str | None:
         """纯文本补全。"""
         payload: dict[str, Any] = {
             "model": self._model,
@@ -143,8 +140,7 @@ class LiteLLMClient:
         """结构化 JSON 输出 — 在 system prompt 中注入 JSON schema 约束。"""
         schema_instruction = (
             "你必须以严格的 JSON 格式响应，符合以下 schema:\n%s\n"
-            "不要包含任何其他文本，只输出 JSON。"
-            % json.dumps(schema, ensure_ascii=False)
+            "不要包含任何其他文本，只输出 JSON。" % json.dumps(schema, ensure_ascii=False)
         )
         enhanced_messages = list(messages)
         if enhanced_messages and enhanced_messages[0].get("role") == "system":
@@ -153,9 +149,7 @@ class LiteLLMClient:
                 "content": enhanced_messages[0]["content"] + "\n\n" + schema_instruction,
             }
         else:
-            enhanced_messages.insert(
-                0, {"role": "system", "content": schema_instruction}
-            )
+            enhanced_messages.insert(0, {"role": "system", "content": schema_instruction})
 
         response_text = await self.complete(enhanced_messages, **kwargs)
         if response_text is None:
@@ -210,9 +204,7 @@ class LiteLLMClient:
 
         return self._supports_tools
 
-    def estimate_tokens(
-        self, messages: list[dict[str, str]] | list[dict[str, Any]]
-    ) -> int:
+    def estimate_tokens(self, messages: list[dict[str, str]] | list[dict[str, Any]]) -> int:
         """估算 token 数（同步方法）。"""
         text = str(messages)
         return len(text) // 4

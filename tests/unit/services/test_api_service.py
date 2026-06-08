@@ -228,7 +228,7 @@ def mock_client():
 
     client.generate_report.return_value = {
         "task_id": "t-001",
-        "status": "queued",
+        "status": "pending",
         "estimated_duration_ms": 5000,
     }
 
@@ -681,7 +681,7 @@ class TestReportRoutes:
         assert resp.status_code == 202
         body = resp.json()
         assert body["task_id"] == "t-001"
-        assert body["status"] == "queued"
+        assert body["status"] == "pending"
         mock_client.generate_report.assert_called_once()
         args = mock_client.generate_report.call_args[0]
         assert args[0] == "s-001"

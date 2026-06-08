@@ -173,7 +173,7 @@ class CheckpointStorage:
                 )
                 await db_session.commit()
         except Exception as e:
-            logger.warning("Checkpoint PG 持久化失败: %s", e)
+            logger.warning("Checkpoint PG 持久化失败: %s", e, exc_info=True)
 
     def load_latest(self, session_id: str) -> dict | None:
         """加载最新的热状态。"""

@@ -2,11 +2,10 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-COPY reqradar/kernel/ reqradar/kernel/
-COPY reqradar/infrastructure/ reqradar/infrastructure/
+COPY reqradar/ reqradar/
 COPY services/api/ services/api/
 
-RUN pip install --no-cache-dir --break-system-packages -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com fastapi uvicorn httpx pyjwt sqlalchemy aiosqlite
+RUN pip install --no-cache-dir --break-system-packages -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com fastapi uvicorn httpx pyjwt sqlalchemy aiosqlite redis pydantic
 
 EXPOSE 8000
 

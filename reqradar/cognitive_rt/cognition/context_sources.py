@@ -46,10 +46,15 @@ class ProjectMemorySource:
         self._service_url = ""
         self._internal_api_key = ""
 
+    def configure(self, service_url: str = "", internal_api_key: str = "") -> None:
+        """注入服务连接配置。"""
+        self._service_url = service_url
+        self._internal_api_key = internal_api_key
+
     def supported_kind(self) -> ContextKind:
         return ContextKind.MEMORY
 
-    def is_available(self) -> bool:
+    def is_available(self, project_id: str = "") -> bool:
         return True
 
     async def collect(
@@ -58,6 +63,7 @@ class ProjectMemorySource:
         project_id: str,
         query: str,
         max_items: int = 50,
+        context_kind: str = "",
     ) -> list[ContextItem]:
         if not self._service_url:
             logger.warning("ProjectMemorySource: service_url 未配置")
@@ -83,11 +89,12 @@ class ProjectMemorySource:
                         continue
                     for entry in entries:
                         items.append(
-                            {
-                                "type": ktype,
-                                "content": entry.get("content", ""),
-                                "topic": entry.get("topic", ""),
-                            }
+                            ContextItem(
+                                content=entry.get("content", ""),
+                                context_kind=ContextKind.MEMORY,
+                                source_name="ProjectMemorySource",
+                                metadata={"type": ktype, "topic": entry.get("topic", "")},
+                            )
                         )
                 duration_ms = int((time.monotonic() - start) * 1000)
                 logger.info(
@@ -108,10 +115,15 @@ class UserMemorySource:
         self._service_url = ""
         self._internal_api_key = ""
 
+    def configure(self, service_url: str = "", internal_api_key: str = "") -> None:
+        """注入服务连接配置。"""
+        self._service_url = service_url
+        self._internal_api_key = internal_api_key
+
     def supported_kind(self) -> ContextKind:
         return ContextKind.MEMORY
 
-    def is_available(self) -> bool:
+    def is_available(self, project_id: str = "") -> bool:
         return True
 
     async def collect(
@@ -120,6 +132,7 @@ class UserMemorySource:
         project_id: str,
         query: str,
         max_items: int = 50,
+        context_kind: str = "",
     ) -> list[ContextItem]:
         if not self._service_url:
             logger.warning("UserMemorySource: service_url 未配置")
@@ -142,11 +155,12 @@ class UserMemorySource:
                         continue
                     for entry in entries:
                         items.append(
-                            {
-                                "type": ktype,
-                                "content": entry.get("content", ""),
-                                "topic": entry.get("topic", ""),
-                            }
+                            ContextItem(
+                                content=entry.get("content", ""),
+                                context_kind=ContextKind.MEMORY,
+                                source_name="UserMemorySource",
+                                metadata={"type": ktype, "topic": entry.get("topic", "")},
+                            )
                         )
                 duration_ms = int((time.monotonic() - start) * 1000)
                 logger.info(
@@ -165,10 +179,15 @@ class CodeGraphSource:
         self._service_url = ""
         self._internal_api_key = ""
 
+    def configure(self, service_url: str = "", internal_api_key: str = "") -> None:
+        """注入服务连接配置。"""
+        self._service_url = service_url
+        self._internal_api_key = internal_api_key
+
     def supported_kind(self) -> ContextKind:
         return ContextKind.SOURCE_CODE
 
-    def is_available(self) -> bool:
+    def is_available(self, project_id: str = "") -> bool:
         return True
 
     async def collect(
@@ -177,6 +196,7 @@ class CodeGraphSource:
         project_id: str,
         query: str,
         max_items: int = 50,
+        context_kind: str = "",
     ) -> list[ContextItem]:
         if not self._service_url:
             logger.warning("CodeGraphSource: service_url 未配置")
@@ -196,11 +216,15 @@ class CodeGraphSource:
                 items = []
                 for entry in data if isinstance(data, list) else data.get("results", []):
                     items.append(
-                        {
-                            "content": entry.get("content", ""),
-                            "source": entry.get("source", ""),
-                            "score": entry.get("score", 0.0),
-                        }
+                        ContextItem(
+                            content=entry.get("content", ""),
+                            context_kind=ContextKind.SOURCE_CODE,
+                            source_name="CodeGraphSource",
+                            metadata={
+                                "source": entry.get("source", ""),
+                                "score": entry.get("score", 0.0),
+                            },
+                        )
                     )
                 duration_ms = int((time.monotonic() - start) * 1000)
                 logger.info(
@@ -219,10 +243,15 @@ class VectorResultSource:
         self._service_url = ""
         self._internal_api_key = ""
 
+    def configure(self, service_url: str = "", internal_api_key: str = "") -> None:
+        """注入服务连接配置。"""
+        self._service_url = service_url
+        self._internal_api_key = internal_api_key
+
     def supported_kind(self) -> ContextKind:
         return ContextKind.REQUIREMENT
 
-    def is_available(self) -> bool:
+    def is_available(self, project_id: str = "") -> bool:
         return True
 
     async def collect(
@@ -231,6 +260,7 @@ class VectorResultSource:
         project_id: str,
         query: str,
         max_items: int = 50,
+        context_kind: str = "",
     ) -> list[ContextItem]:
         if not self._service_url:
             logger.warning("VectorResultSource: service_url 未配置")
@@ -250,11 +280,15 @@ class VectorResultSource:
                 items = []
                 for entry in data if isinstance(data, list) else data.get("results", []):
                     items.append(
-                        {
-                            "content": entry.get("content", ""),
-                            "source": entry.get("source", ""),
-                            "score": entry.get("score", 0.0),
-                        }
+                        ContextItem(
+                            content=entry.get("content", ""),
+                            context_kind=ContextKind.REQUIREMENT,
+                            source_name="VectorResultSource",
+                            metadata={
+                                "source": entry.get("source", ""),
+                                "score": entry.get("score", 0.0),
+                            },
+                        )
                     )
                 duration_ms = int((time.monotonic() - start) * 1000)
                 logger.info(
@@ -275,10 +309,15 @@ class GitHistorySource:
         self._service_url = ""
         self._internal_api_key = ""
 
+    def configure(self, service_url: str = "", internal_api_key: str = "") -> None:
+        """注入服务连接配置。"""
+        self._service_url = service_url
+        self._internal_api_key = internal_api_key
+
     def supported_kind(self) -> ContextKind:
         return ContextKind.GIT_HISTORY
 
-    def is_available(self) -> bool:
+    def is_available(self, project_id: str = "") -> bool:
         return True
 
     async def collect(
@@ -287,6 +326,7 @@ class GitHistorySource:
         project_id: str,
         query: str,
         max_items: int = 50,
+        context_kind: str = "",
     ) -> list[ContextItem]:
         if not self._service_url:
             logger.warning("GitHistorySource: service_url 未配置")
@@ -309,11 +349,12 @@ class GitHistorySource:
                         continue
                     for entry in entries:
                         items.append(
-                            {
-                                "type": ktype,
-                                "content": entry.get("content", ""),
-                                "topic": entry.get("topic", ""),
-                            }
+                            ContextItem(
+                                content=entry.get("content", ""),
+                                context_kind=ContextKind.GIT_HISTORY,
+                                source_name="GitHistorySource",
+                                metadata={"type": ktype, "topic": entry.get("topic", "")},
+                            )
                         )
                 duration_ms = int((time.monotonic() - start) * 1000)
                 logger.info(

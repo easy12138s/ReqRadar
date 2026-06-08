@@ -135,7 +135,7 @@ class EventPublisher:
                 )
                 await db_session.commit()
         except Exception as e:
-            logger.warning("事件 PG 持久化失败: %s", e)
+            logger.warning("事件 PG 持久化失败: %s", e, exc_info=True)
 
     def get_events(self, session_id: str) -> list[EventRecord]:
         """获取指定 Session 的所有事件。"""

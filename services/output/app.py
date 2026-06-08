@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -16,9 +17,43 @@ import httpx
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
+from reqradar.kernel.enums import TaskStatus
+
 logger = logging.getLogger(__name__)
 
+_start_time: float = 0.0
 INTERNAL_API_KEY = os.environ.get("INTERNAL_API_KEY", "dev-internal-key")
+
+
+class _OutputLLMClient:
+    """output-service 内部 LLM 客户端，不依赖 cognitive_rt。"""
+
+    def __init__(self) -> None:
+        self._api_key = os.environ.get("LLM_API_KEY", "")
+        self._model = os.environ.get("LLM_MODEL", "gpt-4o-mini")
+        self._base_url = os.environ.get("LLM_BASE_URL", "https://api.openai.com/v1").rstrip("/")
+
+    async def complete(self, messages: list[dict[str, str]], **kwargs: Any) -> str | None:
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            resp = await client.post(
+                f"{self._base_url}/chat/completions",
+                json={
+                    "model": self._model,
+                    "messages": messages,
+                    "temperature": kwargs.get("temperature", 0.7),
+                    "max_tokens": kwargs.get("max_tokens", 4096),
+                },
+                headers={
+                    "Authorization": f"Bearer {self._api_key}",
+                    "Content-Type": "application/json",
+                },
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            return data.get("choices", [{}])[0].get("message", {}).get("content")
+
+    async def close(self) -> None:
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -74,7 +109,7 @@ class ReportTask:
 
     task_id: str
     session_id: str
-    status: str = "queued"
+    status: str = TaskStatus.PENDING.value
     output_format: str = "markdown"
     template_id: str | None = None
     output_uri: str | None = None
@@ -120,7 +155,7 @@ class TaskStore:
             return None
         for tid in reversed(task_ids):
             task = self._tasks.get(tid)
-            if task and task.status == "completed":
+            if task and task.status == TaskStatus.COMPLETED.value:
                 return task
         return None
 
@@ -196,13 +231,17 @@ class ReportGenerator:
                 headers=headers,
                 params={"limit": 200},
             )
-            events = events_resp.json() if events_resp.status_code == 200 else []
+            events_data = events_resp.json() if events_resp.status_code == 200 else {}
+            events = events_data.get("events", []) if isinstance(events_data, dict) else events_data
 
             evidence_resp = await client.get(
                 f"{self._service_url}/internal/v2/sessions/{session_id}/evidence",
                 headers=headers,
             )
-            evidence = evidence_resp.json() if evidence_resp.status_code == 200 else []
+            evidence_data = evidence_resp.json() if evidence_resp.status_code == 200 else {}
+            evidence = (
+                evidence_data.get("items", []) if isinstance(evidence_data, dict) else evidence_data
+            )
 
         return session_data, events, evidence
 
@@ -248,16 +287,22 @@ class ReportGenerator:
         ]
 
         if events:
-            event_lines = [
-                f"- [{e.get('type', '?')}] {e.get('summary', e.get('detail', ''))}"
-                for e in events[:50]
-            ]
+            event_lines = []
+            for e in events[:50]:
+                etype = e.get("event_type", e.get("type", "?"))
+                payload = e.get("payload", {})
+                seq = e.get("sequence", "?")
+                detail = payload.get("summary", payload.get("detail", payload.get("step", "")))
+                event_lines.append(f"- [{seq}] {etype}: {detail}")
             sections.append("## 事件记录\n" + "\n".join(event_lines))
 
         if evidence:
-            evidence_lines = [
-                f"- [{ev.get('source', '?')}] {ev.get('content', '')[:200]}" for ev in evidence[:30]
-            ]
+            evidence_lines = []
+            for ev in evidence[:30]:
+                etype = ev.get("evidence_type", ev.get("source", "?"))
+                content = ev.get("content", "")
+                preview = content[:200] if isinstance(content, str) else str(content)[:200]
+                evidence_lines.append(f"- [{etype}] {preview}")
             sections.append("## 证据列表\n" + "\n".join(evidence_lines))
 
         sections.append(
@@ -304,12 +349,11 @@ _generate_sleep_sec = 0.5
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _report_generator
+    global _report_generator, _start_time
+    _start_time = time.time()
     _task_store.clear()
 
-    from reqradar.cognitive_rt.cognition.llm_client import LiteLLMClient
-
-    llm_client = LiteLLMClient()
+    llm_client = _OutputLLMClient()
     _report_generator = ReportGenerator(
         template_dir=Path(__file__).parent / "templates",
         llm_client=llm_client,
@@ -346,7 +390,7 @@ async def verify_internal_api_key(request, call_next):
 
 
 async def _run_generation(task: ReportTask) -> None:
-    task.status = "running"
+    task.status = TaskStatus.RUNNING.value
     await asyncio.sleep(_generate_sleep_sec)
     try:
         if _report_generator is None:
@@ -359,17 +403,17 @@ async def _run_generation(task: ReportTask) -> None:
         task.content = content
         task.size_bytes = len(content.encode("utf-8"))
         task.output_uri = f"memory://reports/{task.session_id}/{task.task_id}.{task.output_format}"
-        task.status = "completed"
+        task.status = TaskStatus.COMPLETED.value
         task.completed_at = datetime.now(UTC)
     except Exception as e:
-        task.status = "failed"
+        task.status = TaskStatus.FAILED.value
         task.error = str(e)
         logger.error("报告生成失败: %s", e)
 
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "output"}
+    return {"status": "ok", "service": "output", "uptime_seconds": int(time.time() - _start_time)}
 
 
 @app.post("/internal/v2/reports/generate", status_code=202)
@@ -381,7 +425,7 @@ async def generate_report(req: GenerateRequest, background_tasks: BackgroundTask
     estimated = 5000 if req.output_format != "html" else 8000
     return GenerateResponse(
         task_id=task.task_id,
-        status="queued",
+        status=TaskStatus.PENDING.value,
         estimated_duration_ms=estimated,
     )
 
@@ -400,7 +444,7 @@ async def get_report_status(task_id: str):
         "task_id": task.task_id,
         "status": task.status,
     }
-    if task.status == "completed":
+    if task.status == TaskStatus.COMPLETED.value:
         result.update(
             output_uri=task.output_uri,
             format=task.output_format,
@@ -443,7 +487,7 @@ async def get_report_content(task_id: str):
             status_code=404,
             detail={"error": {"code": "TASK_NOT_FOUND", "message": f"任务不存在: {task_id}"}},
         )
-    if task.status != "completed":
+    if task.status != TaskStatus.COMPLETED.value:
         raise HTTPException(
             status_code=400,
             detail={
