@@ -212,6 +212,20 @@ services:
     networks:
       - reqradar-net
 
+  # ── Frontend ────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: reqradar-frontend
+    ports:
+      - "3000:80"
+    networks:
+      - reqradar-net
+    depends_on:
+      api-service:
+        condition: service_started
+
 volumes:
   pgdata:
   redisdata:

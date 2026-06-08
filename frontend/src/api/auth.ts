@@ -1,22 +1,18 @@
-import { apiClient } from './client';
-import type {
-  AuthResponse,
-  LoginRequest,
-  RegisterRequest,
-  User,
-} from '@/types/api';
+import axios from 'axios';
+import type { LoginRequest, LoginResponse, VerifyTokenResponse } from '@/types';
 
-export async function login(data: LoginRequest): Promise<AuthResponse> {
-  const response = await apiClient.post<AuthResponse>('/auth/login', data);
+const client = axios.create({
+  baseURL: '/api/v2',
+});
+
+export async function login(data: LoginRequest): Promise<LoginResponse> {
+  const response = await client.post<LoginResponse>('/auth/login', data);
   return response.data;
 }
 
-export async function register(data: RegisterRequest): Promise<AuthResponse> {
-  const response = await apiClient.post<AuthResponse>('/auth/register', data);
-  return response.data;
-}
-
-export async function getMe(): Promise<User> {
-  const response = await apiClient.get<User>('/auth/me');
+export async function verifyToken(token: string): Promise<VerifyTokenResponse> {
+  const response = await client.get<VerifyTokenResponse>('/auth/verify', {
+    headers: { Authorization: `Bearer ${token}` },
+  });
   return response.data;
 }

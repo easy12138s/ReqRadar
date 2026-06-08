@@ -1,70 +1,32 @@
-import axios, { AxiosError } from 'axios';
-import { message } from 'antd';
+import axios, { type AxiosError, type InternalAxiosRequestConfig } from 'axios';
+import type { ApiError } from '@/types';
 
-const API_BASE_URL = '/api';
+const API_BASE = '/api/v2';
 
-let navigateFn: ((path: string) => void) | null = null;
-export function setNavigate(nav: (path: string) => void) {
-  navigateFn = nav;
-}
-
-export const apiClient = axios.create({
-  baseURL: API_BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+const client = axios.create({
+  baseURL: API_BASE,
+  timeout: 30000,
+  headers: { 'Content-Type': 'application/json' },
 });
 
-apiClient.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('access_token');
-    if (token && config.headers) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => Promise.reject(error)
-);
-
-apiClient.interceptors.response.use(
-  (response) => response,
-  (error: AxiosError<{ detail?: string; message?: string }>) => {
-    const status = error.response?.status;
-
-    if (status === 401) {
-      const detail = error.response?.data?.detail || '';
-      if (detail.includes('expired') || detail.includes('Expired')) {
-        message.warning('会话已过期，请重新登录');
-      }
-      localStorage.removeItem('access_token');
-      if (navigateFn) {
-        navigateFn('/login');
-      } else {
-        window.location.href = '/app/login';
-      }
-    } else if (status === 403) {
-      message.error('没有权限执行此操作');
-    } else if (status === 422) {
-      const detail = error.response?.data?.detail;
-      if (Array.isArray(detail)) {
-        const msgs = detail.map((d: { loc?: string[]; msg?: string }) => `${d.loc?.join('.')}: ${d.msg}`).join('; ');
-        message.error(`参数错误: ${msgs}`);
-      } else {
-        message.error(`请求参数错误: ${detail || '请检查输入'}`);
-      }
-    } else if (status && status >= 500) {
-      message.error('服务器错误，请稍后重试');
-    } else if (!error.response) {
-      message.error('网络错误，请检查网络连接');
-    } else {
-      const detail =
-        error.response?.data?.detail ||
-        error.response?.data?.message ||
-        error.message ||
-        '发生错误';
-      message.error(detail);
-    }
-
-    return Promise.reject(error);
+client.interceptors.request.use((config: InternalAxiosRequestConfig) => {
+  const token = localStorage.getItem('access_token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
   }
+  return config;
+});
+
+client.interceptors.response.use(
+  (response) => response,
+  (error: AxiosError<ApiError>) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('access_token');
+      window.location.href = '/app/v2/login';
+    }
+    return Promise.reject(error);
+  },
 );
+
+export { client, API_BASE };
+export default client;
