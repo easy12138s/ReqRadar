@@ -16,7 +16,10 @@ from reqradar.kernel.models import User
 
 logger = logging.getLogger(__name__)
 
-JWT_SECRET = os.environ.get("JWT_SECRET", "dev-secret")
+JWT_SECRET = os.environ.get("JWT_SECRET", "")
+if not JWT_SECRET:
+    logging.getLogger("reqradar.auth").warning("JWT_SECRET 未配置，使用不安全的默认密钥")
+    JWT_SECRET = "dev-secret-not-for-production"
 INTERNAL_API_KEY = os.environ.get("INTERNAL_API_KEY", "dev-internal-key")
 
 

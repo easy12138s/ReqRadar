@@ -54,7 +54,7 @@ services:
     container_name: reqradar-redis
     command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
     ports:
-      - "6379:6379"
+      - "16379:6379"
     volumes:
       - redisdata:/data
     networks:
@@ -127,6 +127,9 @@ services:
       INDEX_SERVICE_URL: http://index-service:8003
       OUTPUT_SERVICE_URL: http://output-service:8004
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-change-in-production}
+      LLM_API_KEY: ${LLM_API_KEY}
+      LLM_MODEL: MiniMax-M2.5
+      LLM_BASE_URL: https://api.minimax.chat/v1
       LOG_LEVEL: INFO
     expose:
       - "8002"
@@ -169,7 +172,11 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://reqradar:reqradar_dev@postgres:5432/reqradar
       REDIS_URL: redis://redis:6379/3
+      COGNITIVE_RT_URL: http://cognitive-rt:8002
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-change-in-production}
+      LLM_API_KEY: ${LLM_API_KEY}
+      LLM_MODEL: MiniMax-M2.5
+      LLM_BASE_URL: https://api.minimax.chat/v1
       LOG_LEVEL: INFO
     expose:
       - "8004"

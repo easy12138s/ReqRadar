@@ -296,6 +296,25 @@ async def get_events(
 @app.websocket("/api/v2/sessions/{session_id}/ws")
 async def session_ws(websocket: WebSocket, session_id: str):
     """WebSocket 实时事件推送 — 订阅 Redis Stream。"""
+    # JWT 认证
+    token = websocket.query_params.get("token")
+    if not token:
+        await websocket.close(code=4003, reason="缺少认证 token")
+        return
+
+    # 验证 JWT
+    jwt_secret = os.environ.get("JWT_SECRET", "")
+    try:
+        from reqradar.infrastructure.auth import decode_jwt_token
+
+        user_info = decode_jwt_token(token, jwt_secret)
+        if isinstance(user_info, dict) and not user_info.get("valid", True):
+            await websocket.close(code=4003, reason="Token 无效")
+            return
+    except Exception as e:
+        await websocket.close(code=4003, reason="认证失败: %s" % str(e))
+        return
+
     await websocket.accept()
     redis_url = os.environ.get("REDIS_URL", "")
 

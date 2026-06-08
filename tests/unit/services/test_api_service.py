@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -425,7 +425,13 @@ class TestSessionRoutes:
         assert args[1]["limit"] == 50
 
     def test_websocket_stub(self, client: TestClient):
-        with client.websocket_connect("/api/v2/sessions/s-001/ws") as ws:
+        with (
+            patch(
+                "reqradar.infrastructure.auth.decode_jwt_token",
+                return_value={"sub": "u-001", "username": "tester"},
+            ),
+            client.websocket_connect("/api/v2/sessions/s-001/ws?token=%s" % VALID_TOKEN) as ws,
+        ):
             data = ws.receive_json()
             assert data["type"] == "error"
 
