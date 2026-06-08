@@ -16,6 +16,7 @@ from collections.abc import Sequence
 from typing import Union
 
 import sqlalchemy as sa
+from sqlalchemy import inspect
 
 from alembic import op
 
@@ -25,9 +26,16 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
+def _table_exists(table_name: str) -> bool:
+    bind = op.get_bind()
+    return inspect(bind).has_table(table_name)
+
+
 def upgrade() -> None:
     # 2.1 raw_context — L0 原始上下文元数据指针
     # UUID 主键使用 sa.Uuid()，Python 侧 default=uuid4 生成 ID（兼容 SQLite）
+    if _table_exists("raw_context"):
+        return
     op.create_table(
         "raw_context",
         sa.Column("id", sa.Uuid(), primary_key=True),

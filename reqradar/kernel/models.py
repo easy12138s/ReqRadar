@@ -32,7 +32,15 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from reqradar.kernel.database import Base
-from reqradar.kernel.enums import ChangeStatus, ReleaseStatus, TaskStatus
+from reqradar.kernel.enums import (
+    ChangeStatus,
+    DimensionStatus,
+    EvidenceStatus,
+    FreshnessStatus,
+    ReleaseStatus,
+    SessionStatus,
+    TaskStatus,
+)
 
 
 def utc_now() -> datetime:
@@ -513,13 +521,15 @@ class CognitiveSession(Base):
     __tablename__ = "cognitive_sessions"
 
     session_id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
-    project_id: Mapped[UUID] = mapped_column(
-        ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    project_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("projects.id", ondelete="SET NULL"), nullable=True
     )
-    user_id: Mapped[UUID] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    user_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
-    status: Mapped[str] = mapped_column(String(20), server_default="CREATED", nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(20), server_default=SessionStatus.CREATED.value, nullable=False
+    )
     config: Mapped[dict] = mapped_column(JSON, server_default="{}", nullable=False)
     state: Mapped[dict] = mapped_column(JSON, server_default="{}", nullable=False)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -625,7 +635,9 @@ class EvidenceRecord(Base):
         ForeignKey("cognitive_sessions.session_id", ondelete="CASCADE"), nullable=False
     )
     type: Mapped[str] = mapped_column(String(32), nullable=False)
-    status: Mapped[str] = mapped_column(String(16), server_default="discovered", nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(16), server_default=EvidenceStatus.DISCOVERED.value, nullable=False
+    )
     confidence_score: Mapped[float] = mapped_column(Float, server_default="0.5", nullable=False)
     confidence_level: Mapped[str] = mapped_column(
         String(16), server_default="medium", nullable=False
@@ -699,7 +711,9 @@ class DimensionResult(Base):
         ForeignKey("cognitive_sessions.session_id", ondelete="CASCADE"), nullable=False
     )
     dimension_id: Mapped[str] = mapped_column(String(32), nullable=False)
-    status: Mapped[str] = mapped_column(String(20), server_default="pending", nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(20), server_default=DimensionStatus.PENDING.value, nullable=False
+    )
     risk_level: Mapped[str] = mapped_column(String(20), server_default="none", nullable=False)
     evidence_count: Mapped[int] = mapped_column(Integer, server_default="0", nullable=False)
     summary: Mapped[str] = mapped_column(Text, server_default="", nullable=False)
@@ -727,7 +741,9 @@ class L3Knowledge(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     project_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
     knowledge_type: Mapped[str] = mapped_column(String(32), nullable=False)
-    freshness: Mapped[str] = mapped_column(String(20), server_default="active", nullable=False)
+    freshness: Mapped[str] = mapped_column(
+        String(20), server_default=FreshnessStatus.ACTIVE.value, nullable=False
+    )
     confidence_score: Mapped[float] = mapped_column(Float, server_default="0.5", nullable=False)
     confidence_data: Mapped[dict] = mapped_column(JSON, server_default="{}", nullable=False)
     source_session_ids: Mapped[list] = mapped_column(JSON, server_default="[]", nullable=False)

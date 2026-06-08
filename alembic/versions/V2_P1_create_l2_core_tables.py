@@ -16,6 +16,7 @@ from collections.abc import Sequence
 from typing import Union
 
 import sqlalchemy as sa
+from sqlalchemy import inspect
 
 from alembic import op
 
@@ -25,7 +26,15 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
+def _table_exists(table_name: str) -> bool:
+    bind = op.get_bind()
+    return inspect(bind).has_table(table_name)
+
+
 def upgrade() -> None:
+    if _table_exists("cognitive_sessions"):
+        return
+
     # 3.1 cognitive_sessions — 认知会话表（L2 核心）
     # session_id 使用 sa.Uuid()，Python 侧 default=uuid4 生成 ID（兼容 SQLite）
     op.create_table(
@@ -422,7 +431,7 @@ def upgrade() -> None:
             name="ck_evidence_relation_confidence",
         ),
         sa.CheckConstraint(
-            "relation_type IN ('SUPPORTS','CONTRADICTS','DERIVED_FROM','SUPERSEDES','CORROBORATES')",
+            "relation_type IN ('DEPENDS_ON','IMPACTS','CONFLICTS_WITH','EVOLVES_FROM','MITIGATES','VIOLATES','DERIVED_FROM','CORROBORATES','SUPERSEDES')",
             name="ck_evidence_relation_type",
         ),
         sa.CheckConstraint(
@@ -498,7 +507,7 @@ def upgrade() -> None:
         ),
         sa.UniqueConstraint("session_id", "dimension_id", name="uq_dimension_session_id"),
         sa.CheckConstraint(
-            "status IN ('not_started','in_progress','completed')",
+            "status IN ('pending','in_progress','sufficient','insufficient')",
             name="ck_dimension_status",
         ),
         sa.CheckConstraint(
