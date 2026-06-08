@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -228,7 +228,7 @@ def mock_client():
 
     client.generate_report.return_value = {
         "task_id": "t-001",
-        "status": "queued",
+        "status": "pending",
         "estimated_duration_ms": 5000,
     }
 
@@ -425,9 +425,15 @@ class TestSessionRoutes:
         assert args[1]["limit"] == 50
 
     def test_websocket_stub(self, client: TestClient):
-        with client.websocket_connect("/api/v2/sessions/s-001/ws") as ws:
+        with (
+            patch(
+                "reqradar.infrastructure.auth.decode_jwt_token",
+                return_value={"sub": "u-001", "username": "tester"},
+            ),
+            client.websocket_connect("/api/v2/sessions/s-001/ws?token=%s" % VALID_TOKEN) as ws,
+        ):
             data = ws.receive_json()
-            assert data["type"] == "info"
+            assert data["type"] == "error"
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -675,7 +681,7 @@ class TestReportRoutes:
         assert resp.status_code == 202
         body = resp.json()
         assert body["task_id"] == "t-001"
-        assert body["status"] == "queued"
+        assert body["status"] == "pending"
         mock_client.generate_report.assert_called_once()
         args = mock_client.generate_report.call_args[0]
         assert args[0] == "s-001"

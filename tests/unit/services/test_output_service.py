@@ -7,6 +7,7 @@ import uuid
 import pytest
 from fastapi.testclient import TestClient
 
+from reqradar.kernel.enums import TaskStatus
 from services.output.app import _task_store, app
 
 
@@ -52,7 +53,7 @@ class TestReportGeneration:
     def test_generate_response_fields(self, client: TestClient):
         data = _generate(client)
         assert "task_id" in data
-        assert data["status"] == "queued"
+        assert data["status"] == TaskStatus.PENDING.value
         assert "estimated_duration_ms" in data
         assert isinstance(data["estimated_duration_ms"], int)
 
@@ -72,11 +73,11 @@ class TestReportStatus:
         task_id = data["task_id"]
         resp = client.get(f"/internal/v2/reports/{task_id}/status")
         assert resp.status_code == 200
-        assert resp.json()["status"] in ("queued", "running", "completed")
+        assert resp.json()["status"] in (TaskStatus.PENDING.value, TaskStatus.RUNNING.value, TaskStatus.COMPLETED.value)
 
     def test_status_completed(self, client: TestClient):
         result = _generate_and_complete(client)
-        assert result["status"] == "completed"
+        assert result["status"] == TaskStatus.COMPLETED.value
 
     def test_status_not_found(self, client: TestClient):
         fake_id = str(uuid.uuid4())
@@ -152,7 +153,7 @@ class TestReportContent:
         task = ReportTask(
             task_id="pending-task",
             session_id="sess",
-            status="running",
+            status=TaskStatus.RUNNING.value,
         )
         _task_store._tasks[task.task_id] = task
         resp = client.get(f"/internal/v2/reports/{task.task_id}/content")

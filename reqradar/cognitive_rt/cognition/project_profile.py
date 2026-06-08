@@ -7,6 +7,7 @@ import logging
 from collections import Counter
 from datetime import datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from reqradar.cognitive_rt.cognition.llm_utils import _call_llm_structured
 from reqradar.cognitive_rt.cognition.prompts import (
@@ -17,8 +18,10 @@ from reqradar.cognitive_rt.cognition.schemas import (
     GENERATE_BATCH_MODULE_SUMMARIES_SCHEMA,
     PROJECT_PROFILE_SCHEMA,
 )
-from reqradar.index_svc.memory.project_memory import ProjectMemory
 from reqradar.kernel.exceptions import LLMException
+
+if TYPE_CHECKING:
+    from reqradar.index_svc.memory.project_memory import ProjectMemory
 
 logger = logging.getLogger("reqradar.agent")
 

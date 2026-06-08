@@ -9,6 +9,7 @@ import base64
 import hashlib
 import hmac
 import json
+import os
 import time
 
 _HAS_PYJWT = False
@@ -19,7 +20,7 @@ try:
 except ImportError:
     _jwt = None  # type: ignore[assignment]
 
-_MOCK_SECRET = "reqradar-mock-secret-key"
+_MOCK_SECRET = os.environ.get("JWT_SECRET", "reqradar-mock-secret-key")
 
 
 def _b64_encode(data: bytes) -> str:

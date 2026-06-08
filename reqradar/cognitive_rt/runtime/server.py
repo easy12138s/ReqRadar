@@ -9,20 +9,52 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
+from reqradar.cognitive_rt.cognition.llm_client import LiteLLMClient
 from reqradar.cognitive_rt.runtime.checkpoint import CheckpointManager
 from reqradar.cognitive_rt.runtime.checkpoint_storage import CheckpointStorage
+from reqradar.cognitive_rt.runtime.event_bus import InMemoryEventBus
 from reqradar.cognitive_rt.runtime.events import EventPublisher
+from reqradar.cognitive_rt.runtime.runner_factory import (
+    create_runner_components,
+)
 from reqradar.cognitive_rt.runtime.session_api import SessionInfo, SessionService
+from reqradar.kernel.database import Base, create_engine, create_session_factory
 
 logger = logging.getLogger(__name__)
 
 INTERNAL_API_KEY = os.environ.get("INTERNAL_API_KEY", "dev-internal-key")
 
 
+DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite+aiosqlite:///./reqradar_dev.db")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Cognitive-RT Service 启动")
+
+    engine = create_engine(DATABASE_URL)
+    app.state.db_session_factory = create_session_factory(engine)
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    app.state.llm_client = LiteLLMClient()
+
+    # 注入 EventBus（Redis Stream 模式，降级为内存模式）
+    redis_url = os.environ.get("REDIS_URL", "")
+    _event_bus = InMemoryEventBus(redis_url=redis_url)
+    await _event_bus.connect()
+
+    # 注入 db_session_factory 到所有需要 PG 持久化的组件
+    _publisher._bus = _event_bus
+    _publisher._db_session_factory = app.state.db_session_factory
+    _checkpoint_storage._db_session_factory = app.state.db_session_factory
+    _service._db_session_factory = app.state.db_session_factory
+
     yield
+
+    await _event_bus.close()
+    await engine.dispose()
     logger.info("Cognitive-RT Service 关闭")
 
 
@@ -92,17 +124,35 @@ async def create_session(body: dict):
 
 @app.post("/internal/v2/sessions/{session_id}/start")
 async def start_session(session_id: str, body: dict):
-    """启动 Session — 转换状态并异步运行分析。
-
-    Runner 参数由 cognitive-rt 内部构造（工厂函数桩），
-    BFF 只传递业务语义参数。
-    """
+    """启动 Session — 创建 Runner 组件并触发真实推理。"""
     resume_from = body.get("resume_from")
-    requirement_text = body.get("requirement_text")
+    requirement_text = body.get("requirement_text", "")
+    config = body.get("config", {})
+
+    try:
+        info = _service.get(session_id)
+    except KeyError as e:
+        raise HTTPException(
+            status_code=404, detail={"error": {"code": "SESSION_NOT_FOUND", "message": str(e)}}
+        ) from e
+
+    project_id = info.project_id if hasattr(info, "project_id") else "default"
+    user_id = info.user_id if hasattr(info, "user_id") else "system"
+
+    agent, llm_client, tool_registry = create_runner_components(
+        session_id=session_id,
+        requirement_text=requirement_text,
+        project_id=str(project_id),
+        user_id=str(user_id),
+        config=config,
+    )
 
     try:
         info = await _service.start(
             session_id,
+            agent=agent,
+            llm_client=llm_client,
+            tool_registry=tool_registry,
             requirement_text=requirement_text,
             resume_from=resume_from,
         )
@@ -192,6 +242,44 @@ async def get_dimensions(session_id: str):
             status_code=404, detail={"error": {"code": "SESSION_NOT_FOUND", "message": str(e)}}
         ) from e
     return {"session_id": session_id, "dimensions": data}
+
+
+@app.get("/internal/v2/sessions/{session_id}/trace")
+async def get_trace(session_id: str):
+    """查询推理链 Trace。"""
+    try:
+        _service.get(session_id)
+    except KeyError as e:
+        raise HTTPException(
+            status_code=404, detail={"error": {"code": "SESSION_NOT_FOUND", "message": str(e)}}
+        ) from e
+
+    events = _service.get_events(session_id) if hasattr(_service, "get_events") else []
+
+    steps = []
+    current_step = None
+    for evt in events:
+        evt_type = (
+            evt.get("event_type", "") if isinstance(evt, dict) else getattr(evt, "event_type", "")
+        )
+        payload = evt.get("payload", {}) if isinstance(evt, dict) else getattr(evt, "payload", {})
+        created_at = (
+            evt.get("created_at", "") if isinstance(evt, dict) else getattr(evt, "created_at", "")
+        )
+
+        if evt_type == "STEP_STARTED":
+            current_step = {
+                "step_id": payload.get("step_id", ""),
+                "started_at": str(created_at),
+                "tools": [],
+            }
+        elif evt_type == "STEP_COMPLETED" and current_step:
+            current_step["completed_at"] = str(created_at)
+            current_step["result_summary"] = payload.get("result_summary", "")
+            steps.append(current_step)
+            current_step = None
+
+    return {"session_id": session_id, "steps": steps, "total": len(steps)}
 
 
 # ── 工具函数 ─────────────────────────────────────────────────────────────

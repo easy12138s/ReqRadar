@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 from reqradar.cognitive_rt.cognition.analysis_agent import AnalysisAgent
 from reqradar.cognitive_rt.cognition.llm_utils import _call_llm_structured
@@ -9,7 +10,9 @@ from reqradar.cognitive_rt.cognition.prompts.memory_evolution import (
     build_memory_evolution_user_prompt,
 )
 from reqradar.cognitive_rt.cognition.schemas import MEMORY_EVOLUTION_SCHEMA
-from reqradar.index_svc.memory.project_memory import ProjectMemory
+
+if TYPE_CHECKING:
+    from reqradar.index_svc.memory.project_memory import ProjectMemory
 
 logger = logging.getLogger("reqradar.agent.memory_evolution")
 

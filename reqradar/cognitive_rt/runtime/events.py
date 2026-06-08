@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from reqradar.kernel.enums import EventLevel, EventType
 
@@ -29,15 +30,22 @@ class EventRecord:
 class EventPublisher:
     """事件发布器 — 发布事件到内存存储和可选的外部总线。"""
 
-    def __init__(self, bus: object | None = None) -> None:
+    def __init__(
+        self,
+        bus: object | None = None,
+        db_session_factory: object | None = None,
+    ) -> None:
         """初始化事件发布器。
 
         Args:
             bus: 可选的事件总线（实现 publish 方法）
+            db_session_factory: 可选的数据库会话工厂（PG 持久化）
         """
         self._bus = bus
+        self._db_session_factory = db_session_factory
         self._events: dict[str, list[EventRecord]] = {}  # session_id -> events
         self._sequences: dict[str, int] = {}  # session_id -> next sequence
+        self._pending_tasks: set[asyncio.Task] = set()
 
     def publish(
         self,
@@ -77,12 +85,26 @@ class EventPublisher:
             self._events[session_id] = []
         self._events[session_id].append(record)
 
-        # 推送到外部总线
+        # 推送到外部总线（兼容同步/异步 bus）
         if self._bus is not None:
             try:
-                self._bus.publish(record)
+                result = self._bus.publish(record)
+                if asyncio.iscoroutine(result):
+                    loop = asyncio.get_running_loop()
+                    task = loop.create_task(result)
+                    self._pending_tasks.add(task)
+                    task.add_done_callback(self._pending_tasks.discard)
             except Exception as e:
                 logger.warning("事件总线推送失败: %s", e)
+
+        if self._db_session_factory:
+            try:
+                loop = asyncio.get_running_loop()
+                task = loop.create_task(self._persist_to_pg(record))
+                self._pending_tasks.add(task)
+                task.add_done_callback(self._pending_tasks.discard)
+            except RuntimeError:
+                logger.debug("无运行事件循环，跳过 PG 持久化")
 
         logger.debug(
             "事件发布: session=%s, type=%s, level=%s, seq=%s",
@@ -92,6 +114,28 @@ class EventPublisher:
             seq,
         )
         return record
+
+    async def _persist_to_pg(self, record: EventRecord) -> None:
+        """将事件持久化到 PostgreSQL。"""
+        try:
+            async with self._db_session_factory() as db_session:
+                from reqradar.kernel.models import Event as EventModel
+
+                db_session.add(
+                    EventModel(
+                        event_id=UUID(record.event_id),
+                        session_id=UUID(record.session_id),
+                        sequence=record.sequence,
+                        event_type=record.event_type.value,
+                        event_level=record.event_level.value,
+                        timestamp=record.timestamp,
+                        producer=record.producer,
+                        payload=record.payload,
+                    )
+                )
+                await db_session.commit()
+        except Exception as e:
+            logger.warning("事件 PG 持久化失败: %s", e, exc_info=True)
 
     def get_events(self, session_id: str) -> list[EventRecord]:
         """获取指定 Session 的所有事件。"""

@@ -40,8 +40,8 @@ def _write_index_version(persist_directory: Path) -> None:
         }
         with open(version_path, "w", encoding="utf-8") as f:
             json.dump(version_info, f)
-    except Exception:
-        logger.warning("Failed to write index version file")
+    except Exception as e:
+        logger.warning("Failed to write index version file: %s", e, exc_info=True)
 
 
 def _check_index_compatibility(persist_directory: Path) -> bool:

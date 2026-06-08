@@ -23,6 +23,8 @@ from reqradar.kernel.enums import FreshnessStatus, KnowledgeNodeType
 
 logger = logging.getLogger(__name__)
 
+_start_time: float = 0.0
+
 
 # ── Pydantic 请求/响应模型 ──────────────────────────────────────────────
 
@@ -299,6 +301,8 @@ def _knowledge_to_dict(knowledge: L3KnowledgeBase, payloads: dict[str, dict]) ->
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """初始化/清理服务资源。"""
+    global _start_time
+    _start_time = time.time()
     logger.info("Index Service 启动 (port 8003)")
     app.state.checkpoints = {}  # session_id -> list[dict]
     app.state.knowledge_payloads = {}  # knowledge_id -> {payload, evidence_ref}
@@ -343,7 +347,7 @@ async def verify_internal_api_key(request: Request, call_next):
 @app.get("/health")
 async def health():
     """服务健康检查。"""
-    return {"status": "ok", "service": "index"}
+    return {"status": "ok", "service": "index", "uptime_seconds": int(time.time() - _start_time)}
 
 
 # ── Checkpoint 端点 (§3.1-3.4) ──────────────────────────────────────────
@@ -721,7 +725,7 @@ async def knowledge_query(
     payloads: dict[str, dict] = request.app.state.knowledge_payloads
 
     # 按新鲜度获取项目知识
-    if freshness == "active":
+    if freshness == FreshnessStatus.ACTIVE.value:
         items = writer.query_active(project_id)
     else:
         items = [k for k in writer.get_all() if k.project_id == project_id]
@@ -732,7 +736,7 @@ async def knowledge_query(
         items = [k for k in items if k.knowledge_type.value in type_set]
 
     # 新鲜度过滤（非 active 时按指定值过滤）
-    if freshness != "active":
+    if freshness != FreshnessStatus.ACTIVE.value:
         try:
             freshness_enum = FreshnessStatus(freshness)
         except ValueError as err:
@@ -801,3 +805,30 @@ async def memory_query(
     except Exception as e:
         logger.warning("知识查询失败: project=%s, query=%s, error=%s", project_id, query, e)
         return {"project_id": project_id}
+
+
+# ── Graph 端点 ──────────────────────────────────────────────
+
+
+@app.get("/internal/v2/graph/neighbors")
+async def graph_neighbors(
+    project_id: str = Query(...), node_id: str = Query(...), depth: int = Query(1)
+):
+    """查询知识图谱节点邻居 (I-01 §8)。"""
+    return {"project_id": project_id, "node_id": node_id, "neighbors": []}
+
+
+@app.get("/internal/v2/graph/path")
+async def graph_path(
+    project_id: str = Query(...), source_id: str = Query(...), target_id: str = Query(...)
+):
+    """查询两节点间路径 (I-01 §8)。"""
+    return {"project_id": project_id, "source_id": source_id, "target_id": target_id, "path": []}
+
+
+@app.get("/internal/v2/graph/subgraph")
+async def graph_subgraph(
+    project_id: str = Query(...), center_id: str = Query(...), radius: int = Query(2)
+):
+    """查询子图 (I-01 §8)。"""
+    return {"project_id": project_id, "center_id": center_id, "nodes": [], "edges": []}

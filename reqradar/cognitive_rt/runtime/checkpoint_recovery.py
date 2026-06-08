@@ -137,5 +137,6 @@ class CheckpointRecovery:
                         return False
 
             return True
-        except Exception:
+        except Exception as e:
+            logger.warning("事件序列完整性校验失败: %s", e, exc_info=True)
             return False

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import UTC, datetime
 
@@ -33,11 +34,14 @@ class L3Writer:
         freshness_manager: FreshnessManager | None = None,
         confidence_calculator: ConfidenceCalculator | None = None,
         changelog: KnowledgeChangelog | None = None,
+        db_session_factory: object | None = None,
     ) -> None:
         self._store: dict[str, L3KnowledgeBase] = {}
         self._freshness = freshness_manager or FreshnessManager()
         self._confidence = confidence_calculator or ConfidenceCalculator()
         self._changelog = changelog or KnowledgeChangelog()
+        self._db_session_factory = db_session_factory
+        self._pending_tasks: set[asyncio.Task] = set()
 
     def append(self, knowledge: L3KnowledgeBase, session_id: str = "") -> L3KnowledgeBase:
         """新增知识条目。"""
@@ -50,6 +54,16 @@ class L3Writer:
             session_id=session_id,
         )
         logger.info("知识新增: %s (%s)", knowledge.id, knowledge.knowledge_type.value)
+
+        if self._db_session_factory:
+            try:
+                loop = asyncio.get_running_loop()
+                task = loop.create_task(self._persist_to_pg(knowledge))
+                self._pending_tasks.add(task)
+                task.add_done_callback(self._pending_tasks.discard)
+            except RuntimeError:
+                logger.debug("无运行事件循环，跳过 L3 知识 PG 持久化")
+
         return knowledge
 
     def update(
@@ -141,3 +155,42 @@ class L3Writer:
     def get_all(self) -> list[L3KnowledgeBase]:
         """获取所有知识。"""
         return list(self._store.values())
+
+    async def _persist_to_pg(self, knowledge: L3KnowledgeBase) -> None:
+        """将 L3 知识持久化到 PostgreSQL。"""
+        try:
+            from reqradar.kernel.models import L3Knowledge as L3KnowledgeModel
+
+            async with self._db_session_factory() as db_session:
+                db_session.add(
+                    L3KnowledgeModel(
+                        id=knowledge.id,
+                        project_id=knowledge.project_id,
+                        knowledge_type=(
+                            knowledge.knowledge_type.value
+                            if hasattr(knowledge.knowledge_type, "value")
+                            else str(knowledge.knowledge_type)
+                        ),
+                        freshness=(
+                            knowledge.freshness.value
+                            if hasattr(knowledge.freshness, "value")
+                            else str(knowledge.freshness)
+                        ),
+                        confidence_score=knowledge.confidence.confidence_score,
+                        confidence_data={
+                            "verification_count": knowledge.confidence.verification_count,
+                            "human_verified": knowledge.confidence.human_verified,
+                            "last_verified_at": (
+                                knowledge.confidence.last_verified_at.isoformat()
+                                if knowledge.confidence.last_verified_at
+                                else None
+                            ),
+                            "source_session_count": knowledge.confidence.source_session_count,
+                        },
+                        source_session_ids=knowledge.source_session_ids,
+                        superseded_by=knowledge.superseded_by,
+                    )
+                )
+                await db_session.commit()
+        except Exception as e:
+            logger.warning("L3 知识 PG 持久化失败: %s", e)

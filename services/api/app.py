@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
+import os
 import time
 from contextlib import asynccontextmanager
 from typing import Annotated
@@ -141,8 +143,8 @@ async def _proxy_error(exc: httpx.HTTPStatusError) -> HTTPException:
     resp = exc.response
     try:
         body = resp.json()
-    except Exception:
-        body = {"error": {"code": "DOWNSTREAM_ERROR", "message": resp.text}}
+    except Exception as e:
+        body = {"error": {"code": "DOWNSTREAM_ERROR", "message": resp.text, "detail": str(e)}}
     return HTTPException(status_code=resp.status_code, detail=body)
 
 
@@ -293,15 +295,64 @@ async def get_events(
 
 @app.websocket("/api/v2/sessions/{session_id}/ws")
 async def session_ws(websocket: WebSocket, session_id: str):
-    """WebSocket 实时事件推送（暂存桩，P3 实现）。"""
+    """WebSocket 实时事件推送 — 订阅 Redis Stream。"""
+    # JWT 认证
+    token = websocket.query_params.get("token")
+    if not token:
+        await websocket.close(code=4003, reason="缺少认证 token")
+        return
+
+    # 验证 JWT
+    jwt_secret = os.environ.get("JWT_SECRET", "")
+    try:
+        from reqradar.infrastructure.auth import decode_jwt_token
+
+        user_info = decode_jwt_token(token, jwt_secret)
+        if isinstance(user_info, dict) and not user_info.get("valid", True):
+            await websocket.close(code=4003, reason="Token 无效")
+            return
+    except Exception as e:
+        await websocket.close(code=4003, reason="认证失败: %s" % str(e))
+        return
+
     await websocket.accept()
-    await websocket.send_json(
-        {
-            "type": "info",
-            "data": {"message": "WebSocket 桥接暂未实现，将在 P3 阶段接入 Redis Pub/Sub"},
-        }
-    )
-    await websocket.close()
+    redis_url = os.environ.get("REDIS_URL", "")
+
+    if not redis_url:
+        await websocket.send_json({"type": "error", "data": {"message": "Redis 未配置"}})
+        await websocket.close()
+        return
+
+    try:
+        import redis.asyncio as aioredis
+
+        redis = aioredis.from_url(redis_url, decode_responses=True)
+        stream_key = "reqradar:events:%s" % session_id
+        last_id = "0"
+
+        try:
+            while True:
+                messages = await redis.xread(
+                    {stream_key: last_id},
+                    count=10,
+                    block=2000,
+                )
+                if messages:
+                    for _stream, entries in messages:
+                        for entry_id, data in entries:
+                            last_id = entry_id
+                            await websocket.send_json(
+                                {"type": "event", "data": data, "id": entry_id}
+                            )
+        except Exception as e:
+            logger.warning("WebSocket Redis 订阅异常: session_id=%s, error=%s", session_id, e)
+        finally:
+            await redis.close()
+    except Exception as e:
+        logger.warning("WebSocket 连接异常: session_id=%s, error=%s", session_id, e)
+    finally:
+        with contextlib.suppress(Exception):
+            await websocket.close()
 
 
 # ---------------------------------------------------------------------------
