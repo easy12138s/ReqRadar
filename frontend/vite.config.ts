@@ -1,10 +1,10 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-import path from 'path'
+/// <reference types="vitest/config" />
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import path from 'path';
 
-// https://vite.dev/config/
 export default defineConfig({
-  base: '/app/',
+  base: '/app/v2/',
   plugins: [react()],
   resolve: {
     alias: {
@@ -13,18 +13,24 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      '/api': {
-        target: 'http://localhost:8000',
+      '/api/v2': {
+        target: 'http://localhost:8002',
         changeOrigin: true,
       },
       '/ws': {
-        target: 'ws://localhost:8000',
+        target: 'ws://localhost:8002',
         ws: true,
       },
     },
   },
   build: {
-    outDir: '../src/reqradar/web/static',
+    outDir: 'dist',
     emptyOutDir: true,
   },
-})
+  test: {
+    environment: 'jsdom',
+    globals: false,
+    setupFiles: ['./src/test/setup.ts'],
+    testTimeout: 30000,
+  },
+});

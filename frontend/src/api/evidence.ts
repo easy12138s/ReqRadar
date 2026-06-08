@@ -1,14 +1,16 @@
-import { apiClient } from './client';
-import type { EvidenceItem } from '@/types/api';
+import client from './client';
 
-export async function getEvidenceChain(taskId: string, versionNumber?: number): Promise<{ evidence: EvidenceItem[] }> {
-  const params = versionNumber !== undefined ? { version_number: versionNumber } : {};
-  const response = await apiClient.get<{ evidence: EvidenceItem[] }>(`/analyses/${taskId}/evidence`, { params });
-  return response.data;
+export interface EvidenceItem {
+  evidence_id: string;
+  session_id: string;
+  evidence_type: string;
+  content: string;
+  source: string;
+  confidence: number;
+  created_at: string;
 }
 
-export async function getEvidenceDetail(taskId: string, evidenceId: string, versionNumber?: number): Promise<EvidenceItem> {
-  const params = versionNumber !== undefined ? { version_number: versionNumber } : {};
-  const response = await apiClient.get<EvidenceItem>(`/analyses/${taskId}/evidence/${evidenceId}`, { params });
-  return response.data;
+export async function getSessionEvidence(sessionId: string, params?: { type?: string; limit?: number }): Promise<{ items: EvidenceItem[] }> {
+  const { data } = await client.get(`/sessions/${sessionId}/evidence`, { params });
+  return data;
 }
