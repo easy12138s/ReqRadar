@@ -206,7 +206,7 @@ class CodeGraphSource:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.post(
                     "%s/internal/v2/search/vector" % self._service_url,
-                    json={"project_id": project_id, "query": query, "top_k": 10},
+                    json={"project_id": project_id, "query_text": query, "top_k": 10, "collection": "code"},
                     headers={"X-Internal-API-Key": self._internal_api_key},
                 )
                 if resp.status_code != 200:
@@ -270,7 +270,7 @@ class VectorResultSource:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.post(
                     "%s/internal/v2/search/vector" % self._service_url,
-                    json={"project_id": project_id, "query": query, "top_k": 10},
+                    json={"project_id": project_id, "query_text": query, "top_k": 10, "collection": "requirements"},
                     headers={"X-Internal-API-Key": self._internal_api_key},
                 )
                 if resp.status_code != 200:

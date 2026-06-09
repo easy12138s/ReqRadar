@@ -13,12 +13,15 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from reqradar.index_svc.knowledge.models import L3KnowledgeBase
 from reqradar.index_svc.knowledge.writer import L3Writer
+from reqradar.kernel.database import create_engine, create_session_factory
 from reqradar.kernel.enums import FreshnessStatus, KnowledgeNodeType
 
 logger = logging.getLogger(__name__)
@@ -306,8 +309,33 @@ async def lifespan(app: FastAPI):
     logger.info("Index Service 启动 (port 8003)")
     app.state.checkpoints = {}  # session_id -> list[dict]
     app.state.knowledge_payloads = {}  # knowledge_id -> {payload, evidence_ref}
-    app.state.writer = L3Writer()
+
+    # 初始化数据库引擎和会话工厂
+    database_url = os.environ.get("DATABASE_URL", "sqlite+aiosqlite:///./reqradar_dev.db")
+    engine = create_engine(database_url)
+    db_session_factory = create_session_factory(engine)
+    app.state.db_session_factory = db_session_factory
+
+    # 初始化 L3Writer 并注入 db_session_factory
+    app.state.writer = L3Writer(db_session_factory)
+
+    # 初始化 ChromaDB 向量存储（只读查询）
+    chromadb_path = os.environ.get("CHROMADB_PATH", ".reqradar/vectorstore")
+    try:
+        from reqradar.index_svc.vector_store import ChromaVectorStore
+
+        app.state.vector_store = ChromaVectorStore(
+            persist_directory=chromadb_path,
+            collection_name="requirements",
+            use_onnx=True,
+        )
+        logger.info("ChromaDB 向量存储已连接: %s", chromadb_path)
+    except Exception as e:
+        logger.warning("ChromaDB 向量存储初始化失败，检索降级为空: %s", e)
+        app.state.vector_store = None
+
     yield
+    await engine.dispose()
     logger.info("Index Service 关闭")
 
 
@@ -316,6 +344,12 @@ app = FastAPI(
     version="2.0.0",
     lifespan=lifespan,
 )
+
+async def get_db(request: Request) -> AsyncSession:
+    """获取数据库会话。"""
+    factory = request.app.state.db_session_factory
+    async with factory() as session:
+        yield session
 
 
 @app.exception_handler(HTTPException)
@@ -553,8 +587,13 @@ async def diff_checkpoints(
 
 @app.post("/internal/v2/search/vector", response_model=VectorSearchResponse)
 async def search_vector(req: VectorSearchRequest, request: Request):
-    """向量检索 (§3.5) — P5 阶段桩实现，待 ChromaDB 接入后替换。"""
-    start = time.monotonic()
+    """向量检索 (§3.5) — ChromaDB 真实查询。"""
+    start_time = time.monotonic()
+
+    store = request.app.state.vector_store
+    if store is None:
+        logger.warning("向量检索: ChromaDB 不可用，返回空结果")
+        return VectorSearchResponse(results=[], query_time_ms=0)
 
     logger.info(
         "向量检索: project=%s collection=%s query=%s top_k=%d",
@@ -564,9 +603,42 @@ async def search_vector(req: VectorSearchRequest, request: Request):
         req.top_k,
     )
 
-    elapsed_ms = int((time.monotonic() - start) * 1000)
+    # 按 collection 切换集合
+    if req.collection == "code" and store._collection_name != "code":
+        from reqradar.index_svc.vector_store import ChromaVectorStore
 
-    return VectorSearchResponse(results=[], query_time_ms=elapsed_ms)
+        chromadb_path = os.environ.get("CHROMADB_PATH", ".reqradar/vectorstore")
+        try:
+            store = ChromaVectorStore(
+                persist_directory=chromadb_path,
+                collection_name="code",
+                use_onnx=True,
+            )
+        except Exception:
+            return VectorSearchResponse(results=[], query_time_ms=0)
+
+    try:
+        search_results = store.search(
+            query=req.query_text,
+            top_k=req.top_k,
+        )
+    except Exception as e:
+        logger.warning("向量检索执行失败: %s", e)
+        return VectorSearchResponse(results=[], query_time_ms=0)
+
+    elapsed_ms = int((time.monotonic() - start_time) * 1000)
+
+    items = [
+        VectorSearchResultItem(
+            id=r.id,
+            content=r.content,
+            metadata=r.metadata or {},
+            score=1.0 - r.distance,
+        )
+        for r in search_results
+    ]
+
+    return VectorSearchResponse(results=items, query_time_ms=elapsed_ms)
 
 
 # ── 知识端点 (§3.6-3.10) ────────────────────────────────────────────────
@@ -812,23 +884,215 @@ async def memory_query(
 
 @app.get("/internal/v2/graph/neighbors")
 async def graph_neighbors(
-    project_id: str = Query(...), node_id: str = Query(...), depth: int = Query(1)
+    project_id: str = Query(...), node_id: str = Query(...), depth: int = Query(1),
+    db: AsyncSession = Depends(get_db) # noqa: B008
 ):
     """查询知识图谱节点邻居 (I-01 §8)。"""
-    return {"project_id": project_id, "node_id": node_id, "neighbors": []}
+    from sqlalchemy import or_
+
+    from reqradar.kernel.models import CodeDependency, CodeModule
+
+    # 获取节点本身
+    node = await db.execute(select(CodeModule).where(CodeModule.id == node_id))
+    node = node.scalars().first()
+    if not node:
+        raise HTTPException(status_code=404, detail="节点不存在")
+
+    neighbors = []
+    visited = {node_id}
+    queue = [(node_id, 0)] # (current_id, current_depth)
+
+    while queue:
+        current_id, current_depth = queue.pop(0)
+        if current_depth >= depth:
+            continue
+
+        # 获取直接相连的依赖
+        deps = await db.execute(
+            select(CodeDependency).where(
+                CodeDependency.project_id == project_id,
+                or_(
+                    CodeDependency.source_module_id == current_id,
+                    CodeDependency.target_module_id == current_id
+                )
+            )
+        )
+        deps = deps.scalars().all()
+
+        for dep in deps:
+            next_id = dep.target_module_id if dep.source_module_id == current_id else dep.source_module_id
+            if next_id not in visited:
+                visited.add(next_id)
+                neighbor_node = await db.execute(select(CodeModule).where(CodeModule.id == next_id))
+                neighbor_node = neighbor_node.scalars().first()
+                if neighbor_node:
+                    neighbors.append({
+                        "id": str(neighbor_node.id),
+                        "name": neighbor_node.short_name,
+                        "type": neighbor_node.module_type,
+                        "file_path": neighbor_node.file_path,
+                        "relationship": dep.dep_type
+                    })
+                    queue.append((next_id, current_depth + 1))
+
+    return {
+        "project_id": project_id,
+        "node_id": node_id,
+        "node_name": node.short_name,
+        "neighbors": neighbors
+    }
 
 
 @app.get("/internal/v2/graph/path")
 async def graph_path(
-    project_id: str = Query(...), source_id: str = Query(...), target_id: str = Query(...)
+    project_id: str = Query(...), source_id: str = Query(...), target_id: str = Query(...),
+    db: AsyncSession = Depends(get_db) # noqa: B008
 ):
     """查询两节点间路径 (I-01 §8)。"""
-    return {"project_id": project_id, "source_id": source_id, "target_id": target_id, "path": []}
+    from collections import deque
+
+    from sqlalchemy import or_
+
+    from reqradar.kernel.models import CodeDependency, CodeModule
+
+    # 验证起始节点和目标节点存在
+    source_node = await db.execute(select(CodeModule).where(CodeModule.id == source_id))
+    source_node = source_node.scalars().first()
+    target_node = await db.execute(select(CodeModule).where(CodeModule.id == target_id))
+    target_node = target_node.scalars().first()
+
+    if not source_node or not target_node:
+        raise HTTPException(status_code=404, detail="起始或目标节点不存在")
+
+    # BFS 查找最短路径
+    # parent_map: child_id -> parent_id
+    parent_map = {source_id: None}
+    queue = deque([source_id])
+    found = False
+
+    while queue and not found:
+        current_id = queue.popleft()
+
+        if current_id == target_id:
+            found = True
+            break
+
+        deps = await db.execute(
+            select(CodeDependency).where(
+                CodeDependency.project_id == project_id,
+                or_(
+                    CodeDependency.source_module_id == current_id,
+                    CodeDependency.target_module_id == current_id
+                )
+            )
+        )
+        deps = deps.scalars().all()
+
+        for dep in deps:
+            next_id = dep.target_module_id if dep.source_module_id == current_id else dep.source_module_id
+            if next_id not in parent_map:
+                parent_map[next_id] = current_id
+                queue.append(next_id)
+
+    if not found:
+        return {"project_id": project_id, "source_id": source_id, "target_id": target_id, "path": []}
+
+    # 回溯路径
+    path = []
+    curr = target_id
+    while curr is not None:
+        node = await db.execute(select(CodeModule).where(CodeModule.id == curr))
+        node = node.scalars().first()
+        if node:
+            path.append({
+                "id": str(node.id),
+                "name": node.short_name,
+                "type": node.module_type,
+                "file_path": node.file_path
+            })
+        curr = parent_map.get(curr)
+
+    path.reverse()
+    return {
+        "project_id": project_id,
+        "source_id": source_id,
+        "target_id": target_id,
+        "path": path
+    }
 
 
 @app.get("/internal/v2/graph/subgraph")
 async def graph_subgraph(
-    project_id: str = Query(...), center_id: str = Query(...), radius: int = Query(2)
+    project_id: str = Query(...), center_id: str = Query(...), radius: int = Query(2),
+    db: AsyncSession = Depends(get_db) # noqa: B008
 ):
     """查询子图 (I-01 §8)。"""
-    return {"project_id": project_id, "center_id": center_id, "nodes": [], "edges": []}
+    from sqlalchemy import or_
+
+    from reqradar.kernel.models import CodeDependency, CodeModule
+
+    # 获取中心节点
+    center_node = await db.execute(select(CodeModule).where(CodeModule.id == center_id))
+    center_node = center_node.scalars().first()
+    if not center_node:
+        raise HTTPException(status_code=404, detail="中心节点不存在")
+
+    nodes = []
+    edges = []
+    visited_nodes = {center_id}
+    queue = [(center_id, 0)] # (current_id, current_depth)
+
+    # 先添加中心节点
+    nodes.append({
+        "id": str(center_node.id),
+        "name": center_node.short_name,
+        "type": center_node.module_type,
+        "file_path": center_node.file_path,
+        "is_center": True
+    })
+
+    while queue:
+        current_id, current_depth = queue.pop(0)
+        if current_depth >= radius:
+            continue
+
+        deps = await db.execute(
+            select(CodeDependency).where(
+                CodeDependency.project_id == project_id,
+                or_(
+                    CodeDependency.source_module_id == current_id,
+                    CodeDependency.target_module_id == current_id
+                )
+            )
+        )
+        deps = deps.scalars().all()
+
+        for dep in deps:
+            # 添加边
+            edges.append({
+                "source": str(dep.source_module_id),
+                "target": str(dep.target_module_id),
+                "type": dep.dep_type
+            })
+
+            next_id = dep.target_module_id if dep.source_module_id == current_id else dep.source_module_id
+            if next_id not in visited_nodes:
+                visited_nodes.add(next_id)
+                next_node = await db.execute(select(CodeModule).where(CodeModule.id == next_id))
+                next_node = next_node.scalars().first()
+                if next_node:
+                    nodes.append({
+                        "id": str(next_node.id),
+                        "name": next_node.short_name,
+                        "type": next_node.module_type,
+                        "file_path": next_node.file_path,
+                        "is_center": False
+                    })
+                    queue.append((next_id, current_depth + 1))
+
+    return {
+        "project_id": project_id,
+        "center_id": center_id,
+        "nodes": nodes,
+        "edges": edges
+    }

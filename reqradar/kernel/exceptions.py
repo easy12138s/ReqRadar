@@ -31,6 +31,19 @@ class ParseException(ReqRadarException):
     """解析异常 — 文档格式不支持、内容损坏。"""
 
 
+class IngestionException(ReqRadarException):
+    """数据摄取异常 — 文档/代码/Git 解析、向量化失败。"""
+
+    def __init__(
+        self,
+        message: str,
+        detail: dict | None = None,
+        cause: Exception | None = None,
+    ) -> None:
+        super().__init__(message, cause=cause)
+        self.detail = detail or {}
+
+
 class VectorStoreException(ReqRadarException):
     """向量存储异常 — ChromaDB 连接失败、查询错误。"""
 

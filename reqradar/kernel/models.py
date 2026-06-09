@@ -90,7 +90,15 @@ class Project(Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     repo_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, server_default=text("true"), nullable=False)
-    owner_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
+    owner_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    source_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    source_config: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), server_default="creating", nullable=False)
+    profile_data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    indexed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"), nullable=False
     )
@@ -101,12 +109,24 @@ class Project(Base):
         ForeignKey("report_templates.id"), nullable=True
     )
 
-    owner: Mapped[User] = relationship(back_populates="projects")
+    owner: Mapped[User | None] = relationship(back_populates="projects")
     analysis_tasks: Mapped[list[AnalysisTask]] = relationship(back_populates="project")
     configs: Mapped[list[ProjectConfig]] = relationship(
         back_populates="project", cascade="all, delete-orphan"
     )
     default_template: Mapped[ReportTemplate | None] = relationship()
+    raw_contexts: Mapped[list[RawContext]] = relationship(
+        "RawContext", back_populates="project", cascade="all, delete-orphan"
+    )
+    chunks: Mapped[list[Chunk]] = relationship(
+        "Chunk", back_populates="project", cascade="all, delete-orphan"
+    )
+    code_modules_list: Mapped[list[CodeModule]] = relationship(
+        "CodeModule", back_populates="project", cascade="all, delete-orphan"
+    )
+    git_commits: Mapped[list[GitCommit]] = relationship(
+        "GitCommit", back_populates="project", cascade="all, delete-orphan"
+    )
 
     __table_args__ = (UniqueConstraint("name", "owner_id", name="uq_project_name_owner"),)
 
@@ -753,4 +773,228 @@ class L3Knowledge(Base):
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"), nullable=False
+    )
+
+
+# ---------------------------------------------------------------------------
+# V2 L0/L1 索引表（Batch 2 — 原始数据与结构化事实）
+# ---------------------------------------------------------------------------
+
+
+class RawContext(Base):
+    """L0 原始上下文元数据指针表 — 记录原始文件/仓库的元信息。"""
+
+    __tablename__ = "raw_context"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    project_id: Mapped[UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    type: Mapped[str] = mapped_column(String(30), nullable=False)
+    uri: Mapped[str] = mapped_column(String(500), nullable=False)
+    original_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    size_bytes: Mapped[int] = mapped_column(nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    source: Mapped[str] = mapped_column(String(20), server_default="upload", nullable=False)
+    superseded_by: Mapped[UUID | None] = mapped_column(
+        ForeignKey("raw_context.id"), nullable=True
+    )
+    ingested_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"), nullable=False
+    )
+    metadata_: Mapped[dict] = mapped_column("metadata_", JSON, server_default="{}", nullable=False)
+
+    project: Mapped[Project] = relationship(back_populates="raw_contexts")
+
+    __table_args__ = (
+        CheckConstraint(
+            "type IN ('document', 'repo_snapshot', 'git_history', 'other')",
+            name="ck_raw_context_type",
+        ),
+        CheckConstraint(
+            "source IN ('upload', 'cli', 'mcp')",
+            name="ck_raw_context_source",
+        ),
+    )
+
+
+class Chunk(Base):
+    """L1 文档 Chunk 表 — 文档切分后的结构化文本片段。"""
+
+    __tablename__ = "chunks"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    project_id: Mapped[UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    raw_context_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("raw_context.id", ondelete="SET NULL"), nullable=True
+    )
+    chunk_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    text_uri: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    offset_start: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    offset_end: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    page_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    section_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    embedding_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    is_stale: Mapped[bool] = mapped_column(
+        Boolean, server_default=text("false"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"), nullable=False
+    )
+
+    project: Mapped[Project] = relationship(back_populates="chunks")
+    raw_context: Mapped[RawContext | None] = relationship(backref="chunks_rel")
+
+    __table_args__ = (
+        CheckConstraint(
+            "chunk_type IN ('paragraph', 'section', 'heading', 'table', 'list')",
+            name="ck_chunks_type",
+        ),
+    )
+
+
+class CodeModule(Base):
+    """L1 代码模块表 — 模块/类/函数的结构化提取结果。"""
+
+    __tablename__ = "code_modules"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    project_id: Mapped[UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    module_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    qualified_name: Mapped[str] = mapped_column(String(500), nullable=False)
+    short_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    file_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    line_start: Mapped[int] = mapped_column(Integer, nullable=False)
+    line_end: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    signature: Mapped[str | None] = mapped_column(Text, nullable=True)
+    docstring: Mapped[str | None] = mapped_column(Text, nullable=True)
+    embedding_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    is_stale: Mapped[bool] = mapped_column(
+        Boolean, server_default=text("false"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"), nullable=False
+    )
+
+    project: Mapped[Project] = relationship(back_populates="code_modules_list")
+
+    __table_args__ = (
+        CheckConstraint(
+            "module_type IN ('module', 'class', 'function', 'method')",
+            name="ck_code_modules_type",
+        ),
+    )
+
+
+class CodeDependency(Base):
+    """L1 代码依赖关系表 — 模块间依赖关系。"""
+
+    __tablename__ = "code_dependencies"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    project_id: Mapped[UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    source_module_id: Mapped[UUID] = mapped_column(
+        ForeignKey("code_modules.id", ondelete="CASCADE"), nullable=False
+    )
+    target_module_id: Mapped[UUID] = mapped_column(
+        ForeignKey("code_modules.id", ondelete="CASCADE"), nullable=False
+    )
+    dep_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    is_stale: Mapped[bool] = mapped_column(
+        Boolean, server_default=text("false"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"), nullable=False
+    )
+
+    project: Mapped[Project] = relationship()
+
+    __table_args__ = (
+        CheckConstraint(
+            "dep_type IN ('import', 'call', 'inherit', 'compose')",
+            name="ck_code_deps_type",
+        ),
+        CheckConstraint(
+            "source_module_id != target_module_id",
+            name="ck_code_deps_no_self",
+        ),
+    )
+
+
+class GitCommit(Base):
+    """L1 Git 提交事实表 — 仓库提交历史的结构化记录。"""
+
+    __tablename__ = "git_commits"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    project_id: Mapped[UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    commit_hash: Mapped[str] = mapped_column(String(40), nullable=False)
+    author: Mapped[str] = mapped_column(String(200), nullable=False)
+    author_email: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    committed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    changed_files: Mapped[list] = mapped_column(JSON, server_default="[]", nullable=False)
+    diff_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_stale: Mapped[bool] = mapped_column(
+        Boolean, server_default=text("false"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"), nullable=False
+    )
+
+    project: Mapped[Project] = relationship(back_populates="git_commits")
+
+
+class RequirementCodeLink(Base):
+    """L1 需求-代码关联表 — 需求文档与代码模块之间的关联证据。"""
+
+    __tablename__ = "requirement_code_links"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    project_id: Mapped[UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    chunk_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("chunks.id", ondelete="CASCADE"), nullable=True
+    )
+    code_module_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("code_modules.id", ondelete="CASCADE"), nullable=True
+    )
+    link_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, server_default="0.5", nullable=False)
+    evidence: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_stale: Mapped[bool] = mapped_column(
+        Boolean, server_default=text("false"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"), nullable=False
+    )
+
+    project: Mapped[Project] = relationship()
+
+    __table_args__ = (
+        CheckConstraint(
+            "link_type IN ('filename_match', 'annotation', 'llm_inferred', 'rule_match')",
+            name="ck_req_code_links_type",
+        ),
+        CheckConstraint(
+            "confidence >= 0.0 AND confidence <= 1.0",
+            name="ck_req_code_links_confidence",
+        ),
     )

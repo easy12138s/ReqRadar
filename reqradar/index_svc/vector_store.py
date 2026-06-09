@@ -1,4 +1,4 @@
-"""向量存储 — ChromaDB 内置嵌入函数。"""
+"""向量存储 — ChromaDB + ReqRadar 自建嵌入函数。"""
 
 from __future__ import annotations
 
@@ -10,20 +10,15 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
 
-if not os.environ.get("HF_ENDPOINT"):
-    os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
-
 logger = logging.getLogger("reqradar.vector_store")
 
 try:
     import chromadb
-    from chromadb.utils import embedding_functions as chroma_ef
 
     CHROMA_AVAILABLE = True
 except ImportError:
     CHROMA_AVAILABLE = False
     chromadb = None
-    chroma_ef = None
 
 
 def _get_index_version_path(persist_directory: Path) -> Path:
@@ -120,33 +115,24 @@ def _estimate_model_size_mb(model_name: str) -> int:
 
 def _create_embedding_function(
     embedding_model: str,
-    use_onnx: bool = False,
+    use_onnx: bool = True,
     model_cache: str | None = None,
 ) -> object:
     """创建嵌入函数实例。
 
-    优先使用 SentenceTransformerEmbeddingFunction（支持中文模型），
-    失败时降级到 ChromaDB 内置 ONNXMiniLM_L6_V2。
+    使用 ReqRadar 自建嵌入函数（从 HF 镜像下载 ONNX 模型），
+    不依赖 chromadb 内置的 S3 下载机制。
     """
-    if model_cache:
-        os.environ["SENTENCE_TRANSFORMERS_HOME"] = model_cache
+    from reqradar.kernel.embedding import ReqRadarEmbeddingFunction
 
-    try:
-        ef = chroma_ef.SentenceTransformerEmbeddingFunction(
-            model_name=embedding_model,
-        )
-        logger.info(
-            "使用 SentenceTransformerEmbeddingFunction (模型=%s)",
-            embedding_model,
-        )
-        return ef
-    except Exception as e:
-        logger.warning(
-            "SentenceTransformer 加载失败 (%s)，降级到内置 ONNXMiniLM_L6_V2。"
-            "中文语义搜索质量会下降。",
-            e,
-        )
-        return chroma_ef.ONNXMiniLM_L6_V2()
+    # embedding_model 参数保持兼容，但实际使用 HF 镜像的 ONNX 模型
+    # 未来可扩展为根据 embedding_model 选择不同仓库
+    ef = ReqRadarEmbeddingFunction(cache_dir=model_cache)
+    logger.info(
+        "使用 ReqRadarEmbeddingFunction (仓库=%s, 精度=%s)",
+        ef.model_repo, ef.precision,
+    )
+    return ef
 
 
 class ChromaVectorStore(VectorStore):
@@ -209,10 +195,10 @@ class ChromaVectorStore(VectorStore):
             metadata={"hnsw:space": "cosine"},
         )
 
-    def add_documents(self, docs: list[Document]) -> None:
-        """批量添加文档。"""
+    def add_documents(self, docs: list[Document]) -> list[str]:
+        """批量添加文档，返回 embedding ID 列表。"""
         if not docs:
-            return
+            return []
 
         ids = [doc.id or str(uuid.uuid4()) for doc in docs]
         contents = [doc.content for doc in docs]
@@ -223,6 +209,7 @@ class ChromaVectorStore(VectorStore):
             documents=contents,
             metadatas=metadatas,
         )
+        return ids
 
     def add_document(self, doc: Document) -> None:
         """添加单个文档。"""

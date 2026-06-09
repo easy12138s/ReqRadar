@@ -15,6 +15,9 @@ from reqradar.kernel.config_base import (
 # 数据库基类
 from reqradar.kernel.database import Base, create_engine, create_session_factory
 
+# 嵌入函数
+from reqradar.kernel.embedding import ReqRadarEmbeddingFunction
+
 # 全局枚举
 from reqradar.kernel.enums import (
     ChangeStatus,
@@ -105,6 +108,8 @@ __all__ = [
     "Base",
     "create_engine",
     "create_session_factory",
+    # 嵌入函数
+    "ReqRadarEmbeddingFunction",
     # 配置
     "ConfigMatrixBase",
     "ConfigResolutionChain",

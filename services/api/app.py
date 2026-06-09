@@ -5,13 +5,19 @@ from __future__ import annotations
 import contextlib
 import logging
 import os
+import subprocess
 import time
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import Annotated
 
 import httpx
-from fastapi import Depends, FastAPI, HTTPException, Query, Request, WebSocket
+from fastapi import Depends, FastAPI, Form, HTTPException, Query, Request, UploadFile, WebSocket
 from pydantic import BaseModel, Field
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql import func
 
 from services.api.client import ServiceClient
 
@@ -84,7 +90,8 @@ class CreateProjectRequest(BaseModel):
 
     name: str = Field(description="项目名称")
     description: str = Field(default="", description="项目描述")
-    config: dict = Field(default_factory=dict, description="项目配置")
+    source_type: str = Field(default="empty", description="来源类型: git/local/upload/empty")
+    source_config: dict | None = Field(default=None, description="来源配置")
 
 
 class UpdateProjectRequest(BaseModel):
@@ -92,7 +99,30 @@ class UpdateProjectRequest(BaseModel):
 
     name: str | None = Field(default=None, description="项目名称")
     description: str | None = Field(default=None, description="项目描述")
-    config: dict | None = Field(default=None, description="项目配置")
+    source_config: dict | None = Field(default=None, description="来源配置")
+
+
+class ProjectResponse(BaseModel):
+    """项目响应。"""
+
+    id: str = Field(description="项目 ID")
+    name: str = Field(description="项目名称")
+    description: str | None = Field(description="项目描述")
+    source_type: str | None = Field(description="来源类型")
+    status: str = Field(description="项目状态")
+    repo_path: str | None = Field(description="仓库路径")
+    owner_id: str | None = Field(description="所有者 ID")
+    profile_data: dict | None = Field(description="项目画像数据")
+    indexed_at: str | None = Field(description="最后索引时间")
+    created_at: str = Field(description="创建时间")
+    updated_at: str = Field(description="更新时间")
+
+
+class ProjectListResponse(BaseModel):
+    """项目列表响应。"""
+
+    items: list[ProjectResponse] = Field(description="项目列表")
+    total: int = Field(description="总数")
 
 
 # ---------------------------------------------------------------------------
@@ -157,9 +187,18 @@ async def _proxy_error(exc: httpx.HTTPStatusError) -> HTTPException:
 async def lifespan(app: FastAPI):
     global _start_time
     _start_time = time.time()
+
+    # 初始化 DB session factory（项目管理 CRUD 直连 PG）
+    database_url = os.environ.get("DATABASE_URL", "sqlite+aiosqlite:///./reqradar_dev.db")
+    from reqradar.kernel.database import create_engine, create_session_factory
+
+    engine = create_engine(database_url)
+    app.state.db_session_factory = create_session_factory(engine)
+
     logger.info("API-Service BFF 启动")
     yield
     await service_client.close()
+    await engine.dispose()
     logger.info("API-Service BFF 关闭")
 
 
@@ -174,6 +213,16 @@ app = FastAPI(
 )
 
 CurrentUser = Annotated[dict, Depends(get_current_user)]
+
+
+async def get_db_session(request: Request) -> AsyncSession:
+    """获取数据库会话（项目管理 CRUD）。"""
+    factory = request.app.state.db_session_factory
+    async with factory() as session:
+        yield session
+
+
+DBSession = Annotated[AsyncSession, Depends(get_db_session)]
 
 
 # ---------------------------------------------------------------------------
@@ -770,7 +819,576 @@ async def get_report_status(
 
 
 # ---------------------------------------------------------------------------
-# MCP 管理路由（代理到 integration-service）
+# Project CRUD 路由（直连 PG）
+# ---------------------------------------------------------------------------
+
+
+@app.post("/api/v2/projects", status_code=201)
+async def create_project(
+    req: CreateProjectRequest,
+    session: DBSession,
+    user: CurrentUser,
+):
+    """创建项目 — 按 source_type 分流到不同创建场景。
+
+    四种场景：
+      - empty: 纯记录创建
+      - git:   git clone 到 data/projects/{id}/source/
+      - local: 复用本地现有目录
+      - upload: 接收 zip/tar 压缩包并解压
+    ingestion 不可用时降级为 status=ready，跳过索引。
+    """
+    from uuid import uuid4
+
+    from reqradar.kernel.models import Project
+
+    project_id = uuid4()
+    data_dir = Path("data/projects") / str(project_id)
+    source_path: str | None = None
+
+    # ── 场景分流 ──
+    if req.source_type == "git":
+        source_path = await _create_from_git(
+            data_dir, req.source_config or {}
+        )
+    elif req.source_type == "local":
+        source_path = _create_from_local(req.source_config or {})
+    elif req.source_type == "upload":
+        # upload 场景需要 UploadFile，由单独的端点处理
+        raise HTTPException(
+            status_code=400,
+            detail="上传场景请使用 multipart/form-data 端点: POST /api/v2/projects/upload",
+        )
+    # else: empty — 纯记录
+
+    project = Project(
+        id=project_id,
+        name=req.name,
+        description=req.description or "",
+        source_type=req.source_type,
+        source_config=req.source_config or {},
+        repo_path=source_path,
+        owner_id=user.get("user_id") if user else None,
+        status="creating",  # 初始状态，场景完成后更新为 ready
+    )
+    session.add(project)
+    await session.commit()
+
+    # 场景完成后更新状态
+    project.status = "ready"
+    await session.commit()
+    await session.refresh(project)
+    return _project_to_response(project)
+
+
+@app.post("/api/v2/projects/upload", status_code=201)
+async def create_project_upload(
+    session: DBSession,
+    user: CurrentUser,
+    name: str = Form(description="项目名称"),
+    description: str = Form(default="", description="项目描述"),
+    file: UploadFile | None = None,
+):
+    """上传压缩包创建项目（multipart/form-data）。"""
+    from pathlib import Path
+    from uuid import uuid4
+
+    from reqradar.kernel.models import Project
+
+    if file is None:
+        raise HTTPException(status_code=400, detail="请上传压缩包文件")
+
+    project_id = uuid4()
+    data_dir = Path("data/projects") / str(project_id)
+
+    source_path = await _create_from_upload(data_dir, file)
+
+    project = Project(
+        id=project_id,
+        name=name,
+        description=description,
+        source_type="upload",
+        source_config={"original_filename": file.filename},
+        repo_path=source_path,
+        owner_id=user.get("user_id") if user else None,
+        status="creating",
+    )
+    session.add(project)
+    await session.commit()
+
+    # 解压完成后更新状态
+    project.status = "ready"
+    await session.commit()
+    await session.refresh(project)
+    return _project_to_response(project)
+
+
+# ── 创建场景辅助函数 ──
+
+
+async def _create_from_git(
+    data_dir: Path, source_config: dict
+) -> str:
+    """git clone 场景 — 克隆仓库到本地。"""
+    import asyncio
+
+    git_url = source_config.get("git_url", "")
+    branch = source_config.get("branch", "")
+
+    if not git_url:
+        raise HTTPException(status_code=400, detail="source_config.git_url 为必填项")
+
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    cmd = ["git", "clone"]
+    if branch:
+        cmd.extend(["-b", branch])
+    cmd.extend([git_url, str(data_dir / "source")])
+
+    process = await asyncio.to_thread(
+        lambda: subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+        )
+    )
+    if process.returncode != 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"git clone 失败: {process.stderr}",
+        )
+
+    return str(data_dir / "source")
+
+
+def _create_from_local(source_config: dict) -> str:
+    """本地目录场景 — 校验存在性和可读性。"""
+    local_path = source_config.get("local_path", "")
+
+    if not local_path:
+        raise HTTPException(status_code=400, detail="source_config.local_path 为必填项")
+
+    path = Path(local_path)
+    if not path.exists():
+        raise HTTPException(status_code=400, detail=f"目录不存在: {local_path}")
+    if not path.is_dir():
+        raise HTTPException(status_code=400, detail=f"路径不是目录: {local_path}")
+
+    # 检查可读性
+    try:
+        next(path.iterdir(), None)
+    except PermissionError:
+        raise HTTPException(status_code=400, detail=f"目录不可读: {local_path}") from None
+
+    return str(path)
+
+
+async def _create_from_upload(
+    data_dir: Path, file: UploadFile
+) -> str:
+    """压缩包上传场景 — 解压 zip/tar.gz。"""
+    import asyncio
+
+    # 校验限制
+    max_size = 50 * 1024 * 1024
+    max_extracted = 500 * 1024 * 1024
+    max_files = 10000
+
+    content = await file.read()
+    if len(content) > max_size:
+        raise HTTPException(
+            status_code=400,
+            detail=f"文件过大: {len(content)} bytes (最大 {max_size} bytes)",
+        )
+
+    filename = file.filename or "archive.zip"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    extract_dir = data_dir / "source"
+    extract_dir.mkdir(exist_ok=True)
+
+    # 解压
+    await asyncio.to_thread(_extract_archive, content, filename, extract_dir)
+
+    # 校验解压结果
+    file_count = sum(1 for _ in extract_dir.rglob("*") if _.is_file())
+    if file_count > max_files:
+        raise HTTPException(
+            status_code=400,
+            detail=f"文件数过多: {file_count} (最大 {max_files})",
+        )
+
+    total_size = sum(
+        f.stat().st_size for f in extract_dir.rglob("*") if f.is_file()
+    )
+    if total_size > max_extracted:
+        raise HTTPException(
+            status_code=400,
+            detail=f"解压后过大: {total_size} bytes (最大 {max_extracted} bytes)",
+        )
+
+    return str(extract_dir)
+
+
+def _extract_archive(content: bytes, filename: str, extract_dir: Path) -> None:
+    """解压 zip/tar.gz 归档文件。"""
+    import io
+    import tarfile
+    import zipfile
+
+    lower_name = filename.lower()
+
+    if lower_name.endswith(".zip"):
+        with zipfile.ZipFile(io.BytesIO(content)) as zf:
+            zf.extractall(extract_dir)
+    elif lower_name.endswith((".tar.gz", ".tgz", ".tar")):
+        mode = "r:gz" if lower_name.endswith((".tar.gz", ".tgz")) else "r:"
+        with tarfile.open(fileobj=io.BytesIO(content), mode=mode) as tf:
+            tf.extractall(extract_dir)
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail=f"不支持的压缩格式: {filename}（支持 .zip / .tar.gz / .tgz / .tar）",
+        )
+
+
+@app.get("/api/v2/projects")
+async def list_projects(
+    session: DBSession,
+    user: CurrentUser,
+    limit: int = Query(default=50, description="返回条数上限"),
+    offset: int = Query(default=0, description="偏移量"),
+    status: str | None = Query(default=None, description="按状态过滤"),
+):
+    """列出项目。"""
+    from reqradar.kernel.models import Project
+
+    stmt = select(Project).where(Project.is_active == True)  # noqa: E712
+    if status:
+        stmt = stmt.where(Project.status == status)
+
+    # 总数
+    count_stmt = select(func.count()).select_from(stmt.subquery())
+    total_result = await session.execute(count_stmt)
+    total = total_result.scalar() or 0
+
+    stmt = stmt.order_by(Project.created_at.desc()).offset(offset).limit(limit)
+    result = await session.execute(stmt)
+    projects = result.scalars().all()
+
+    return ProjectListResponse(
+        items=[_project_to_response(p) for p in projects],
+        total=total,
+    )
+
+
+@app.get("/api/v2/projects/{project_id}")
+async def get_project(
+    project_id: str,
+    session: DBSession,
+    user: CurrentUser,
+):
+    """获取项目详情。"""
+    from uuid import UUID
+
+    from reqradar.kernel.models import Project
+
+    stmt = select(Project).where(Project.id == UUID(project_id))
+    result = await session.execute(stmt)
+    project = result.scalar_one_or_none()
+    if project is None:
+        raise HTTPException(status_code=404, detail=f"项目不存在: {project_id}")
+    return _project_to_response(project)
+
+
+@app.put("/api/v2/projects/{project_id}")
+async def update_project(
+    project_id: str,
+    req: UpdateProjectRequest,
+    session: DBSession,
+    user: CurrentUser,
+):
+    """更新项目。"""
+    from uuid import UUID
+
+    from reqradar.kernel.models import Project
+
+    stmt = select(Project).where(Project.id == UUID(project_id))
+    result = await session.execute(stmt)
+    project = result.scalar_one_or_none()
+    if project is None:
+        raise HTTPException(status_code=404, detail=f"项目不存在: {project_id}")
+
+    update_data = req.model_dump(exclude_none=True)
+    for key, value in update_data.items():
+        setattr(project, key, value)
+
+    await session.commit()
+    await session.refresh(project)
+    return _project_to_response(project)
+
+
+@app.delete("/api/v2/projects/{project_id}", status_code=204)
+async def delete_project(
+    project_id: str,
+    session: DBSession,
+    user: CurrentUser,
+):
+    """删除项目（软删除）。"""
+    from uuid import UUID
+
+    from reqradar.kernel.models import Project
+
+    stmt = select(Project).where(Project.id == UUID(project_id))
+    result = await session.execute(stmt)
+    project = result.scalar_one_or_none()
+    if project is None:
+        raise HTTPException(status_code=404, detail=f"项目不存在: {project_id}")
+
+    project.is_active = False
+    await session.commit()
+
+
+def _project_to_response(project) -> ProjectResponse:
+    """将 ORM 对象转换为响应模型。"""
+
+    return ProjectResponse(
+        id=str(project.id),
+        name=project.name,
+        description=project.description,
+        source_type=project.source_type,
+        status=project.status,
+        repo_path=project.repo_path,
+        owner_id=str(project.owner_id) if project.owner_id else None,
+        profile_data=project.profile_data,
+        indexed_at=project.indexed_at.isoformat() if project.indexed_at else None,
+        created_at=project.created_at.isoformat() if project.created_at else "",
+        updated_at=project.updated_at.isoformat() if project.updated_at else "",
+    )
+
+
+# ---------------------------------------------------------------------------
+# 项目索引 / 画像 / 摄取路由
+# ---------------------------------------------------------------------------
+
+
+@app.post("/api/v2/projects/{project_id}/index")
+async def index_project(
+    project_id: str,
+    session: DBSession,
+    user: CurrentUser,
+):
+    """触发代码索引 — 调用 ingestion-service 摄取代码和 Git 历史。"""
+    from uuid import UUID
+
+    from reqradar.kernel.models import Project
+
+    stmt = select(Project).where(Project.id == UUID(project_id))
+    result = await session.execute(stmt)
+    project = result.scalar_one_or_none()
+    if project is None:
+        raise HTTPException(status_code=404, detail=f"项目不存在: {project_id}")
+    if not project.repo_path:
+        raise HTTPException(status_code=400, detail="项目无 repo_path，无法索引")
+
+    ingestion_url = os.environ.get("INGESTION_SERVICE_URL", "http://localhost:8007")
+    internal_key = os.environ.get("INTERNAL_API_KEY", "dev-internal-key")
+
+    project.status = "indexing"
+    await session.commit()
+
+    indexing_errors: list[str] = []
+
+    # 调 ingestion 代码摄取
+    try:
+        async with httpx.AsyncClient(timeout=300) as client:
+            resp = await client.post(
+                f"{ingestion_url}/internal/v2/ingest/code",
+                json={"project_id": project_id, "repo_path": project.repo_path},
+                headers={"X-Internal-API-Key": internal_key},
+            )
+            if resp.status_code >= 400:
+                indexing_errors.append(f"代码索引失败: {resp.text}")
+    except Exception as e:
+        indexing_errors.append(f"ingestion 不可用: {e}")
+
+    # 调 ingestion Git 摄取（如有 .git）
+    git_dir = Path(project.repo_path) / ".git"
+    if git_dir.exists():
+        try:
+            async with httpx.AsyncClient(timeout=300) as client:
+                resp = await client.post(
+                    f"{ingestion_url}/internal/v2/ingest/git",
+                    json={"project_id": project_id, "repo_path": project.repo_path},
+                    headers={"X-Internal-API-Key": internal_key},
+                )
+                if resp.status_code >= 400:
+                    indexing_errors.append(f"Git 索引失败: {resp.text}")
+        except Exception as e:
+            indexing_errors.append(f"ingestion Git 不可用: {e}")
+
+    project.status = "ready"
+    project.indexed_at = datetime.now(UTC)
+    await session.commit()
+    await session.refresh(project)
+
+    return {
+        "project_id": project_id,
+        "status": project.status,
+        "indexed_at": project.indexed_at.isoformat() if project.indexed_at else None,
+        "errors": indexing_errors,
+    }
+
+
+@app.post("/api/v2/projects/{project_id}/ingest")
+async def ingest_document_to_project(
+    project_id: str,
+    session: DBSession,
+    user: CurrentUser,
+    file: UploadFile | None = None,
+):
+    """上传需求文档并触发摄取。"""
+    from uuid import UUID
+
+    from reqradar.kernel.models import Project
+
+    stmt = select(Project).where(Project.id == UUID(project_id))
+    result = await session.execute(stmt)
+    project = result.scalar_one_or_none()
+    if project is None:
+        raise HTTPException(status_code=404, detail=f"项目不存在: {project_id}")
+    if file is None:
+        raise HTTPException(status_code=400, detail="请上传文档文件")
+
+    ingestion_url = os.environ.get("INGESTION_SERVICE_URL", "http://localhost:8007")
+    internal_key = os.environ.get("INTERNAL_API_KEY", "dev-internal-key")
+
+    # 转发文件到 ingestion-service
+    try:
+        async with httpx.AsyncClient(timeout=120) as client:
+            resp = await client.post(
+                f"{ingestion_url}/internal/v2/ingest/document",
+                data={"project_id": project_id},
+                files={"file": (file.filename, await file.read(), file.content_type or "application/octet-stream")},
+                headers={"X-Internal-API-Key": internal_key},
+            )
+            if resp.status_code >= 400:
+                raise HTTPException(
+                    status_code=resp.status_code,
+                    detail=f"文档摄取失败: {resp.text}",
+                )
+            return resp.json()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"文档摄取失败: {e}") from e
+
+
+@app.get("/api/v2/projects/{project_id}/profile")
+async def get_project_profile(
+    project_id: str,
+    session: DBSession,
+    user: CurrentUser,
+):
+    """获取项目画像。"""
+    from uuid import UUID
+
+    from reqradar.kernel.models import Project
+
+    stmt = select(Project).where(Project.id == UUID(project_id))
+    result = await session.execute(stmt)
+    project = result.scalar_one_or_none()
+    if project is None:
+        raise HTTPException(status_code=404, detail=f"项目不存在: {project_id}")
+
+    return {
+        "project_id": project_id,
+        "profile_data": project.profile_data or {},
+    }
+
+
+@app.post("/api/v2/projects/{project_id}/profile/rebuild")
+async def rebuild_project_profile(
+    project_id: str,
+    session: DBSession,
+    user: CurrentUser,
+):
+    """重建项目画像 — 规则提取 + LLM 增强（降级）。"""
+    from uuid import UUID
+
+    from reqradar.kernel.models import Project
+
+    stmt = select(Project).where(Project.id == UUID(project_id))
+    result = await session.execute(stmt)
+    project = result.scalar_one_or_none()
+    if project is None:
+        raise HTTPException(status_code=404, detail=f"项目不存在: {project_id}")
+
+    repo_path = project.repo_path
+    profile: dict = {}
+    internal_key = os.environ.get("INTERNAL_API_KEY", "dev-internal-key")
+
+    if repo_path:
+        path = Path(repo_path)
+        if path.exists():
+            # 规则提取：文件统计
+            try:
+                py_files = list(path.rglob("*.py"))
+                total_files = sum(1 for _ in path.rglob("*") if _.is_file())
+                profile["file_count"] = total_files
+                profile["python_file_count"] = len(py_files)
+                profile["directory_count"] = sum(1 for _ in path.rglob("*") if _.is_dir())
+
+                # 提取依赖文件内容
+                for dep_file_name in ["pyproject.toml", "requirements.txt", "package.json"]:
+                    dep_file = path / dep_file_name
+                    if dep_file.exists():
+                        with contextlib.suppress(Exception):
+                            profile[f"_{dep_file_name}"] = dep_file.read_text(encoding="utf-8")[:2000]
+            except Exception:
+                pass
+
+            # LLM 增强（降级：LLM 不可用时仅保留规则提取结果）
+            try:
+                code_samples: list[str] = []
+                for py_file in py_files[:5]:
+                    try:
+                        content = py_file.read_text(encoding="utf-8")[:2000]
+                        code_samples.append(f"# {py_file.name}\n{content}")
+                    except Exception:
+                        pass
+
+                if code_samples:
+                    llm_prompt = (
+                        "Analyze the following codebase files and provide:\n"
+                        "1. A one-line project description\n"
+                        "2. Architecture style (e.g., microservices, monolith, event-driven)\n"
+                        "3. Tech stack (languages, frameworks)\n"
+                        "4. Top 3 module responsibilities\n\n"
+                        + "\n\n".join(code_samples)
+                    )
+                    # LLM 调用通过 cognitive-rt 代理
+                    llm_url = os.environ.get("COGNITIVE_RT_URL", "http://localhost:8002")
+                    async with httpx.AsyncClient(timeout=60) as client:
+                        llm_resp = await client.post(
+                            f"{llm_url}/internal/v2/llm/chat",
+                            json={"messages": [{"role": "user", "content": llm_prompt}]},
+                            headers={"X-Internal-API-Key": internal_key},
+                        )
+                        if llm_resp.status_code < 400:
+                            llm_data = llm_resp.json()
+                            profile["llm_analysis"] = llm_data.get("content", "")
+            except Exception:
+                profile["llm_analysis"] = None  # LLM 降级
+
+    project.profile_data = profile
+    await session.commit()
+
+    return {
+        "project_id": project_id,
+        "profile_data": profile,
+    }
+
+
+# ---------------------------------------------------------------------------
+# ── MCP 管理路由（代理到 integration-service）
 # ---------------------------------------------------------------------------
 
 
