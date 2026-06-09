@@ -44,9 +44,10 @@
 ### 1.1 前置条件
 
 ```
-[ ] 11 个 docker 容器可正常启动
+[ ] 12 个 docker 容器可正常启动（docker compose ps 全部 healthy）
 [ ] 至少 1 个真实项目可用于测试（推荐：cool-agent 仓库 + 1 份 PDF/Word 需求文档）
 [ ] LLM API Key 有效且余额充足（建议 ≥ 10 万 token）
+[ ] auth-service 端口 8001 已暴露到宿主机（用于获取 JWT）
 ```
 
 ### 1.2 验证步骤
@@ -58,7 +59,7 @@
 [ ] 步骤 2：docker compose exec api-service alembic upgrade head
         判定：无错误，输出 "Running upgrade -> head"
 
-[ ] 步骤 3：执行 scripts/e2e_smoke.py（脚本需先创建）
+[ ] 步骤 3：执行 tests/e2e/test_mvp1_smoke.py（脚本需先创建）
         判定：9 步全部 2xx 返回
 
 [ ] 步骤 4：人工核查输出报告
@@ -78,7 +79,7 @@
 
 | 维度 | 标准 |
 |------|------|
-| **成功率** | 9 步 × 3 轮 × 3 类 = 27 次，0 次 5xx 错误 |
+| **成功率** | 9 步 × 3 轮 × 3 类项目 = 27 次完整流程调用，0 次 5xx 错误 |
 | **报告质量** | 风险点 ≥ 3，证据 ≥ 5，维度 ≥ 2 |
 | **LLM Token 消耗** | 单次分析 ≤ 50k tokens（粗略） |
 | **延迟** | 单次端到端 ≤ 3 分钟 |
@@ -522,20 +523,22 @@
 
 ---
 
-## MVP-8：9 工具 + L3Writer + Graph 端点真验
+## MVP-8：11 工具 + L3Writer + Graph 端点真验
 
 ### 8.1 前置条件
 
 ```
 [ ] MVP-2 / MVP-3 通过
-[ ] 5 个核心工具（search_code / read_file / search_requirements / list_modules / get_project_profile）已实现
+[ ] 全部 11 个工具已实现（位于 reqradar/cognitive_rt/cognition/tools/）
+    - 核心 5 个：search_code / read_file / search_requirements / list_modules / get_project_profile
+    - 扩展 6 个：get_dependencies / get_contributors / search_git_history / read_module_summary / get_terminology / security
 [ ] L3Writer 已注入 PG
 [ ] Graph 三端点（neighbors / path / subgraph）已实现
 ```
 
 ### 8.2 验证步骤
 
-#### 工具真调
+#### 核心 5 工具真调
 
 ```
 [ ] 步骤 1：search_code
@@ -558,8 +561,39 @@
         - 输入：project_id=xxx
         - 判定：返回项目画像
 
-[ ] 步骤 6：每个工具跑 3 场景（项目存在 / 不存在 / 部分数据）
+[ ] 步骤 6：每个核心工具跑 3 场景（项目存在 / 不存在 / 部分数据）
         判定：3 场景全部预期返回
+```
+
+#### 扩展 6 工具真调
+
+```
+[ ] 步骤 6.1：get_dependencies
+        - 输入：project_id=xxx
+        - 判定：返回依赖列表
+
+[ ] 步骤 6.2：get_contributors
+        - 输入：project_id=xxx
+        - 判定：返回贡献者列表
+
+[ ] 步骤 6.3：search_git_history
+        - 输入：query="fix auth"，project_id=xxx
+        - 判定：返回 git commit 列表
+
+[ ] 步骤 6.4：read_module_summary
+        - 输入：module_path="/src/auth"
+        - 判定：返回模块摘要
+
+[ ] 步骤 6.5：get_terminology
+        - 输入：project_id=xxx
+        - 判定：返回术语列表
+
+[ ] 步骤 6.6：security
+        - 输入：project_id=xxx
+        - 判定：返回安全扫描结果
+
+[ ] 步骤 6.7：每个扩展工具跑 2 场景（成功 / 404）
+        判定：2 场景全部预期返回
 ```
 
 #### L3Writer PG 注入
@@ -602,7 +636,8 @@
 
 | 维度 | 标准 |
 |------|------|
-| **5 工具** | 5 工具 × 3 场景 = 15 次全成功 |
+| **核心 5 工具** | 5 工具 × 3 场景 = 15 次全成功 |
+| **扩展 6 工具** | 6 工具 × 2 场景 = 12 次全成功 |
 | **L3 7 类型** | 全部可写可查 |
 | **Graph 三端点** | 全部返回真实数据 |
 | **L3 元数据** | freshness / confidence 字段正确 |
@@ -625,7 +660,7 @@
 
 ---
 
-## 全局验收（所有 8 项 PASS 后）
+## 全局验收（所有 7 项 PASS 后，MVP-7 推后）
 
 ### 全局验证步骤
 
@@ -640,7 +675,7 @@
 [ ] 步骤 3：复测 MVP-2 / MVP-3 的持久化场景
         判定：重启后旧 task_id 和 session 仍可查
 
-[ ] 步骤 4：复测 5 工具 + L3 + Graph
+[ ] 步骤 4：复测 11 工具 + L3 + Graph
         判定：全部真验通过
 
 [ ] 步骤 5：检查 7 个服务的日志
@@ -649,10 +684,7 @@
 [ ] 步骤 6：检查 8 个前端页面
         判定：渲染正常 + Loading 状态覆盖
 
-[ ] 步骤 7：MinIO 控制台核查
-        判定：bucket 正常 + 对象可见
-
-[ ] 步骤 8：综合评分
+[ ] 步骤 7：综合评分
         判定：综合分从 55 提升到 80+（参照 MVP-01 §一.1.3）
 ```
 
