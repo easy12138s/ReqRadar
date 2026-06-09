@@ -40,9 +40,10 @@
 - 每个测试用独立 SQLite + `tmp_path`
 
 **当前项目状态**（基线）：
-- 11 容器微服务架构（`docker-compose.yml`）
-- 核心推理链已通（Runner + ReAct + 9 工具 + LiteLLMClient）
-- 已知 MVP 痛点：内存 TaskStore / 内存 Session / asyncio.run 嵌套 / 无监控 / 无 MinIO
+- 12 容器微服务架构（`docker-compose.yml`，含 Traefik + PG + Redis + ChromaDB + 7 个业务服务 + Frontend）
+- 核心推理链已通（Runner + ReAct + **11 工具** + LiteLLMClient）
+- 已知 MVP 痛点：内存 TaskStore / 内存 Session / asyncio.run 嵌套 / 无监控
+- 认证方式：BFF 层通过 Header 注入 JWT，**无 `/api/v2/auth/login` 路由**（认证由 auth-service 独立处理）
 
 ---
 
@@ -117,17 +118,19 @@ tests/
 
 | 编号 | 任务 | 优先级 | 估时 | 状态 |
 |------|------|--------|------|------|
-| **MVP-1** | 端到端真跑一次（docker compose up + cool-agent）发现真 bug | 🔴 P0 | 1 天 | ⬜ 未做 |
-| **MVP-2** | TaskStore 落 PG（output service task_id 重启不丢） | 🔴 P0 | 0.5 天 | ⬜ 未做 |
-| **MVP-3** | Session 状态机从 PG 恢复 | 🔴 P0 | 1 天 | ⬜ 未做 |
-| **MVP-4** | Container 模型去嵌套（pipeline.execute 事件循环冲突） | 🟡 P1 | 0.5 天 | ⬜ 未做 |
-| **MVP-5** | 前端抽核心组件（Button / Table / Loading） | 🟡 P1 | 0.5 天 | ⬜ 未做 |
-| **MVP-6** | 结构化日志 + /health 深健康 | 🟡 P1 | 0.5 天 | ⬜ 未做 |
-| **MVP-7** | MinIO 接入 L0 原始文件 | 🟡 P1 | 0.5 天 | ⬜ 未做 |
-| **MVP-8** | 9 工具真调验证 + L3Writer PG 注入验证 + Graph 端点真验 | 🟡 P1 | 0.5 天 | ⬜ 未做 |
-| **合计** | | | **5 天** | |
+| **MVP-1** | 端到端真跑一次（docker compose up + cool-agent）发现真 bug | 🔴 P0 | 3-4 天 | ⬜ 未做 |
+| **MVP-2** | TaskStore 落 PG（含 `_session_tasks` 字典迁移） | 🔴 P0 | 1 天 | ⬜ 未做 |
+| **MVP-3** | Session 状态机从 PG 恢复（基于现有 checkpoint 扩展） | 🔴 P0 | 1.5 天 | ⬜ 未做 |
+| **MVP-4** | Container 模型去嵌套（删除 `analysis_agent.py` 的 ThreadPoolExecutor workaround） | 🟡 P1 | 0.5 天 | ⬜ 未做 |
+| **MVP-5** | 前端抽核心组件（基于 antd 6 二次封装 AppButton/AppTable/AppLoading） | 🟡 P1 | 0.5 天 | ⬜ 未做 |
+| **MVP-6** | 结构化日志 + /health 深健康（扩展现有 `infrastructure/logging.py`） | 🟡 P1 | 0.5 天 | ⬜ 未做 |
+| **MVP-7** | MinIO 接入 L0 原始文件 | 🟢 P2 可选 | 0.5 天 | ⬜ 推后 |
+| **MVP-8** | 11 工具真调验证 + L3Writer PG 注入验证 + Graph 端点真验 | 🟡 P1 | 1 天 | ⬜ 未做 |
+| **合计** | | | **8.5 天** | |
 
 > **预估收益**：执行后综合分从 55 提升到 80（+25 分）。
+>
+> **MVP-7 说明**：MinIO 推到第二轮，当前本地文件存储能满足 MVP 单人演示需求。
 
 ---
 
@@ -156,13 +159,15 @@ tests/
 | MVP-1.4 | 准备测试项目 | 准备 3 个：① `D:\EasyFiles\private\project\cool-agent` ② 任一开源小项目 ③ 1 个 zip 压缩包；每项目附 1 份 markdown 需求文档 | 1h |
 | MVP-1.5 | 写 E2E 脚本 | 在 `tests/e2e/test_mvp1_smoke.py` 实现 `test_mvp1_full_flow()`，9 步调用见下方"必读 API" | 2h |
 | MVP-1.6 | 跑 3 轮 × 3 类 | 改参数循环执行；失败步骤记录到 `docs/MVP-1_BUG_LOG.md` | 2h |
-| MVP-1.7 | 修 P0 bug | 阻塞主链路的 bug 必须修；非阻塞可记到遗留问题 | 1 天 |
+| MVP-1.7 | 修 P0 bug | 阻塞主链路的 bug 必须修；非阻塞可记到遗留问题。**估时 2-3 天**（CHECKLIST 有 7 个 Phase 待复核，可能发现 10+ bug） | 2-3 天 |
 | MVP-1.8 | 复测 | 重新跑脚本 3 轮全成功，更新 BUG_LOG 状态 | 1h |
 
 **必读 API**（9 步调用）：
 
+> **认证说明**：BFF 无 `/api/v2/auth/login` 路由。E2E 脚本需先调用 auth-service 的 `/internal/v2/auth/issue` 获取 JWT，后续请求携带 `Authorization: Bearer <token>` Header。
+
 ```
-1. POST /api/v2/auth/login            → 拿 token
+1. POST http://localhost:8001/internal/v2/auth/issue  → 获取 JWT（auth-service 直连）
 2. POST /api/v2/projects              → 创建项目（source_type: git|local|zip）
 3. POST /api/v2/projects/{id}/upload  → 上传需求文档
 4. POST /api/v2/projects/{id}/ingest  → 触发摄取
@@ -201,15 +206,15 @@ tests/
 
 ### MVP-2：TaskStore 落 PG（高优先级）
 
-**目标**：`services/output/app.py` 的 `_tasks` 内存字典（行号先 `grep -n '_tasks' services/output/app.py` 确认）改为 PG 表，重启后 task_id 仍可查。
+**目标**：`services/output/app.py` 的 `_tasks` 和 `_session_tasks` 两个内存字典（行号先 `grep -n '_tasks\|_session_tasks' services/output/app.py` 确认）改为 PG 表，重启后 task_id 和 session→task 映射仍可查。
 
 **依赖**：MVP-1
 
 **涉及文件**：
-- `alembic/versions/MVP-2_create_output_tasks.py`（新建，Alembic 迁移）
+- `alembic/versions/V2_MVP-2_create_output_tasks.py`（新建，Alembic 迁移）
 - `reqradar/output_svc/store.py`（新建，OutputTaskStore 类）
-- `services/output/app.py`（修改，替换 `_tasks` 引用）
-- `reqradar/kernel/models.py`（如需新增 ORM 模型）
+- `services/output/app.py`（修改，替换 `_tasks` + `_session_tasks` 引用）
+- `reqradar/kernel/models.py`（新增 `OutputTask` ORM 模型）
 - `tests/unit/output_svc/test_store.py`（新建，单测）
 - `docs/CHECKLIST.md`（更新 MVP-2 验收记录）
 
@@ -217,13 +222,13 @@ tests/
 
 | # | 子任务 | 具体操作 | 估时 |
 |---|--------|---------|------|
-| MVP-2.1 | 设计 `output_tasks` 表 | 字段：`id (UUID PK)` / `status (str)` / `request (JSONB)` / `result (JSONB nullable)` / `error (text nullable)` / `created_at (timestamptz)` / `updated_at (timestamptz)`；`status` 上加 B-tree 索引 | 1h |
-| MVP-2.2 | 写 Alembic 迁移 | `alembic revision -m "MVP-2_create_output_tasks"`；**`upgrade()` 和 `downgrade()` 都必须实现**（参考 C-06 §9.4 Checklist） | 1h |
+| MVP-2.1 | 设计 `output_tasks` 表 | 字段：`id (UUID PK)` / `session_id (UUID, 索引)` / `status (str)` / `request (JSONB)` / `result (JSONB nullable)` / `error (text nullable)` / `created_at (timestamptz)` / `updated_at (timestamptz)`；`status` 和 `session_id` 上加 B-tree 索引。**注意**：`session_id` 字段用于替代 `_session_tasks` 字典的 session→task 映射功能 | 1h |
+| MVP-2.2 | 写 Alembic 迁移 | `alembic revision -m "V2_MVP-2_create_output_tasks"`；**`upgrade()` 和 `downgrade()` 都必须实现**（参考 C-06 §9.4 Checklist） | 1h |
 | MVP-2.3 | 新增 ORM 模型 | 在 `reqradar/kernel/models.py` 加 `OutputTask` 类（参考同文件中 `Event` 模型结构） | 1h |
-| MVP-2.4 | 实现 `OutputTaskStore` | 文件 `reqradar/output_svc/store.py`，类方法：`async create(request) -> str` / `async get(task_id) -> OutputTask \| None` / `async update(task_id, **fields)` / `async list(filters)`；参考 `reqradar/index_svc/knowledge/writer.py` 的异步 SQLAlchemy 写法 | 2h |
-| MVP-2.5 | 替换 `services/output/app.py` | 找到所有 `self._tasks[...]`，改为 `await self._store.get(...)` / `await self._store.update(...)`；**保留属性名 `_store` 不变**，减少端点代码改动 | 1h |
+| MVP-2.4 | 实现 `OutputTaskStore` | 文件 `reqradar/output_svc/store.py`，类方法：`async create(request, session_id) -> str` / `async get(task_id) -> OutputTask \| None` / `async update(task_id, **fields)` / `async list_by_session(session_id) -> list[OutputTask]`；参考 `reqradar/index_svc/knowledge/writer.py` 的异步 SQLAlchemy 写法 | 2h |
+| MVP-2.5 | 替换 `services/output/app.py` | 找到所有 `self._tasks[...]` 和 `self._session_tasks[...]`，改为 `await self._store.get(...)` / `await self._store.list_by_session(...)`；**保留属性名 `_store` 不变**，减少端点代码改动 | 1h |
 | MVP-2.6 | 注册 store | 在 `app.py` 的 lifespan 里 `app.state.task_store = OutputTaskStore(session_factory)` | 0.5h |
-| MVP-2.7 | 写单测 | 9 项边界：成功创建/成功查询/404（不存在 task）/409（重复 ID）/422（非法字段）/空列表查询/状态机非法转换/DB 故障降级/路径遍历（如有 path 参数） | 1h |
+| MVP-2.7 | 写单测 | 9 项边界：成功创建/成功查询/404（不存在 task）/409（重复 ID）/422（非法字段）/空列表查询/session_id 查询/状态机非法转换/DB 故障降级 | 1h |
 | MVP-2.8 | 自检 | `ruff check reqradar/output_svc/ services/output/ tests/unit/output_svc/ && pytest tests/unit/output_svc/ -v` | 0.5h |
 
 **关键代码定位指令**（Agent 拿到后直接执行）：
@@ -258,11 +263,11 @@ ls alembic/versions/ | tail -3
 **依赖**：MVP-1
 
 **涉及文件**：
-- `alembic/versions/MVP-3_create_session_snapshots.py`（新建）
+- `alembic/versions/V2_MVP-3_create_session_snapshots.py`（新建）
 - `reqradar/cognitive_rt/runtime/session_repo.py`（新建，SessionStateRepo 类）
-- `reqradar/cognitive_rt/runtime/session.py`（修改，启动时 load + 状态转换时 save）
+- `reqradar/cognitive_rt/runtime/session_api.py`（修改，`SessionService` 类的 `_sessions` 字典，L67）
 - `reqradar/kernel/models.py`（新增 SessionSnapshot ORM）
-- `services/cognitive-rt/app.py`（lifespan 启动时调用 load）
+- `reqradar/cognitive_rt/runtime/server.py`（lifespan 启动时调用 load，L31-50）
 - `tests/unit/cognitive_rt/runtime/test_session_repo.py`（新建单测）
 - `tests/integration/cognitive_rt/test_session_recovery.py`（新建集成测，验证 kill -9 恢复）
 - `docs/CHECKLIST.md`
@@ -272,14 +277,14 @@ ls alembic/versions/ | tail -3
 | # | 子任务 | 具体操作 | 估时 |
 |---|--------|---------|------|
 | MVP-3.1 | 设计 `session_snapshots` 表 | 字段：`session_id (UUID PK)` / `status (str, 索引)` / `state_data (JSONB)` / `checkpoint_version (int)` / `last_event_id (UUID nullable)` / `created_at` / `updated_at` | 1h |
-| MVP-3.2 | 写 Alembic 迁移 | `alembic revision -m "MVP-3_create_session_snapshots"`；**upgrade() + downgrade() 都实现**；`status` 字段加 B-tree 索引便于 `WHERE status IN ('CREATED','READY','RUNNING')` 查询 | 1h |
+| MVP-3.2 | 写 Alembic 迁移 | `alembic revision -m "V2_MVP-3_create_session_snapshots"`；**upgrade() + downgrade() 都实现**；`status` 字段加 B-tree 索引便于 `WHERE status IN ('CREATED','READY','RUNNING')` 查询 | 1h |
 | MVP-3.3 | 新增 ORM 模型 | `class SessionSnapshot(Base)` 在 `reqradar/kernel/models.py` | 0.5h |
 | MVP-3.4 | 实现 `SessionStateRepo` | 文件 `reqradar/cognitive_rt/runtime/session_repo.py`；方法：`async save(session)` / `async load(session_id) -> SessionSnapshot \| None` / `async list_active() -> list[SessionSnapshot]` / `async delete(session_id)`；**所有方法包 try/except，DB 故障时返回 None 或抛 StorageUnavailableError，由调用方降级** | 2h |
-| MVP-3.5 | 修改 `SessionStateMachine` | ① 状态转换方法 `transition()` 内追加 `await self._repo.save(self.to_dict())`，但**用 `asyncio.shield()` 包装，确保失败不阻塞状态变更**；② 加 `async restore(snapshot)` 方法，从 `SessionSnapshot.state_data` 重建 `CognitiveSession` 对象 | 2h |
-| MVP-3.6 | lifespan 接入 load | 在 `services/cognitive-rt/app.py` 的 lifespan 里：`active = await self._repo.list_active()` → 对每个 `CognitiveSession.restore(snapshot)` 重建 → 放入 `self._sessions` 字典 | 1h |
+| MVP-3.5 | 修改 `SessionService` | 在 `session_api.py` 的 `SessionService` 类中：① 状态转换方法内追加 `await self._repo.save(self.to_dict())`，但**用 `asyncio.shield()` 包装，确保失败不阻塞状态变更**；② 加 `async restore(snapshot)` 方法，从 `SessionSnapshot.state_data` 重建 `SessionStateMachine` 对象 | 2h |
+| MVP-3.6 | lifespan 接入 load | 在 `server.py` 的 `lifespan` 函数（L31）里：`active = await session_repo.list_active()` → 对每个 session 调用 `SessionService.restore(snapshot)` 重建 → 放入 `SessionService._sessions` 字典 | 1h |
 | MVP-3.7 | 单测 | 9 项边界 + 持久化失败降级路径 + JSON 序列化反序列化正确性 | 2h |
 | MVP-3.8 | 集成测 | 在 `tests/integration/cognitive_rt/test_session_recovery.py` 写 `test_session_survives_restart()`：① 启动 cognitive-rt ② 创建 Session ③ 推进到 RUNNING ④ `docker compose kill cognitive-rt` ⑤ `docker compose up -d cognitive-rt` ⑥ 验证 `GET /api/v2/sessions/{id}` 仍可查到且状态正确 | 1h |
-| MVP-3.9 | 自检 | `ruff check reqradar/cognitive_rt/ services/cognitive-rt/ tests/ && pytest tests/unit/cognitive_rt/runtime/ tests/integration/cognitive_rt/ -v` | 0.5h |
+| MVP-3.9 | 自检 | `ruff check reqradar/cognitive_rt/ tests/ && pytest tests/unit/cognitive_rt/runtime/ tests/integration/cognitive_rt/ -v` | 0.5h |
 
 **降级策略**（重要）：
 
@@ -313,8 +318,8 @@ except StorageUnavailableError as e:
 **依赖**：MVP-1
 
 **涉及文件**：
-- `reqradar/cognitive_rt/cognition/context_pipeline.py`（修改，加 `execute_async`）
-- `reqradar/cognitive_rt/cognition/analysis_agent.py`（修改，调用 `execute_async` 而非 `asyncio.run(execute_sync)`）
+- `reqradar/cognitive_rt/cognition/analysis_agent.py`（**主改**，L176-201 的 `asyncio.run` + `ThreadPoolExecutor` workaround）
+- `reqradar/cognitive_rt/cognition/context_pipeline.py`（辅改，加 `execute_async` 纯异步接口）
 - `tests/unit/cognitive_rt/cognition/test_context_pipeline.py`（修改，新增 async 测试）
 - `docs/CHECKLIST.md`
 
@@ -322,19 +327,22 @@ except StorageUnavailableError as e:
 
 | # | 子任务 | 具体操作 | 估时 |
 |---|--------|---------|------|
-| MVP-4.1 | 定位所有反模式 | `grep -rn "asyncio.run" reqradar/cognitive_rt/ services/cognitive-rt/`，把找到的所有行号记录到 `docs/MVP-4_NESTED_LOOP_LOG.md` | 0.5h |
+| MVP-4.1 | 定位所有反模式 | `grep -rn "asyncio.run\|ThreadPoolExecutor" reqradar/cognitive_rt/`，把找到的所有行号记录到 `docs/MVP-4_NESTED_LOOP_LOG.md`。**已知位置**：`analysis_agent.py:176-201`（用 `ThreadPoolExecutor` 包装 `asyncio.run`） | 0.5h |
 | MVP-4.2 | 设计双接口 | `pipeline.execute_sync()` 保持原签名不变（同步 wrapper，内部用 `asyncio.run` 仅在确认无事件循环时调用）；新加 `pipeline.execute_async()`（纯 async） | 1h |
-| MVP-4.3 | 修改 `analysis_agent.py` | 在 agent 内检测：`if asyncio.get_running_loop() is not None: await pipeline.execute_async() else: pipeline.execute_sync()` | 1h |
+| MVP-4.3 | 修改 `analysis_agent.py` | **删除 L176-201 的 ThreadPoolExecutor workaround**，改为：`result = await pipeline.execute_async(...)`。因为 `analysis_agent` 的 `_build_context()` 方法本身就在 async 上下文中被调用（由 `runner.py` 的 `run_react_analysis` 调用），所以直接用 `await` 即可 | 1h |
 | MVP-4.4 | 单测补全 | 在 `test_context_pipeline.py` 加 `async def test_pipeline_execute_async_in_running_loop()`，验证在已运行 loop 中调用不抛 `RuntimeError: This event loop is already running` | 1h |
 | MVP-4.5 | 真跑验证 | 跑 `tests/e2e/test_mvp1_smoke.py` 10 轮；统计成功率（必须 100%）+ 平均延迟 | 1h |
-| MVP-4.6 | 自检 | `grep -rn "asyncio.run" reqradar/ services/ 2>&1 \| wc -l` 输出必须为 0（除 `execute_sync` 内部保留的 1 处外） | 0.5h |
+| MVP-4.6 | 自检 | `grep -rn "asyncio.run\|ThreadPoolExecutor" reqradar/cognitive_rt/ 2>&1` 输出必须为空（除 `execute_sync` 内部保留的 1 处外） | 0.5h |
 
 **关键代码定位**：
 
 ```bash
-grep -rn "asyncio.run" reqradar/cognitive_rt/cognition/
-grep -rn "asyncio.run" services/cognitive-rt/
+# 已知 asyncio.run 嵌套位置
+grep -n "asyncio.run\|ThreadPoolExecutor" reqradar/cognitive_rt/cognition/analysis_agent.py
+# pipeline.execute 定义
 grep -n "def execute" reqradar/cognitive_rt/cognition/context_pipeline.py
+# 确认 _build_context 的调用链
+grep -n "_build_context" reqradar/cognitive_rt/cognition/analysis_agent.py
 ```
 
 **双接口实现模板**：
@@ -373,14 +381,14 @@ class ContextPipeline:
 
 ### MVP-5：前端抽核心组件（中优先级）
 
-**目标**：`frontend/src/components/` 增加 `Button` / `Table` / `Loading` 三个基础组件，重构 8 页面统一使用。
+**目标**：`frontend/src/components/` 增加 `AppButton` / `AppTable` / `AppLoading` 三个二次封装组件，基于现有 antd 6 组件库，重构 8 页面统一使用。
 
 **依赖**：MVP-1
 
 **涉及文件**：
-- `frontend/src/components/Button.tsx`（新建）
-- `frontend/src/components/Table.tsx`（新建）
-- `frontend/src/components/Loading.tsx`（新建）
+- `frontend/src/components/AppButton.tsx`（新建，基于 antd `Button` 二次封装）
+- `frontend/src/components/AppTable.tsx`（新建，基于 antd `Table` 二次封装）
+- `frontend/src/components/AppLoading.tsx`（新建，基于 antd `Spin` + `Skeleton` 二次封装）
 - `frontend/src/components/index.ts`（新建，统一导出）
 - `frontend/src/pages/*.tsx`（8 个页面，修改）
 
@@ -388,54 +396,58 @@ class ContextPipeline:
 
 | # | 子任务 | 具体操作 | 估时 |
 |---|--------|---------|------|
-| MVP-5.1 | 设计 Button 组件 | TS props：`variant: 'primary' \| 'secondary' \| 'ghost'` / `size: 'sm' \| 'md' \| 'lg'` / `loading: boolean` / `disabled: boolean` / `onClick` / `children`；用 Tailwind class，无样式污染 | 1h |
-| MVP-5.2 | 设计 Table 组件 | TS props：`columns: Column<T>[]` / `dataSource: T[]` / `loading: boolean` / `emptyText: string` / `rowKey: keyof T`；内部用 `<table>` + map；空态显示 `emptyText` | 1h |
-| MVP-5.3 | 设计 Loading 组件 | 两种变体：`<Loading.Spinner />`（小区域）+ `<Loading.Skeleton rows={3} />`（列表骨架屏）；用 CSS animation | 0.5h |
-| MVP-5.4 | 重构 8 页面 | 替换所有手写 `<button>` 为 `<Button>`，所有 `<table>` 为 `<Table>`，所有 loading 状态用 `<Loading>`；用 `grep -rn "<button\|<table" frontend/src/pages` 验证 | 2h |
+| MVP-5.1 | 设计 AppButton 组件 | 基于 antd `Button` 封装，TS props：`variant: 'primary' \| 'secondary' \| 'ghost'` / `size: 'sm' \| 'md' \| 'lg'` / `loading: boolean` / `disabled: boolean` / `onClick` / `children`；内部映射到 antd 的 `type` + `size` 属性 | 0.5h |
+| MVP-5.2 | 设计 AppTable 组件 | 基于 antd `Table` 封装，TS props：`columns` / `dataSource` / `loading` / `emptyText` / `rowKey`；统一空态和 loading 样式 | 0.5h |
+| MVP-5.3 | 设计 AppLoading 组件 | 基于 antd `Spin` + `Skeleton` 封装，两种变体：`<AppLoading.Spinner />`（小区域）+ `<AppLoading.Skeleton rows={3} />`（列表骨架屏） | 0.5h |
+| MVP-5.4 | 重构 8 页面 | 替换所有直接使用 antd 组件为二次封装组件；用 `grep -rn "from 'antd'" frontend/src/pages` 验证减少程度 | 1h |
 | MVP-5.5 | type-check + build | `cd frontend && npm run type-check && npm run build`；build 产物能产出到 `dist/` | 0.5h |
 
 **关键代码定位指令**：
 
 ```bash
-# 找所有手写 button/table
-grep -rn "<button" frontend/src/pages | wc -l
-grep -rn "<table" frontend/src/pages | wc -l
+# 找所有直接使用 antd 的地方
+grep -rn "from 'antd'" frontend/src/pages | wc -l
 # 看现有 page 结构
 ls frontend/src/pages/
+# 看现有 antd 用法
+grep -rn "import.*Button\|import.*Table\|import.*Spin" frontend/src/pages
 ```
 
-**Button 组件实现模板**：
+**AppButton 组件实现模板**（基于 antd 二次封装）：
 
 ```tsx
-// frontend/src/components/Button.tsx
-interface ButtonProps {
+// frontend/src/components/AppButton.tsx
+import React from 'react';
+import { Button, ButtonProps } from 'antd';
+
+interface AppButtonProps extends Omit<ButtonProps, 'type' | 'size'> {
   variant?: 'primary' | 'secondary' | 'ghost';
   size?: 'sm' | 'md' | 'lg';
-  loading?: boolean;
-  disabled?: boolean;
-  onClick?: () => void;
-  children: React.ReactNode;
 }
 
-export const Button: React.FC<ButtonProps> = ({
-  variant = 'primary', size = 'md', loading = false,
-  disabled = false, onClick, children,
+const variantMap = {
+  primary: 'primary',
+  secondary: 'default',
+  ghost: 'text',
+} as const;
+
+const sizeMap = {
+  sm: 'small',
+  md: 'middle',
+  lg: 'large',
+} as const;
+
+export const AppButton: React.FC<AppButtonProps> = ({
+  variant = 'primary',
+  size = 'md',
+  ...props
 }) => {
-  const baseClass = 'rounded font-medium transition-colors';
-  const variantClass = {
-    primary: 'bg-blue-600 text-white hover:bg-blue-700',
-    secondary: 'bg-gray-200 text-gray-800 hover:bg-gray-300',
-    ghost: 'bg-transparent text-blue-600 hover:bg-blue-50',
-  }[variant];
-  const sizeClass = { sm: 'px-2 py-1 text-sm', md: 'px-4 py-2', lg: 'px-6 py-3 text-lg' }[size];
   return (
-    <button
-      className={`${baseClass} ${variantClass} ${sizeClass} ${(disabled || loading) ? 'opacity-50 cursor-not-allowed' : ''}`}
-      onClick={onClick}
-      disabled={disabled || loading}
-    >
-      {loading ? <Loading.Spinner inline /> : children}
-    </button>
+    <Button
+      type={variantMap[variant]}
+      size={sizeMap[size]}
+      {...props}
+    />
   );
 };
 ```
@@ -458,7 +470,7 @@ export const Button: React.FC<ButtonProps> = ({
 **依赖**：MVP-1
 
 **涉及文件**：
-- `reqradar/infrastructure/logging.py`（新建，JSON formatter）
+- `reqradar/infrastructure/logging.py`（**扩展现有文件**，当前只有 contextvars 辅助函数，需新增 `JSONFormatter` 类和 `setup_json_logging()` 函数）
 - `reqradar/infrastructure/health.py`（新建，深健康检查）
 - `services/{api,auth,cognitive-rt,index,output,ingestion,integration}/app.py`（7 个服务，修改）
 - `tests/unit/infrastructure/test_logging.py`（新建）
@@ -468,8 +480,8 @@ export const Button: React.FC<ButtonProps> = ({
 
 | # | 子任务 | 具体操作 | 估时 |
 |---|--------|---------|------|
-| MVP-6.1 | 实现 JSON formatter | 文件 `reqradar/infrastructure/logging.py`；用 `python-json-logger` 或手写 formatter；输出字段：`timestamp` / `level` / `msg` / `session_id` / `request_id` / `module` / `extra` | 1h |
-| MVP-6.2 | 替换 7 个服务的 logging 配置 | 找 `logging.basicConfig` 全部替换为 `setup_json_logging()`；**保留原有 logger 名称不变** | 1h |
+| MVP-6.1 | 实现 JSON formatter | **扩展** `reqradar/infrastructure/logging.py`（保留现有 `set_log_context` / `clear_log_context` / `get_session_id` 函数）；新增 `JSONFormatter` 类和 `setup_json_logging()` 函数；输出字段：`timestamp` / `level` / `msg` / `session_id` / `request_id` / `module` / `extra` | 1h |
+| MVP-6.2 | 替换 7 个服务的 logging 配置 | 找 `logging.basicConfig` 全部替换为 `setup_json_logging()`；**保留原有 logger 名称不变**；**注意**：每个服务的入口文件不同（api→app.py, cognitive-rt→server.py, index→app.py 等） | 1h |
 | MVP-6.3 | 实现深健康检查 | 文件 `reqradar/infrastructure/health.py`；函数 `async def check_dependencies() -> dict` 包含 `pg` / `redis` / `chroma` 三个键；PG 用 `SELECT 1`，Redis 用 `PING`，Chroma 用 `heartbeat()` | 1h |
 | MVP-6.4 | 替换 7 个服务的 /health 端点 | 把每个服务 `/health` 端点改为 `await check_dependencies()`；任一依赖失败返回 503 + JSON 错误 | 1h |
 | MVP-6.5 | 单测 | `test_logging.py` 验证 JSON 输出可被 `json.loads` 解析；`test_health.py` mock PG/Redis/Chroma 验证 3 种场景 | 0.5h |
@@ -583,9 +595,13 @@ def get_l0_storage():
 
 ---
 
-### MVP-8：9 工具 + L3Writer + Graph 端点真验（中优先级）
+### MVP-8：11 工具 + L3Writer + Graph 端点真验（中优先级）
 
-**目标**：对 MVP 核心 5 个工具（search_code / read_file / search_requirements / list_modules / get_project_profile）+ L3Writer + Graph 三端点（neighbors / path / subgraph）逐个真跑验证。
+**目标**：对全部 11 个工具 + L3Writer + Graph 三端点（neighbors / path / subgraph）逐个真跑验证。
+
+**工具清单**（11 个，位于 `reqradar/cognitive_rt/cognition/tools/`）：
+- **核心 5 个**：`search_code` / `read_file` / `search_requirements` / `list_modules` / `get_project_profile`
+- **扩展 6 个**：`get_dependencies` / `get_contributors` / `search_git_history` / `read_module_summary` / `get_terminology` / `security`
 
 **依赖**：MVP-2、MVP-3（持久化层稳定后做真验才有意义）
 
@@ -599,11 +615,12 @@ def get_l0_storage():
 
 | # | 子任务 | 具体操作 | 估时 |
 |---|--------|---------|------|
-| MVP-8.1 | 工具真调测试 | 文件 `tests/integration/tools/test_tools_smoke.py`；5 工具 × 3 场景 = 15 用例；用 `httpx.AsyncClient` 调 `services/cognitive-rt` 内部 API | 1.5h |
-| MVP-8.2 | L3Writer 验证 | 文件 `tests/integration/index_svc/test_l3_writer.py`；7 种知识类型各 `test_create_X` + `test_query_X` = 14 用例 | 1h |
-| MVP-8.3 | Graph 端点验证 | 文件 `tests/integration/index_svc/test_graph_endpoints.py`；3 端点 × 3 查询场景 = 9 用例 | 1h |
-| MVP-8.4 | 修复发现的 bug | 把真跑发现的问题记录到 `docs/MVP-8_BUG_LOG.md`，阻塞主链路的必修 | 0.5h |
-| MVP-8.5 | 自检 | `pytest tests/integration/ -v && ruff check tests/integration/` | 0.5h |
+| MVP-8.1 | 核心 5 工具真调测试 | 文件 `tests/integration/tools/test_tools_smoke.py`；5 工具 × 3 场景 = 15 用例；用 `httpx.AsyncClient` 调 cognitive-rt 内部 API | 1.5h |
+| MVP-8.2 | 扩展 6 工具真调测试 | 同文件；6 工具 × 2 场景 = 12 用例（扩展工具只需验证成功路径 + 404） | 1h |
+| MVP-8.3 | L3Writer 验证 | 文件 `tests/integration/index_svc/test_l3_writer.py`；7 种知识类型各 `test_create_X` + `test_query_X` = 14 用例 | 1h |
+| MVP-8.4 | Graph 端点验证 | 文件 `tests/integration/index_svc/test_graph_endpoints.py`；3 端点 × 3 查询场景 = 9 用例 | 1h |
+| MVP-8.5 | 修复发现的 bug | 把真跑发现的问题记录到 `docs/MVP-8_BUG_LOG.md`，阻塞主链路的必修 | 0.5h |
+| MVP-8.6 | 自检 | `pytest tests/integration/ -v && ruff check tests/integration/` | 0.5h |
 
 **关键代码定位指令**：
 
@@ -647,7 +664,8 @@ async def test_search_code_project_not_found_returns_404(client: AsyncClient):
 ```
 
 **验收标准**（对照 MVP-02 §MVP-8）：
-- [ ] 5 工具 × 3 场景 = 15 用例全过
+- [ ] 核心 5 工具 × 3 场景 = 15 用例全过
+- [ ] 扩展 6 工具 × 2 场景 = 12 用例全过
 - [ ] L3 7 种知识类型可写可查（14 用例全过）
 - [ ] Graph 3 端点 × 3 场景 = 9 用例全过
 - [ ] 真问题 100% 修复并有回归测
@@ -666,39 +684,44 @@ MVP-1（端到端真跑）─────────┐
                             ├──→ MVP-4（Container 去嵌套）
                             ├──→ MVP-5（前端抽组件）
                             ├──→ MVP-6（日志 + health）
-                            └──→ MVP-7（MinIO）
+                            └──→ MVP-7（MinIO）[可选]
 ```
 
-**关键路径**：MVP-1 → MVP-2 / MVP-3 → MVP-8（共 3 天）
-**并行任务**：MVP-4 / MVP-5 / MVP-6 / MVP-7 全部依赖 MVP-1，可串行或 2 人并行（共 2 天）
+**关键路径**：MVP-1 → MVP-2 / MVP-3 → MVP-8（共 5 天）
+**并行任务**：MVP-4 / MVP-5 / MVP-6 全部依赖 MVP-1，可串行或 2 人并行（共 2 天）
+**可选任务**：MVP-7（MinIO）推到第二轮，当前轮聚焦核心功能
 
 ---
 
-## 五、执行计划（5 天冲刺）
+## 五、执行计划（8 天冲刺）
 
 ```
 Day 0 上午  §一.5 Day 0 准备：补 tests/integration + e2e 目录 + 4 个 mock fixture
 Day 0 下午  §一.5.4 验收 Day 0 全过
 
 Day 1  上午  MVP-1.1 ~ 1.5  准备环境 + 写 tests/e2e/test_mvp1_smoke.py
-Day 1  下午  MVP-1.6 ~ 1.7  跑 3 轮 + 修 P0 bug
-Day 1  晚上  MVP-1.8       复测全链路 ✅
+Day 1  下午  MVP-1.6        跑 3 轮 × 3 类，记录所有 bug
 
-Day 2  上午  MVP-2         TaskStore 落 PG（0.5 天）
-Day 2  下午  MVP-6         结构化日志 + 深健康（0.5 天）
+Day 2-3      MVP-1.7        修 P0 bug（CHECKLIST 有 7 个 Phase 待复核，预计 10+ bug）
+Day 4  上午  MVP-1.8        复测全链路 ✅
 
-Day 3  上午  MVP-3 前半    Session snapshot 表 + repo
-Day 3  下午  MVP-3 后半    集成 + 状态机接入
+Day 4  下午  MVP-2         TaskStore 落 PG（含 _session_tasks 迁移）
+Day 5  上午  MVP-6         结构化日志 + 深健康
+Day 5  下午  MVP-3 前半    Session snapshot 表 + repo
 
-Day 4  上午  MVP-4         Container 去嵌套
-Day 4  下午  MVP-5         前端抽 3 组件
+Day 6  上午  MVP-3 后半    集成 + 状态机接入 + 真跑验证
+Day 6  下午  MVP-4         Container 去嵌套（删除 ThreadPoolExecutor workaround）
 
-Day 5  上午  MVP-7         MinIO 接入
-Day 5  下午  MVP-8         9 工具 + L3 + Graph 真验
-Day 5  晚上  写 MVP 完成报告 + 更新 CHECKLIST
+Day 7  上午  MVP-5         前端抽 3 组件（基于 antd 二次封装）
+Day 7  下午  MVP-8 前半    11 工具真调测试
+
+Day 8  上午  MVP-8 后半    L3Writer + Graph 端点真验 + 修复 bug
+Day 8  下午  写 MVP 完成报告 + 更新 CHECKLIST + 合并到 refactor/v2
 ```
 
-**总周期**：Day 0 半天 + Day 1-5 共 5.5 天。
+**总周期**：Day 0 半天 + Day 1-8 共 8.5 天。
+
+> **MVP-7（MinIO）推到第二轮**：当前本地文件存储（`L0_STORAGE_PATH`）能满足 MVP 单人演示需求，MinIO 是 P3 的基础设施要求，不需要在 MVP 阶段引入。
 
 ---
 
@@ -706,10 +729,10 @@ Day 5  晚上  写 MVP 完成报告 + 更新 CHECKLIST
 
 | 里程碑 | 完成节点 | 验收依据 |
 |--------|---------|---------|
-| **M-MVP-1** | Day 1 结束 | 端到端脚本能跑通，全部 9 步成功，3 轮 × 3 项目 = 9 次无 P0 错 |
-| **M-MVP-2** | Day 3 结束 | TaskStore + Session 状态机持久化通过测试，重启后旧状态可查 |
-| **M-MVP-3** | Day 5 结束 | 全部 8 项任务完成，综合分从 55 提升到 80+ |
-| **M-MVP-4** | Day 5 + 1 天 | 全部 8 项任务有回归测试 + 文档记录 |
+| **M-MVP-1** | Day 4 上午 | 端到端脚本能跑通，全部 9 步成功，3 轮 × 3 项目 = 9 次无 P0 错，所有 P0 bug 已修复 |
+| **M-MVP-2** | Day 6 下午 | TaskStore + Session 状态机持久化通过测试，重启后旧状态可查；Container 去嵌套完成 |
+| **M-MVP-3** | Day 8 下午 | 全部 7 项任务完成（MVP-7 推后），综合分从 55 提升到 80+ |
+| **M-MVP-4** | Day 8 + 1 天 | 全部 7 项任务有回归测试 + 文档记录 + CHECKLIST 更新 |
 
 > **每个 M-MVP 通过后**：合并到 `refactor/v2` + 更新 `docs/CHECKLIST.md` + 在 PR 链接中附上验证截图。
 
@@ -719,11 +742,11 @@ Day 5  晚上  写 MVP 完成报告 + 更新 CHECKLIST
 
 | 风险 | 概率 | 影响 | 应对 |
 |------|------|------|------|
-| MVP-1 真跑发现大量 P0 bug（>10） | 中 | Day 1 无法收尾 | 优先修阻塞主链路的 bug，次要 bug 推 Day 6 修复 |
-| LLM API 限流或余额不足 | 中 | MVP-1 跑不通 | 准备 2 个 API Key 切换；限流时记录重试次数 |
-| MinIO 网络下载慢 | 低 | MVP-7 超时 | 国内镜像加速 / 提前拉镜像 |
+| MVP-1 真跑发现大量 P0 bug（>10） | 高 | Day 2-3 无法收尾 | 已调整估时为 3-4 天；优先修阻塞主链路的 bug，次要 bug 记录到遗留问题 |
+| LLM API 限流或余额不足 | 中 | MVP-1 跑不通 | 准备 2 个 API Key 切换；限流时记录重试次数；增加"Mini-LM"模式（最小 prompt 跑 1 轮验证链路） |
+| 估时超支（实际 > 8.5 天） | 中 | 冲刺延期 | 已基于评估报告调整估时；MVP-7 已推后；如仍超支，MVP-5 前端组件化可进一步推后 |
 | 持久化方案性能瓶颈 | 低 | MVP-2/3 延迟超标 | 用 JSONB + 索引；按 session_id 分区 |
-| 前端组件化引入新 bug | 中 | MVP-5 页面渲染异常 | 每个组件独立 PR，灰度发布 |
+| 前端组件化引入新 bug | 中 | MVP-5 页面渲染异常 | 基于 antd 二次封装（非从零手写），降低风险；每个组件独立 PR |
 
 ---
 
@@ -734,10 +757,9 @@ Day 5  晚上  写 MVP 完成报告 + 更新 CHECKLIST
 - MVP-4：保留旧 `pipeline.execute` 同步路径作为 fallback
 - MVP-5：纯前端重构，git revert 即可
 - MVP-6：日志中间件可关闭
-- MVP-7：`L0_STORAGE_BACKEND=local` 切回本地
 - MVP-8：纯测试 + bug 修复，无功能开关
 
-**总回滚开关**：`MVP_HARDENING_ENABLED=false` 一次性关闭 MVP-2/3/4/6/7 的新增功能（环境变量级总闸）。
+**总回滚开关**：`MVP_HARDENING_ENABLED=false` 一次性关闭 MVP-2/3/4/6 的新增功能（环境变量级总闸）。
 
 ---
 
