@@ -19,10 +19,10 @@
 |--------|-------|---------|---------|---------|
 | — | **P0** — Kernel 抽离 | ✅ | ✅ | 无（纯数据模型，已验证） |
 | M1 | **P1** — Context Pipeline | ✅ | ⚠️ 待复核 | 五阶段流水线是否真正可执行？Agent 是否真正集成了 Pipeline？ |
-| M2 | **P3** — Cognitive Runtime Core | ✅ | ❌ **核心缺失** | **Session 启动后不执行推理（Runner/LLM 未集成），start() 只改状态** |
+| M2 | **P3** — Cognitive Runtime Core | ✅ | ✅ **通过** | Runner 集成已完整（create_runner_components → _run_analysis → run_react_analysis），Session 启动后真正执行 LLM 推理循环 |
 | — | **P2** — Gateway + Auth | ✅ | ⚠️ 待复核 | JWT 签发/验证已验证可用，Redis 客户端是否真正工作？ |
 | — | **P4** — ToolRuntime | ✅ | ⚠️ 待复核 | 六项管控是否真正实现？还是只有 Schema？ |
-| M3 | **P5** — 拆 index-service + L3 | ✅ | ⚠️ 待复核 | L3 知识治理是否真正持久化？ChromaDB 向量检索是否真正工作？ |
+| M3 | **P5** — 拆 index-service + L3 | ✅ | ✅ **通过** | L3Writer 已注入 db_session_factory（PG 持久化），Graph 端点完整实现（BFS 查询 CodeModule/CodeDependency 表），向量检索字段名修复（query→query_text + collection） |
 | — | **P6** — 拆 output-service | ✅ | ⚠️ 待复核 | 报告生成是否真正调用 LLM？还是只有模板渲染壳子？ |
 | — | **P7** — BFF 独立 | ✅ | ⚠️ 待复核 | BFF 聚合是否真正转发到后端服务？还是只返回桩数据？ |
 | — | **P9** — MCP 独立 | ✅ | ⚠️ 待复核 | MCP 工具是否真正可用？还是只有注册声明？ |
@@ -78,17 +78,18 @@
 
 **代码验收结论**：✅ 代码结构完整
 
-**功能验收结论**：❌ **核心功能缺失**（2026-06-08 全栈测试发现）
+**功能验收结论**：✅ **Runner 集成已完整**（2026-06-09 修复桩实现 + Bug）
 
-**代码基线**：`f5589ad`
+**代码基线**：`f5589ad` + 桩修复提交
 
-**交付物**：Session 状态机（11 态 + 20 转换）+ Event Stream（三级事件）+ Checkpoint 系统 + WebSocket ConnectionManager，165 tests
+**交付物**：Session 状态机（11 态 + 20 转换）+ Event Stream（三级事件）+ Checkpoint 系统 + WebSocket ConnectionManager + LiteLLMClient + RunnerFactory + 9 工具注册 + run_react_analysis 完整循环，165 tests
 
-**核心缺失**：
-- `session_api.py` L149：`start()` 方法检查 `if agent is not None and llm_client is not None`，但 `server.py` 的 `start_session` 端点从未传入 agent/llm_client/tool_registry
-- 结果：Session 启动后状态变为 RUNNING，但**不执行任何推理步骤**
-- `total_reasoning_steps` 始终为 0，无 LLM 调用，无证据产生，无维度评估
-- **本质**：P3 交付的是 API 壳子 + 状态机骨架，核心的 Runner 集成（LLM 调用 + 推理循环 + 证据收集 + 维度评估）完全缺失
+**Runner 集成链**：
+- `server.py:142-148`：`create_runner_components()` 创建 agent/llm_client/tool_registry 并传入 `start()`
+- `session_api.py:164-179`：`start()` 检测三参数非 None → `asyncio.create_task(_run_analysis())`
+- `runner.py:437-699`：完整 ReAct 循环（LLM tool calling → 工具执行 → 证据收集 → 维度追踪 → Checkpoint → 报告生成 → 记忆演化）
+- `llm_client.py:23-210`：httpx 真实调用，含重试、tool calling、结构化输出
+- `context_sources.py`：5 个 Source 全部接入真实 HTTP 数据源（index-service）
 
 ---
 
@@ -350,6 +351,18 @@
 | 遗漏 BFF 4 个空路由 | 新增 Task 11 |
 | 遗漏 output-service 无 LLM | 新增 Task 12 |
 | 遗漏 ingestion-service | 新增 Task 13（P2 可推迟） |
+
+---
+
+## 第三轮 Bug 修复（2026-06-09）
+
+> 全面代码审查发现 3 项 Bug。**全部 3/3 已闭环。**
+
+| # | Bug | 位置 | 修复内容 | 状态 |
+|---|-----|------|---------|------|
+| Bug 1 | 向量检索字段名不匹配 | `context_sources.py` L209/L273 | `{"query": query}` → `{"query_text": query, "collection": "code"/"requirements"}` | ✅ |
+| Bug 2 | L3Writer 未注入 PG | `services/index/app.py` L320 | `L3Writer()` → `L3Writer(db_session_factory)` | ✅ |
+| Bug 3 | Graph 端点为桩 | `services/index/app.py` L885-1098 | 返回空列表 → BFS 算法 + SQLAlchemy 查询 `CodeModule`/`CodeDependency` 表 | ✅ |
 
 ---
 
