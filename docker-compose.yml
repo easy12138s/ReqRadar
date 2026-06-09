@@ -97,9 +97,12 @@ services:
       AUTH_SERVICE_URL: http://auth-service:8001
       COGNITIVE_RT_URL: http://cognitive-rt:8002
       INDEX_SERVICE_URL: http://index-service:8003
+      INGESTION_SERVICE_URL: http://ingestion-service:8007
+      DATABASE_URL: postgresql+asyncpg://reqradar:reqradar_dev@postgres:5432/reqradar
       OUTPUT_SERVICE_URL: http://output-service:8004
       INTEGRATION_SERVICE_URL: http://integration-service:8005
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-change-in-production}
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-in-production}
       LOG_LEVEL: INFO
     expose:
       - "8000"
@@ -151,7 +154,11 @@ services:
       DATABASE_URL: postgresql+asyncpg://reqradar:reqradar_dev@postgres:5432/reqradar
       REDIS_URL: redis://redis:6379/2
       CHROMADB_URL: http://chromadb:8000
+      CHROMADB_PATH: /app/vectorstore
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-change-in-production}
+      HF_ENDPOINT: https://hf-mirror.com
+      REQRADAR_EMBEDDING__HF_ENDPOINT: https://hf-mirror.com
+      REQRADAR_EMBEDDING__MODEL_CACHE: /app/model_cache
       LOG_LEVEL: INFO
     expose:
       - "8003"
@@ -221,6 +228,33 @@ services:
     networks:
       - reqradar-net
 
+  ingestion-service:
+    build:
+      context: .
+      dockerfile: services/ingestion/Dockerfile
+    container_name: reqradar-ingestion
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://reqradar:reqradar_dev@postgres:5432/reqradar
+      - CHROMADB_PATH=/app/vectorstore
+      - EMBEDDING_MODEL=default
+      - L0_STORAGE_PATH=/app/data/l0
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY:-dev-internal-key-change-in-production}
+      - HF_ENDPOINT=https://hf-mirror.com
+      - REQRADAR_EMBEDDING__HF_ENDPOINT=https://hf-mirror.com
+      - REQRADAR_EMBEDDING__MODEL_CACHE=/app/model_cache
+    volumes:
+      - project-data:/app/data
+      - chromadata:/app/vectorstore
+    expose:
+      - "8007"
+    ports:
+      - "8007:8007"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - reqradar-net
+
   # ── Frontend ────────────────────────────────────────────
   frontend:
     build:
@@ -239,6 +273,7 @@ volumes:
   pgdata:
   redisdata:
   chromadata:
+  project-data:
 
 networks:
   reqradar-net:

@@ -125,8 +125,12 @@ opencode.json
 
 .trae/
 
-# Docs (design specs, requirements, issues 鈥?managed separately)
+# Docs (design specs, requirements, issues — managed separately)
 docs/.superpowers/
-docs/
 .superpowers/
 .worktrees/
+
+# 临时测试/调试文件
+/test_req.md
+/tmp_create_project.json
+/docker-model-cache/
