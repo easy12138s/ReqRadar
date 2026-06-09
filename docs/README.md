@@ -128,7 +128,14 @@
 | P7 BFF 独立 | 04 路线图 P7 节 | 概述已有；ADR [010](adr/010-api-bff-pattern.md) 说明 BFF 模式 |
 | P8 前端改造 | 04 路线图 P8 节 + [F-01](detailed/F-01_FRONTEND_DESIGN.md) | ✅ 功能架构设计已完成，UI 美化延后 |
 | P9 MCP 独立 | 04 路线图 P9 节 | 概述已有，详细待补充 |
-| P10 性能升级 | 04 路线图 P10 节 | 概述已有，详细待补充 |
+| P10 性能升级 | 04 路线图 §三 P10 节 | 概述已有，详细待补充 |
+
+#### MVP Hardening（路线图 P0-P9 完成后的冲刺）
+
+| 文档 | 用途 |
+|------|------|
+| [MVP-01_MVP_HARDENING_PLAN.md](detailed/MVP-01_MVP_HARDENING_PLAN.md) | 8 项 MVP 必做任务（5 天冲刺）实施计划 |
+| [MVP-02_MVP_VERIFICATION_CHECKLIST.md](detailed/MVP-02_MVP_VERIFICATION_CHECKLIST.md) | 配套验收清单（逐项验证步骤 + 判定标准 + 签字栏） |
 
 ---
 
@@ -167,6 +174,8 @@
 | F-01 | F-01_FRONTEND_DESIGN.md | 前端功能架构设计 | ✅ 已完成 | v1.0 |
 | — | INGESTION_SERVICE_PLAN.md | ingestion-service 实施规划 | ✅ 已完成 | v1.0 |
 | — | PROJECT_MANAGEMENT_PLAN.md | 项目管理模块规划 | ✅ 已完成 | v1.0 |
+| MVP-01 | MVP-01_MVP_HARDENING_PLAN.md | MVP Hardening 实施计划（5 天冲刺） | ✅ 已完成 | v1.0 |
+| MVP-02 | MVP-02_MVP_VERIFICATION_CHECKLIST.md | MVP 验收清单（8 项任务逐项验收） | ✅ 已完成 | v1.0 |
 | — | adr/ | 架构决策记录（16 条） | ✅ 已完成 | v1.0 |
 
 ---
@@ -204,6 +213,7 @@
   I-XX_xxx.md                        # Infrastructure — 基础设施
   S-XX_xxx.md                        # Security — 安全设计
   F-XX_xxx.md                        # Frontend — 前端设计
+  MVP-XX_xxx.md                      # MVP Hardening — 路线图 P0-P9 完成后的冲刺
 ```
 
 - **前缀 C** = Coding（编码约束：风格/依赖/配置/API/测试/迁移）
@@ -212,6 +222,7 @@
 - **前缀 I** = Infrastructure（基础设施：服务间契约/部署/迁移）
 - **前缀 S** = Security（安全设计）
 - **前缀 F** = Frontend（前端设计）
+- **前缀 MVP** = MVP Hardening（路线图 P0-P9 完成后的冲刺任务）
 
 ---
 
