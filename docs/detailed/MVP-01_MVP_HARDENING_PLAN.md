@@ -57,6 +57,71 @@
 
 ---
 
+## 一.5、Day 0 准备（启动 MVP 任务前的强制前置）
+
+> **本节是 8 项任务的前置门槛**，不完成不能开始 Day 1。
+
+### 1.5.1 测试目录补建
+
+按 C-05 §3 测试目录结构，**当前 `tests/` 缺少 `integration/` 和 `e2e/` 子目录**，需在 Day 0 补建：
+
+```
+tests/
+├── conftest.py              # 已有
+├── unit/                    # 已有
+├── integration/             # 【新建】 集成测试
+│   ├── __init__.py
+│   ├── conftest.py          # 集成测试 fixture
+│   ├── api/                 # API 端点集成测试
+│   ├── services/            # Service 层集成测试
+│   └── tools/               # 工具真调测试（MVP-8 用）
+└── e2e/                     # 【新建】 端到端测试
+    ├── __init__.py
+    ├── conftest.py          # E2E fixture：mock LLM + 独立 DB
+    └── test_mvp1_smoke.py   # Day 1 真跑脚本（MVP-1.5 产出）
+```
+
+| # | 子任务 | 产出 | 估时 |
+|---|--------|------|------|
+| 0.1 | `tests/integration/__init__.py` + `conftest.py`（集成测试 fixture） | 目录结构 | 0.5h |
+| 0.2 | `tests/e2e/__init__.py` + `conftest.py`（E2E fixture：mock LLM） | 目录结构 | 0.5h |
+| 0.3 | 检查 `pytest.ini` / `pyproject.toml` 的 `asyncio_mode = "auto"` 配置 | 配置确认 | 0.5h |
+| 0.4 | `pytest --collect-only` 验证两个新目录可被 pytest 发现 | 收集成功 | 0.5h |
+
+### 1.5.2 通用 Fixture 准备
+
+按 C-05 §6.2 V2 新增 Fixture，提前在 `tests/conftest.py` 注册：
+
+| Fixture | 用途 | Day 0 必做 |
+|---------|------|-----------|
+| `mock_llm_client` | mock LLM 客户端 | ✅ |
+| `mock_redis` | mock Redis Streams/PubSub | ✅ |
+| `mock_minio` | mock MinIO 客户端 | ✅ |
+| `mock_boto3` | mock boto3 S3 client（MVP-7） | ✅ |
+
+**校验命令**：`pytest -k "mock_llm or mock_redis or mock_minio" --co` 能看到 fixture 列表。
+
+### 1.5.3 文档基线确认
+
+- [ ] `docs/CHECKLIST.md` 反映 P0-P9 最新验收状态
+- [ ] 当前分支 `refactor/v2` 工作区干净
+- [ ] `.env` 文件已配置真实 LLM API Key
+
+### 1.5.4 Day 0 验收
+
+```
+[ ] tests/integration/ 和 tests/e2e/ 目录已创建，__init__.py 齐全
+[ ] 4 个 mock fixture 已在 conftest.py 注册
+[ ] pytest --collect-only 能发现两个新目录
+[ ] 0 个 mock fixture 能正确 import（pytest -k mock_xxx --co）
+[ ] ruff check tests/ 无 lint 错误
+[ ] 当前工作区 git status 干净
+```
+
+**Day 0 估时**：3 小时
+
+---
+
 ## 二、任务总览
 
 | 编号 | 任务 | 优先级 | 估时 | 状态 |
@@ -93,7 +158,7 @@
 | MVP-1.2 | `docker compose up -d` 启动 11 容器 | 运行日志 + 服务状态 | 0.5h |
 | MVP-1.3 | `alembic upgrade head` 应用全部迁移 | 数据库 schema 就绪 | 0.5h |
 | MVP-1.4 | 准备测试项目：cool-agent 仓库 + 1 份需求文档 | 测试数据 | 1h |
-| MVP-1.5 | 端到端 curl/Python 脚本（自动跑 9 步） | `scripts/e2e_smoke.py` | 2h |
+| MVP-1.5 | 端到端 Python 脚本（自动跑 9 步） | `tests/e2e/test_mvp1_smoke.py` | 2h |
 | MVP-1.6 | 跑 3 轮 × 3 类项目，收集全部真 bug | `docs/MVP-1_BUG_LOG.md` | 2h |
 | MVP-1.7 | 修复发现的 P0 bug（预计 3-8 个） | 多个 fix commit | 1 天 |
 | MVP-1.8 | 复测全链路，全部 9 步 ✅ | 复测报告 | 1h |
@@ -316,7 +381,10 @@ MVP-1（端到端真跑）─────────┐
 ## 五、执行计划（5 天冲刺）
 
 ```
-Day 1  上午  MVP-1.1 ~ 1.5  准备环境 + 写脚本
+Day 0 上午  §一.5 Day 0 准备：补 tests/integration + e2e 目录 + 4 个 mock fixture
+Day 0 下午  §一.5.4 验收 Day 0 全过
+
+Day 1  上午  MVP-1.1 ~ 1.5  准备环境 + 写 tests/e2e/test_mvp1_smoke.py
 Day 1  下午  MVP-1.6 ~ 1.7  跑 3 轮 + 修 P0 bug
 Day 1  晚上  MVP-1.8       复测全链路 ✅
 
@@ -333,6 +401,8 @@ Day 5  上午  MVP-7         MinIO 接入
 Day 5  下午  MVP-8         9 工具 + L3 + Graph 真验
 Day 5  晚上  写 MVP 完成报告 + 更新 CHECKLIST
 ```
+
+**总周期**：Day 0 半天 + Day 1-5 共 5.5 天。
 
 ---
 

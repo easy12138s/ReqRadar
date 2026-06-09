@@ -267,7 +267,7 @@
 [ ] 步骤 3：pytest tests/unit/cognitive_rt/cognition/test_context_pipeline.py -v
         判定：所有用例通过
 
-[ ] 步骤 4：跑端到端脚本 10 轮（scripts/e2e_smoke.py）
+[ ] 步骤 4：跑端到端脚本 10 轮（tests/e2e/test_mvp1_smoke.py）
         判定：10 轮全部成功，无死锁
 
 [ ] 步骤 5：context assembly 延迟统计
