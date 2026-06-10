@@ -6,6 +6,15 @@ readme = "README.md"
 license = "MIT"
 requires-python = ">=3.12"
 
+[project.optional-dependencies]
+parsers = [
+    "tree-sitter>=0.22",
+    "tree-sitter-javascript>=0.22",
+    "tree-sitter-typescript>=0.22",
+    "tree-sitter-java>=0.22",
+    "tree-sitter-go>=0.22",
+]
+
 # 本地开发：pip install -e reqradar/kernel
 # 该命令自动安装 sqlalchemy + pydantic + aiosqlite（继承 kernel 的依赖）
 
