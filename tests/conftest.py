@@ -39,6 +39,18 @@ def mock_redis():
 
 
 @pytest.fixture
+def mock_minio():
+    """Mock MinIO/S3 客户端。"""
+    s3_client = AsyncMock()
+    s3_client.upload = AsyncMock(return_value="mock-object-key")
+    s3_client.download = AsyncMock(return_value=b"mock file content")
+    s3_client.exists = AsyncMock(return_value=True)
+    s3_client.delete = AsyncMock(return_value=True)
+    s3_client.list_objects = AsyncMock(return_value=[])
+    return s3_client
+
+
+@pytest.fixture
 def env_jwt_secret(monkeypatch):
     """设置 JWT_SECRET 环境变量。"""
     monkeypatch.setenv("JWT_SECRET", "test-secret-key-for-testing")

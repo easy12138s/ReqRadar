@@ -22,8 +22,10 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-import numpy as np
+if TYPE_CHECKING:
+    import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -252,8 +254,10 @@ class ReqRadarEmbeddingFunction:
         )
         logger.info("ONNX 嵌入模型加载完成 (精度=%s)", self.precision)
 
-    def _tokenize(self, texts: list[str]) -> dict[str, np.ndarray]:
+    def _tokenize(self, texts: list[str]) -> dict[str, "np.ndarray"]:
         """分词并转换为 ONNX 输入张量。"""
+        import numpy as np  # noqa: PLR0402 — 懒加载，避免模块级依赖
+
         encoded = self._tokenizer.encode_batch(texts)
         max_len = max(len(e.ids) for e in encoded)
 
@@ -278,10 +282,12 @@ class ReqRadarEmbeddingFunction:
 
     @staticmethod
     def _mean_pooling(
-        token_embeddings: np.ndarray,
-        attention_mask: np.ndarray,
-    ) -> np.ndarray:
+        token_embeddings: "np.ndarray",
+        attention_mask: "np.ndarray",
+    ) -> "np.ndarray":
         """均值池化：根据 attention_mask 对 token 嵌入取加权平均。"""
+        import numpy as np  # noqa: PLR0402 — 懒加载，避免模块级依赖
+
         mask = np.expand_dims(attention_mask, axis=-1).astype(np.float32)
         summed = np.sum(token_embeddings * mask, axis=1)
         counts = np.clip(np.sum(mask, axis=1), a_min=1e-9, a_max=None)
@@ -296,6 +302,8 @@ class ReqRadarEmbeddingFunction:
         Returns:
             嵌入向量列表，每个向量 384 维
         """
+        import numpy as np  # noqa: PLR0402 — 懒加载，避免模块级依赖
+
         self._load()
 
         batch_size = 64
