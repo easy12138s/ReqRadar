@@ -757,6 +757,15 @@ class ContextPipeline:
         """
         effective_budget = int(context_budget * 0.45)
 
+        # 从策略获取配置
+        strategy_weights = self.strategy.get_score_weights() if hasattr(self.strategy, 'get_score_weights') else None
+        select_min_score = self.strategy.get_select_min_score() if hasattr(self.strategy, 'get_select_min_score') else 0.3
+        quality_gate_thresholds = self.strategy.get_quality_gate_thresholds() if hasattr(self.strategy, 'get_quality_gate_thresholds') else None
+
+        # 使用策略的 Quality Gate 阈值
+        if quality_gate_thresholds and hasattr(self.quality_gate, 'thresholds'):
+            self.quality_gate.thresholds = quality_gate_thresholds
+
         collected = await self._collect(session_id, project_id, query)
         collected_dicts = [
             item if isinstance(item, dict) else _dataclass_to_dict(item) for item in collected
@@ -764,13 +773,18 @@ class ContextPipeline:
 
         gate_result = self.quality_gate.check(collected_dicts)
 
-        scored = score_items(collected, now=datetime.now(UTC))
+        # 使用策略的权重进行评分
+        scored = score_items(collected, weights=strategy_weights, now=datetime.now(UTC))
 
-        select_min_score = 0.2 if gate_result.low_context_confidence else 0.3
+        # 使用策略的最低得分阈值
+        effective_min_score = select_min_score
+        if gate_result.low_context_confidence:
+            effective_min_score = min(select_min_score, 0.2)
+
         selected = select_context(
             scored,
             token_budget=effective_budget,
-            min_score=select_min_score,
+            min_score=effective_min_score,
         )
 
         compressed = compress_context(

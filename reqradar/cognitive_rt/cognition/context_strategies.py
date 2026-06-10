@@ -18,10 +18,10 @@ class RiskAnalysisStrategy:
     def get_score_weights(self) -> dict[str, float]:
         """返回 Score 阶段的权重配置"""
         return {
-            "w1_semantic": 0.35,
-            "w2_time_decay": 0.2,
-            "w3_user_mark": 0.1,
-            "w4_context_kind": 0.35,
+            "w1": 0.35,
+            "w2": 0.2,
+            "w3": 0.1,
+            "w4": 0.35,
         }
 
     def get_select_min_score(self) -> float:
@@ -53,10 +53,10 @@ class ArchitectureUnderstandingStrategy:
     def get_score_weights(self) -> dict[str, float]:
         """返回 Score 阶段的权重配置"""
         return {
-            "w1_semantic": 0.45,
-            "w2_time_decay": 0.1,
-            "w3_user_mark": 0.15,
-            "w4_context_kind": 0.3,
+            "w1": 0.45,
+            "w2": 0.1,
+            "w3": 0.15,
+            "w4": 0.3,
         }
 
     def get_select_min_score(self) -> float:

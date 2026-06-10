@@ -98,6 +98,7 @@ def build_dynamic_system_prompt(
     historical_context: str = "",
     template_sections: list[dict] | None = None,
     pending_actions: list[dict] | None = None,
+    pipeline_context: str = "",
 ) -> str:
     ds = dimension_status or {}
 
@@ -115,6 +116,8 @@ def build_dynamic_system_prompt(
 
     context_parts = []
 
+    if pipeline_context:
+        context_parts.append(f"## 上下文增强\n{pipeline_context}")
     if project_memory:
         context_parts.append(f"## 项目画像\n{project_memory}")
     if user_memory:

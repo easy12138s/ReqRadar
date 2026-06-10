@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import time
 from typing import TYPE_CHECKING
 
@@ -34,6 +35,74 @@ from reqradar.cognitive_rt.cognition.tools import ToolRegistry
 logger = logging.getLogger("reqradar.agent.runner")
 
 _RESULT_TRUNCATE_LENGTH = 4000
+
+_EVIDENCE_TYPE_MAP = {
+    "analysis": "inference",
+    "term": "project_context",
+}
+
+
+def create_pipeline(
+    strategy_name: str = "RiskAnalysisStrategy",
+    service_url: str | None = None,
+    internal_api_key: str | None = None,
+) -> object | None:
+    """创建配置好的 Context Pipeline。
+
+    Args:
+        strategy_name: 策略名称，支持 "RiskAnalysisStrategy" 或 "ArchitectureUnderstandingStrategy"
+        service_url: index-service 的 URL，默认从环境变量获取
+        internal_api_key: 内部 API Key，默认从环境变量获取
+
+    Returns:
+        配置好的 ContextPipeline 实例，如果创建失败返回 None
+    """
+    try:
+        from reqradar.cognitive_rt.cognition.context_pipeline import ContextPipeline
+        from reqradar.cognitive_rt.cognition.context_sources import (
+            CodeGraphSource,
+            GitHistorySource,
+            ProjectMemorySource,
+            UserMemorySource,
+            VectorResultSource,
+        )
+        from reqradar.cognitive_rt.cognition.context_strategies import (
+            ArchitectureUnderstandingStrategy,
+            RiskAnalysisStrategy,
+        )
+
+        # 获取服务配置
+        _service_url = service_url or os.environ.get(
+            "REQRADAR_INDEX_SERVICE_URL", "http://index-service:8003"
+        )
+        _api_key = internal_api_key or os.environ.get("REQRADAR_INTERNAL_API_KEY", "")
+
+        # 创建并配置 Sources
+        sources = []
+        for source_cls in [
+            CodeGraphSource,
+            VectorResultSource,
+            GitHistorySource,
+            ProjectMemorySource,
+            UserMemorySource,
+        ]:
+            source = source_cls()
+            source.configure(service_url=_service_url, internal_api_key=_api_key)
+            sources.append(source)
+
+        # 选择策略
+        if strategy_name == "ArchitectureUnderstandingStrategy":
+            strategy = ArchitectureUnderstandingStrategy()
+        else:
+            strategy = RiskAnalysisStrategy()
+
+        pipeline = ContextPipeline(sources=sources, strategy=strategy)
+        logger.info("Context Pipeline 创建成功: strategy=%s, service_url=%s", strategy_name, _service_url)
+        return pipeline
+    except Exception as e:
+        logger.warning("Context Pipeline 创建失败, 将使用 f-string 模式: %s", e)
+        return None
+
 
 _EVIDENCE_TYPE_MAP = {
     "analysis": "inference",
@@ -454,6 +523,8 @@ async def run_react_analysis(
     on_complete: Callable[[str], Awaitable[None]] | None = None,
     on_fail: Callable[[str, str], Awaitable[None]] | None = None,
     on_checkpoint: Callable[[str, object, int], Awaitable[None]] | None = None,
+    # ── Context Pipeline ──
+    pipeline: object | None = None,
 ) -> dict:
     session = AnalysisSessionLogger(task_id=task_id)
     session.enter()
@@ -467,6 +538,25 @@ async def run_react_analysis(
         tool_schemas = tool_registry.get_schemas(tool_registry.list_names())
         tracker = ToolCallTracker()
         conversation_history: list[dict] = []
+
+        # 项目画像自动触发：首次推理时如果项目画像为空，自动构建
+        if not agent.project_memory_text and project_memory is not None:
+            try:
+                from reqradar.cognitive_rt.cognition.project_profile import (
+                    step_build_project_profile,
+                )
+
+                logger.info("Building project profile (首次推理自动触发)")
+                profile_result = await step_build_project_profile(
+                    code_graph=None,  # 会在后续步骤中通过工具获取
+                    llm_client=llm_client,
+                    project_memory=project_memory,
+                )
+                if profile_result:
+                    agent.project_memory_text = str(profile_result.get("description", ""))
+                    logger.info("项目画像构建完成")
+            except Exception as e:
+                logger.warning("项目画像自动构建失败, 继续推理: %s", e)
 
         agent.state = AgentState.ANALYZING
         session.phase("analyze")
@@ -498,6 +588,26 @@ async def run_react_analysis(
                 )
 
             ds = agent.dimension_tracker.status_summary()
+
+            # 尝试使用 Context Pipeline 获取增强上下文
+            pipeline_context = ""
+            if pipeline is not None:
+                try:
+                    pipeline_result = await pipeline.execute(
+                        session_id=effective_session_id,
+                        project_id=str(agent.project_id),
+                        query=agent.requirement_text[:500],
+                        context_budget=128000,
+                    )
+                    pipeline_context = pipeline_result.context
+                    logger.info(
+                        "Pipeline 完成: strategy=%s, collected≥1, scored≥1, selected≥1, tokens=%d",
+                        pipeline_result.strategy_name,
+                        pipeline_result.token_count,
+                    )
+                except Exception as e:
+                    logger.warning("Context Pipeline 执行失败, 回退到 f-string: %s", e)
+
             system_prompt = build_dynamic_system_prompt(
                 dimension_status=ds,
                 project_memory=agent.project_memory_text,
@@ -505,6 +615,7 @@ async def run_react_analysis(
                 historical_context=agent.historical_context,
                 template_sections=section_descriptions,
                 pending_actions=agent._pending_actions,
+                pipeline_context=pipeline_context,
             )
 
             user_prompt = build_step_user_prompt(
@@ -683,6 +794,20 @@ async def run_react_analysis(
                 await evolve_memory_after_analysis(agent, project_memory, llm_client)
             except Exception as e:
                 logger.warning("Memory evolution failed: %s", e)
+
+        # L3 知识沉淀
+        try:
+            from reqradar.cognitive_rt.cognition.knowledge_precipitator import KnowledgePrecipitator
+
+            precipitator = KnowledgePrecipitator()
+            agent_snapshot = agent.get_context_snapshot()
+            await precipitator.precipitate(
+                project_id=str(agent.project_id),
+                session_id=effective_session_id,
+                agent_data=agent_snapshot,
+            )
+        except Exception as e:
+            logger.warning("L3 知识沉淀失败: %s", e)
 
         agent.state = AgentState.COMPLETED
         session.analysis_done(agent.step_count, "completed")

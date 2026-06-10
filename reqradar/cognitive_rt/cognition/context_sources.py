@@ -402,3 +402,103 @@ class GitHistorySource:
         except Exception as e:
             logger.warning("GitHistorySource 收集失败: %s", e)
             return []
+
+
+class ArchitectureDocSource:
+    """架构文档上下文适配器 — 提供架构设计文档、模块依赖关系等架构信息。"""
+
+    def __init__(self) -> None:
+        self._service_url = ""
+        self._internal_api_key = ""
+
+    def configure(self, service_url: str = "", internal_api_key: str = "") -> None:
+        """注入服务连接配置。"""
+        self._service_url = service_url
+        self._internal_api_key = internal_api_key
+
+    def supported_kind(self) -> ContextKind:
+        return ContextKind.ARCH_DOC
+
+    def is_available(self, project_id: str = "") -> bool:
+        return True
+
+    async def collect(
+        self,
+        session_id: str,
+        project_id: str,
+        query: str,
+        max_items: int = 50,
+        context_kind: str = "",
+    ) -> list[ContextItem]:
+        if not self._service_url:
+            logger.warning("ArchitectureDocSource: service_url 未配置")
+            return []
+        start = time.monotonic()
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                # 从向量检索中获取架构相关文档
+                resp = await _retry_request(
+                    client.post,
+                    "%s/internal/v2/search/vector" % self._service_url,
+                    json={
+                        "project_id": project_id,
+                        "query_text": "architecture design document " + query,
+                        "top_k": 10,
+                        "collection": "requirements",
+                    },
+                    headers={"X-Internal-API-Key": self._internal_api_key},
+                )
+                if resp.status_code != 200:
+                    logger.warning("ArchitectureDocSource: HTTP %d", resp.status_code)
+                    return []
+                data = resp.json()
+                items = []
+                for entry in data if isinstance(data, list) else data.get("results", []):
+                    # 只保留架构相关的文档
+                    content = entry.get("content", "")
+                    if any(
+                        keyword in content.lower()
+                        for keyword in ["architecture", "design", "module", "component", "interface"]
+                    ):
+                        items.append(
+                            ContextItem(
+                                content=content,
+                                context_kind=ContextKind.ARCH_DOC,
+                                source_name="ArchitectureDocSource",
+                                metadata={
+                                    "source": entry.get("source", ""),
+                                    "score": entry.get("score", 0.0),
+                                },
+                            )
+                        )
+                # 也从知识库获取架构约束
+                knowledge_resp = await _retry_request(
+                    client.get,
+                    "%s/internal/v2/knowledge/query" % self._service_url,
+                    params={"project_id": project_id, "knowledge_types": "architecture_constraint"},
+                    headers={"X-Internal-API-Key": self._internal_api_key},
+                )
+                if knowledge_resp.status_code == 200:
+                    knowledge_data = knowledge_resp.json()
+                    for ktype, entries in knowledge_data.items():
+                        if ktype == "project_id" or not isinstance(entries, list):
+                            continue
+                        for entry in entries:
+                            items.append(
+                                ContextItem(
+                                    content=entry.get("content", ""),
+                                    context_kind=ContextKind.ARCH_DOC,
+                                    source_name="ArchitectureDocSource",
+                                    metadata={"type": ktype, "topic": entry.get("topic", "")},
+                                )
+                            )
+                duration_ms = int((time.monotonic() - start) * 1000)
+                logger.info(
+                    "ArchitectureDocSource: collected %d items, duration_ms=%d",
+                    len(items),
+                    duration_ms,
+                )
+                return items
+        except Exception as e:
+            logger.warning("ArchitectureDocSource 收集失败: %s", e)
+            return []
