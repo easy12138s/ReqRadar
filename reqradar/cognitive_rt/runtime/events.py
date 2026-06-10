@@ -34,15 +34,18 @@ class EventPublisher:
         self,
         bus: object | None = None,
         db_session_factory: object | None = None,
+        max_events_per_session: int = 1000,
     ) -> None:
         """初始化事件发布器。
 
         Args:
             bus: 可选的事件总线（实现 publish 方法）
             db_session_factory: 可选的数据库会话工厂（PG 持久化）
+            max_events_per_session: 每个 Session 最大事件数（防止内存无限增长）
         """
         self._bus = bus
         self._db_session_factory = db_session_factory
+        self._max_events_per_session = max_events_per_session
         self._events: dict[str, list[EventRecord]] = {}  # session_id -> events
         self._sequences: dict[str, int] = {}  # session_id -> next sequence
         self._pending_tasks: set[asyncio.Task] = set()
@@ -84,6 +87,10 @@ class EventPublisher:
         if session_id not in self._events:
             self._events[session_id] = []
         self._events[session_id].append(record)
+
+        # 驱逐旧事件，防止内存无限增长
+        if len(self._events[session_id]) > self._max_events_per_session:
+            self._events[session_id] = self._events[session_id][-self._max_events_per_session:]
 
         # 推送到外部总线（兼容同步/异步 bus）
         if self._bus is not None:
@@ -157,3 +164,16 @@ class EventPublisher:
         else:
             self._events.clear()
             self._sequences.clear()
+
+    async def flush(self) -> None:
+        """等待所有待处理的持久化任务完成。
+
+        在 Session 完成或服务 shutdown 时调用，确保所有事件都已持久化。
+        """
+        if not self._pending_tasks:
+            return
+
+        logger.debug("等待 %d 个事件持久化任务完成", len(self._pending_tasks))
+        tasks = list(self._pending_tasks)
+        await asyncio.gather(*tasks, return_exceptions=True)
+        logger.debug("所有事件持久化任务已完成")

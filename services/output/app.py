@@ -123,7 +123,8 @@ class ReportTask:
 class TaskStore:
     """任务存储（内存模式，P2 后迁移到 PG）。"""
 
-    def __init__(self) -> None:
+    def __init__(self, db_session_factory: object | None = None) -> None:
+        self._db_session_factory = db_session_factory
         self._tasks: dict[str, ReportTask] = {}
         self._session_tasks: dict[str, list[str]] = {}
 
@@ -144,7 +145,41 @@ class TaskStore:
         if session_id not in self._session_tasks:
             self._session_tasks[session_id] = []
         self._session_tasks[session_id].append(task.task_id)
+
+        # PG 持久化
+        if self._db_session_factory:
+            try:
+                loop = asyncio.get_running_loop()
+                task_coro = self._persist_to_pg(task)
+                bg_task = loop.create_task(task_coro)
+                # 防止 task 被垃圾回收
+                if not hasattr(self, '_background_tasks'):
+                    self._background_tasks: set[asyncio.Task] = set()
+                self._background_tasks.add(bg_task)
+                bg_task.add_done_callback(self._background_tasks.discard)
+            except RuntimeError:
+                logger.debug("无运行事件循环，跳过 OutputTask PG 持久化")
+
         return task
+
+    async def _persist_to_pg(self, task: ReportTask) -> None:
+        """将任务持久化到 PostgreSQL。"""
+        try:
+            from reqradar.kernel.models import OutputTask
+
+            async with self._db_session_factory() as db_session:
+                db_session.add(
+                    OutputTask(
+                        task_id=task.task_id,
+                        session_id=task.session_id,
+                        status=task.status,
+                        output_format=task.output_format,
+                        template_id=task.template_id,
+                    )
+                )
+                await db_session.commit()
+        except Exception as e:
+            logger.warning("OutputTask PG 持久化失败: %s", e, exc_info=True)
 
     def get(self, task_id: str) -> ReportTask | None:
         return self._tasks.get(task_id)

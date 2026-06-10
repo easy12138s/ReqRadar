@@ -259,6 +259,10 @@ class SessionService:
         )
 
         logger.info("Session 完成: %s", session_id)
+
+        # 从内存缓存移除（已持久化到 PG）
+        self._sessions.pop(session_id, None)
+
         return self._to_info(sm)
 
     def fail(self, session_id: str, error_message: str, error_type: str = "unknown") -> SessionInfo:

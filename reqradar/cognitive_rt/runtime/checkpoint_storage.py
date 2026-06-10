@@ -185,9 +185,9 @@ class CheckpointStorage:
         if hot:
             return hot
 
-        # 从冷区加载
-        for state in self.hot.get_all(session_id):
-            if state.get("version") == version:
+        # 从冷区加载：遍历冷区查找匹配的 checkpoint
+        for state in self.cold._cold_states.values():
+            if state.get("session_id") == session_id and state.get("version") == version:
                 return state
 
         return None

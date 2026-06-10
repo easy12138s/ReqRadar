@@ -1000,3 +1000,23 @@ class RequirementCodeLink(Base):
             name="ck_req_code_links_confidence",
         ),
     )
+
+
+class OutputTask(Base):
+    """输出任务表 — 报告生成任务持久化。"""
+
+    __tablename__ = "output_tasks"
+
+    task_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    session_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(20), server_default="pending", nullable=False)
+    output_format: Mapped[str] = mapped_column(String(20), server_default="markdown", nullable=False)
+    template_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    output_uri: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    size_bytes: Mapped[int] = mapped_column(Integer, server_default="0", nullable=False)
+    error: Mapped[str] = mapped_column(Text, server_default="", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"), nullable=False
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
