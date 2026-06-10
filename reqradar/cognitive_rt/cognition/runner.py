@@ -60,6 +60,7 @@ def create_pipeline(
     try:
         from reqradar.cognitive_rt.cognition.context_pipeline import ContextPipeline
         from reqradar.cognitive_rt.cognition.context_sources import (
+            ArchitectureDocSource,
             CodeGraphSource,
             GitHistorySource,
             ProjectMemorySource,
@@ -85,6 +86,7 @@ def create_pipeline(
             GitHistorySource,
             ProjectMemorySource,
             UserMemorySource,
+            ArchitectureDocSource,
         ]:
             source = source_cls()
             source.configure(service_url=_service_url, internal_api_key=_api_key)
@@ -573,23 +575,48 @@ async def run_react_analysis(
             ds = agent.dimension_tracker.status_summary()
 
             # 尝试使用 Context Pipeline 获取增强上下文
+            # 缓存机制：每 3 步重新执行一次 Pipeline，避免重复计算
             pipeline_context = ""
             if pipeline is not None:
-                try:
-                    pipeline_result = await pipeline.execute(
-                        session_id=effective_session_id,
-                        project_id=str(agent.project_id),
-                        query=agent.requirement_text[:500],
-                        context_budget=128000,
-                    )
-                    pipeline_context = pipeline_result.context
-                    logger.info(
-                        "Pipeline 完成: strategy=%s, collected≥1, scored≥1, selected≥1, tokens=%d",
-                        pipeline_result.strategy_name,
-                        pipeline_result.token_count,
-                    )
-                except Exception as e:
-                    logger.warning("Context Pipeline 执行失败, 回退到 f-string: %s", e)
+                # 检查是否需要重新执行 Pipeline
+                should_execute_pipeline = (
+                    not hasattr(agent, '_pipeline_cache')
+                    or agent._pipeline_cache is None
+                    or agent.step_count % 3 == 1  # 每 3 步执行一次
+                    or agent.step_count == 1  # 第一步必须执行
+                )
+
+                if should_execute_pipeline:
+                    try:
+                        pipeline_result = await pipeline.execute(
+                            session_id=effective_session_id,
+                            project_id=str(agent.project_id),
+                            query=agent.requirement_text[:500],
+                            context_budget=128000,
+                        )
+                        # 缓存结果
+                        agent._pipeline_cache = {
+                            'context': pipeline_result.context,
+                            'strategy_name': pipeline_result.strategy_name,
+                            'token_count': pipeline_result.token_count,
+                            'step': agent.step_count,
+                        }
+                        pipeline_context = pipeline_result.context
+                        logger.info(
+                            "Pipeline 完成: strategy=%s, collected≥1, scored≥1, selected≥1, tokens=%d",
+                            pipeline_result.strategy_name,
+                            pipeline_result.token_count,
+                        )
+                    except Exception as e:
+                        logger.warning("Context Pipeline 执行失败, 回退到 f-string: %s", e)
+                        # 使用缓存（如果有）
+                        if hasattr(agent, '_pipeline_cache') and agent._pipeline_cache:
+                            pipeline_context = agent._pipeline_cache['context']
+                else:
+                    # 使用缓存
+                    pipeline_context = agent._pipeline_cache['context']
+                    logger.debug("Pipeline 使用缓存 (step=%d, cached_at=%d)",
+                               agent.step_count, agent._pipeline_cache['step'])
 
             system_prompt = build_dynamic_system_prompt(
                 dimension_status=ds,

@@ -50,6 +50,14 @@ class EventPublisher:
         self._sequences: dict[str, int] = {}  # session_id -> next sequence
         self._pending_tasks: set[asyncio.Task] = set()
 
+    def set_bus(self, bus: object) -> None:
+        """设置事件总线。"""
+        self._bus = bus
+
+    def set_db_session_factory(self, factory: object) -> None:
+        """设置数据库会话工厂。"""
+        self._db_session_factory = factory
+
     def publish(
         self,
         session_id: str,

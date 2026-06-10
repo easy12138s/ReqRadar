@@ -100,10 +100,15 @@ async def lifespan(app: FastAPI):
     await _event_bus.connect()
 
     # 注入 db_session_factory 到所有需要 PG 持久化的组件
-    _publisher._bus = _event_bus
-    _publisher._db_session_factory = app.state.db_session_factory
-    _checkpoint_storage._db_session_factory = app.state.db_session_factory
-    _service._db_session_factory = app.state.db_session_factory
+    _publisher.set_bus(_event_bus)
+    _publisher.set_db_session_factory(app.state.db_session_factory)
+    _checkpoint_storage.set_db_session_factory(app.state.db_session_factory)
+    _service.set_db_session_factory(app.state.db_session_factory)
+
+    # 从 PG 恢复活跃 Session
+    loaded_count = await _service.load_active_sessions()
+    if loaded_count > 0:
+        logger.info("恢复 %d 个活跃 Session", loaded_count)
 
     yield
 

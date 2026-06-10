@@ -134,6 +134,10 @@ class CheckpointStorage:
         self._db_session_factory = db_session_factory
         self._pending_tasks: set[asyncio.Task] = set()
 
+    def set_db_session_factory(self, factory: object) -> None:
+        """设置数据库会话工厂。"""
+        self._db_session_factory = factory
+
     def save(self, checkpoint_record: object) -> None:
         """保存 Checkpoint 到热区和冷区。"""
         self.hot.save(checkpoint_record)
@@ -185,10 +189,53 @@ class CheckpointStorage:
         if hot:
             return hot
 
-        # 从冷区加载：遍历冷区查找匹配的 checkpoint
+        # 从内存冷区加载
         for state in self.cold._cold_states.values():
             if state.get("session_id") == session_id and state.get("version") == version:
                 return state
+
+        # 从 PG 冷存储加载（同步版本，用于兼容）
+        # 注意：异步版本请使用 load_version_async
+        return None
+
+    async def load_version_async(self, session_id: str, version: int) -> dict | None:
+        """异步加载指定版本，支持 PG 冷存储查询。"""
+        # 先查热区
+        hot = self.hot.load(session_id, version)
+        if hot:
+            return hot
+
+        # 再查内存冷区
+        for state in self.cold._cold_states.values():
+            if state.get("session_id") == session_id and state.get("version") == version:
+                return state
+
+        # 最后查 PG
+        if self._db_session_factory:
+            try:
+                from sqlalchemy import select
+
+                from reqradar.kernel.models import Checkpoint as CheckpointModel
+
+                async with self._db_session_factory() as db_session:
+                    result = await db_session.execute(
+                        select(CheckpointModel).where(
+                            CheckpointModel.session_id == session_id,
+                            CheckpointModel.version == version,
+                        )
+                    )
+                    row = result.scalar_one_or_none()
+                    if row:
+                        return {
+                            "checkpoint_id": str(row.id) if hasattr(row, "id") else "",
+                            "session_id": session_id,
+                            "version": row.version,
+                            "state_summary": row.state_summary or {},
+                            "hot_state": row.hot_state or {},
+                            "created_at": row.created_at.isoformat() if row.created_at else None,
+                        }
+            except Exception as e:
+                logger.warning("Checkpoint PG 查询失败: %s", e, exc_info=True)
 
         return None
 

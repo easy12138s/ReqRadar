@@ -6,7 +6,7 @@ import asyncio
 import contextlib
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from reqradar.cognitive_rt.runtime.checkpoint import CheckpointManager, StateSummary
@@ -66,6 +66,10 @@ class SessionService:
         self._db_session_factory = db_session_factory
         self._sessions: dict[str, SessionStateMachine] = {}
         self._background_tasks: set[asyncio.Task] = set()
+
+    def set_db_session_factory(self, factory: object) -> None:
+        """设置数据库会话工厂。"""
+        self._db_session_factory = factory
 
     def create(
         self,
@@ -211,6 +215,10 @@ class SessionService:
         )
 
         logger.info("Session 取消: %s", session_id)
+
+        # 从内存缓存移除（已持久化到 PG）
+        self._sessions.pop(session_id, None)
+
         return self._to_info(sm)
 
     def wait_for_input(self, session_id: str) -> SessionInfo:
@@ -288,6 +296,10 @@ class SessionService:
         )
 
         logger.info("Session 失败: %s, error=%s", session_id, error_message)
+
+        # 从内存缓存移除（已持久化到 PG）
+        self._sessions.pop(session_id, None)
+
         return self._to_info(sm)
 
     def checkpoint(
@@ -534,3 +546,68 @@ class SessionService:
                 await db_session.commit()
         except Exception as e:
             logger.warning("Session PG 持久化失败: %s", e, exc_info=True)
+
+    async def load_active_sessions(self) -> int:
+        """从 PG 加载活跃 Session 到内存缓存。
+
+        服务启动时调用，恢复之前未完成的 Session。
+
+        Returns:
+            加载的 Session 数量
+        """
+        if not self._db_session_factory:
+            logger.debug("无 db_session_factory，跳过 Session 恢复")
+            return 0
+
+        try:
+            from sqlalchemy import select
+
+            from reqradar.kernel.models import CognitiveSession
+
+            # 查询非终态的 Session
+            terminal_statuses = {
+                SessionStatus.COMPLETED.value,
+                SessionStatus.FAILED.value,
+                SessionStatus.CANCELLED.value,
+                SessionStatus.ABORTED.value,
+            }
+
+            async with self._db_session_factory() as db_session:
+                result = await db_session.execute(
+                    select(CognitiveSession).where(
+                        CognitiveSession.status.notin_(terminal_statuses)
+                    )
+                )
+                rows = result.scalars().all()
+
+                loaded_count = 0
+                for row in rows:
+                    session_id = str(row.session_id)
+                    if session_id not in self._sessions:
+                        # 重建状态机
+                        from reqradar.cognitive_rt.runtime.session import (
+                            RuntimeState,
+                            SessionStateMachine,
+                        )
+
+                        state = RuntimeState(
+                            session_id=session_id,
+                            project_id=str(row.project_id) if row.project_id else "",
+                            user_id=str(row.user_id) if row.user_id else "",
+                            status=SessionStatus(row.status),
+                            created_at=row.created_at or datetime.now(UTC),
+                            updated_at=row.updated_at or datetime.now(UTC),
+                            started_at=getattr(row, "started_at", None),
+                            finished_at=getattr(row, "finished_at", None),
+                            config=getattr(row, "config", None) or {},
+                        )
+                        sm = SessionStateMachine(state)
+                        self._sessions[session_id] = sm
+                        loaded_count += 1
+
+                logger.info("从 PG 加载 %d 个活跃 Session", loaded_count)
+                return loaded_count
+
+        except Exception as e:
+            logger.warning("Session 恢复失败: %s", e, exc_info=True)
+            return 0
