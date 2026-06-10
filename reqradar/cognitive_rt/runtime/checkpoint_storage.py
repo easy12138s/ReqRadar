@@ -184,7 +184,7 @@ class CheckpointStorage:
         return self.hot.load(session_id)
 
     def load_version(self, session_id: str, version: int) -> dict | None:
-        """加载指定版本的热状态，不存在则从冷区加载。"""
+        """加载指定版本的热状态，不存在则从冷区加载（支持 PG）。"""
         hot = self.hot.load(session_id, version)
         if hot:
             return hot
@@ -194,9 +194,53 @@ class CheckpointStorage:
             if state.get("session_id") == session_id and state.get("version") == version:
                 return state
 
-        # 从 PG 冷存储加载（同步版本，用于兼容）
-        # 注意：异步版本请使用 load_version_async
+        # 从 PG 冷存储加载（同步方式）
+        if self._db_session_factory:
+            try:
+                result = self._query_pg_sync(session_id, version)
+                if result:
+                    return result
+            except Exception as e:
+                logger.debug("Checkpoint PG 同步查询失败: %s", e)
+
         return None
+
+    def _query_pg_sync(self, session_id: str, version: int) -> dict | None:
+        """同步查询 PG 中的 Checkpoint。"""
+        try:
+            import os
+
+            from sqlalchemy import create_engine, select
+            from sqlalchemy.orm import Session as DBSession
+
+            from reqradar.kernel.models import Checkpoint as CheckpointModel
+
+            # 创建同步引擎
+            database_url = os.environ.get("DATABASE_URL", "sqlite:///./reqradar_dev.db")
+            sync_url = database_url.replace("sqlite+aiosqlite", "sqlite")
+
+            engine = create_engine(sync_url)
+            with DBSession(engine) as db_session:
+                result = db_session.execute(
+                    select(CheckpointModel).where(
+                        CheckpointModel.session_id == session_id,
+                        CheckpointModel.version == version,
+                    )
+                )
+                row = result.scalar_one_or_none()
+                if row:
+                    return {
+                        "checkpoint_id": str(row.id) if hasattr(row, "id") else "",
+                        "session_id": session_id,
+                        "version": row.version,
+                        "state_summary": row.state_summary or {},
+                        "hot_state": row.hot_state or {},
+                        "created_at": row.created_at.isoformat() if row.created_at else None,
+                    }
+            return None
+        except Exception as e:
+            logger.debug("PG 同步查询失败: %s", e)
+            return None
 
     async def load_version_async(self, session_id: str, version: int) -> dict | None:
         """异步加载指定版本，支持 PG 冷存储查询。"""

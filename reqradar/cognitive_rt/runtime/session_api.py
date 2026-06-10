@@ -493,10 +493,90 @@ class SessionService:
             logger.error("Checkpoint 回调状态转换失败: session=%s, error=%s", session_id, e)
 
     def _get(self, session_id: str) -> SessionStateMachine:
-        """获取 Session 状态机。"""
-        if session_id not in self._sessions:
-            raise KeyError(f"Session 不存在: {session_id}")
-        return self._sessions[session_id]
+        """获取 Session 状态机。
+
+        先查内存缓存，未找到则从 PG 加载。
+        """
+        if session_id in self._sessions:
+            return self._sessions[session_id]
+
+        # 尝试从 PG 同步加载
+        if self._db_session_factory:
+            try:
+                sm = self._load_from_pg_sync(session_id)
+                if sm:
+                    self._sessions[session_id] = sm
+                    return sm
+            except Exception as e:
+                logger.debug("从 PG 加载 Session 失败: %s", e)
+
+        raise KeyError(f"Session 不存在: {session_id}")
+
+    def _load_from_pg_sync(self, session_id: str) -> SessionStateMachine | None:
+        """同步从 PG 加载 Session（用于 get 查询）。"""
+        try:
+            import asyncio
+
+            # 如果有运行中的事件循环，使用线程池执行同步查询
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as pool:
+                    future = pool.submit(
+                        self._pg_query_sync,
+                        session_id,
+                    )
+                    return future.result(timeout=5)
+            else:
+                return self._pg_query_sync(session_id)
+        except Exception as e:
+            logger.debug("PG 同步加载失败: %s", e)
+            return None
+
+    def _pg_query_sync(self, session_id: str) -> SessionStateMachine | None:
+        """在新线程中执行 PG 查询。"""
+        try:
+            import os
+
+            from sqlalchemy import create_engine, select
+            from sqlalchemy.orm import Session as DBSession
+
+            from reqradar.cognitive_rt.runtime.session import (
+                RuntimeState,
+                SessionStateMachine,
+            )
+            from reqradar.kernel.models import CognitiveSession
+
+            # 创建同步引擎
+            database_url = os.environ.get("DATABASE_URL", "sqlite:///./reqradar_dev.db")
+            sync_url = database_url.replace("sqlite+aiosqlite", "sqlite")
+
+            engine = create_engine(sync_url)
+            with DBSession(engine) as db_session:
+                result = db_session.execute(
+                    select(CognitiveSession).where(
+                        CognitiveSession.session_id == session_id
+                    )
+                )
+                row = result.scalar_one_or_none()
+
+                if row:
+                    state = RuntimeState(
+                        session_id=str(row.session_id),
+                        project_id=str(row.project_id) if row.project_id else "",
+                        user_id=str(row.user_id) if row.user_id else "",
+                        status=SessionStatus(row.status),
+                        created_at=row.created_at or datetime.now(UTC),
+                        updated_at=getattr(row, 'updated_at', None) or datetime.now(UTC),
+                        started_at=getattr(row, 'started_at', None),
+                        finished_at=getattr(row, 'finished_at', None),
+                        config=getattr(row, 'config', None) or {},
+                    )
+                    return SessionStateMachine(state)
+            return None
+        except Exception as e:
+            logger.debug("PG 同步查询失败: %s", e)
+            return None
 
     def _to_info(self, sm: SessionStateMachine) -> SessionInfo:
         """转换为 SessionInfo。"""
