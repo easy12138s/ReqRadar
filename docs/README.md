@@ -130,12 +130,16 @@
 | P9 MCP 独立 | 04 路线图 P9 节 | 概述已有，详细待补充 |
 | P10 性能升级 | 04 路线图 §三 P10 节 | 概述已有，详细待补充 |
 
-#### MVP Hardening（路线图 P0-P9 完成后的冲刺）
+#### 核心功能补全（当前阶段 — P0-P9 架构完成后的收尾）
 
 | 文档 | 用途 |
 |------|------|
-| [MVP-01_MVP_HARDENING_PLAN.md](detailed/MVP-01_MVP_HARDENING_PLAN.md) | 8 项 MVP 必做任务（5 天冲刺）实施计划 |
-| [MVP-02_MVP_VERIFICATION_CHECKLIST.md](detailed/MVP-02_MVP_VERIFICATION_CHECKLIST.md) | 配套验收清单（逐项验证步骤 + 判定标准 + 签字栏） |
+| `.trae/specs/mvp-hardening/spec.md` | **当前阶段 Spec**：4 阶段需求与 15 个验收 Scenario |
+| `.trae/specs/mvp-hardening/tasks.md` | **当前阶段 Tasks**：35 项任务按阶段排列 |
+| `.trae/specs/mvp-hardening/checklist.md` | **当前阶段验收清单**：75 个检查点 |
+| [MVP-01_MVP_HARDENING_PLAN.md](detailed/MVP-01_MVP_HARDENING_PLAN.md) | 核心功能补全实施计划（v2.0，含代码模板+降级策略） |
+| [MVP-02_MVP_VERIFICATION_CHECKLIST.md](detailed/MVP-02_MVP_VERIFICATION_CHECKLIST.md) | 配套验收清单（逐项验证 + 判定标准 + 签字栏） |
+| [MVP-1_BUG_LOG.md](detailed/MVP-1_BUG_LOG.md) | E2E 测试 Bug 日志 |
 
 ---
 
@@ -174,8 +178,8 @@
 | F-01 | F-01_FRONTEND_DESIGN.md | 前端功能架构设计 | ✅ 已完成 | v1.0 |
 | — | INGESTION_SERVICE_PLAN.md | ingestion-service 实施规划 | ✅ 已完成 | v1.0 |
 | — | PROJECT_MANAGEMENT_PLAN.md | 项目管理模块规划 | ✅ 已完成 | v1.0 |
-| MVP-01 | MVP-01_MVP_HARDENING_PLAN.md | MVP Hardening 实施计划（5 天冲刺） | ✅ 已完成 | v1.0 |
-| MVP-02 | MVP-02_MVP_VERIFICATION_CHECKLIST.md | MVP 验收清单（8 项任务逐项验收） | ✅ 已完成 | v1.0 |
+| MVP-01 | MVP-01_MVP_HARDENING_PLAN.md | 核心功能补全实施计划（4 阶段 35 项） | ✅ 已完成 | v2.0 |
+| MVP-02 | MVP-02_MVP_VERIFICATION_CHECKLIST.md | 配套验收清单 | ✅ 已完成 | v2.0 |
 | — | adr/ | 架构决策记录（16 条） | ✅ 已完成 | v1.0 |
 
 ---
@@ -222,7 +226,7 @@
 - **前缀 I** = Infrastructure（基础设施：服务间契约/部署/迁移）
 - **前缀 S** = Security（安全设计）
 - **前缀 F** = Frontend（前端设计）
-- **前缀 MVP** = MVP Hardening（路线图 P0-P9 完成后的冲刺任务）
+- **前缀 MVP** = 核心功能补全（架构收尾阶段）
 
 ---
 

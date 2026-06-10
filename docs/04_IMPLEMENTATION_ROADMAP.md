@@ -73,6 +73,10 @@ develop（V1 维护）
 
 ---
 
+> **状态更新**：P0-P9 架构实施阶段**已全部完成**，当前处于**核心功能补全（架构收尾）阶段**。  
+> 当前工作请参见 [.trae/specs/mvp-hardening/spec.md](../.trae/specs/mvp-hardening/spec.md) 和 [MVP-01_MVP_HARDENING_PLAN.md](detailed/MVP-01_MVP_HARDENING_PLAN.md)。  
+> 本路线图保留用于追溯架构决策和实施顺序，不再用于日常任务分配。
+
 ## 二、Phase 总览
 
 | Phase | 名称 | 核心目标 | 依赖 | 预计周期 |

@@ -14,8 +14,12 @@
         → 重点读"Runtime Flow"图 + 四大核心抽象
 
 第3步: docs/04_IMPLEMENTATION_ROADMAP.md (2min)
-        → 定位当前该做哪个 Phase（看依赖关系图）
-        → 找到对应 Phase 的验收标准和回滚策略
+        → 了解架构实施的完整路线图（P0-P10）
+        → 确认 P0-P9 架构阶段**已全部完成**，当前处于收尾阶段
+
+第3.5步: .trae/specs/mvp-hardening/ (5min)
+        → 阅读 spec.md 理解**核心功能补全**4 阶段的目标与验收条件
+        → 阅读 tasks.md 找到当前 Day 的任务清单
 
 第4步: docs/README.md (3min)
         → 按"第四遍：按 Phase 查阅"找到你当前 Phase 需要的所有文档
@@ -280,7 +284,7 @@ python scripts/check_dependencies.py   # C-02 依赖铁律验证
 | `reqradar/kernel/enums.py` | SessionStatus(11态), EventType(23种), EvidenceType(10种) 等枚举 |
 | `reqradar/kernel/exceptions.py` | 15 个异常类，全部支持 cause 链 |
 | `reqradar/kernel/database.py` | SQLAlchemy Base + 异步引擎工厂 |
-| `reqradar/kernel/models.py` | 25 张 ORM 模型（P0 已创建，P1 扩展 L0/L1 表） |
+| `reqradar/kernel/models.py` | 32 张 ORM 模型（P0 已创建，P1 扩展 L0/L1 表） |
 | `reqradar/kernel/config_base.py` | Scope×Domain 配置基类 + 三级解析链 |
 | `reqradar/web/api/v2/` | V2 新版 API 路由（`/api/v2/...`，P1 开始创建） |
 | `tests/unit/kernel/` | Kernel 单元测试 |
@@ -293,6 +297,11 @@ python scripts/check_dependencies.py   # C-02 依赖铁律验证
 | `docs/detailed/C-05_TEST_SPECIFICATION.md` | 测试命名/mock/边界覆盖 |
 | `docs/detailed/C-06_DATABASE_MIGRATION_PLAN.md` | 33 张表 DDL + 批次顺序 |
 | `docs/detailed/I-01_SERVICE_API_CONTRACT.md` | 服务间内部 API 契约 |
+| `.trae/specs/mvp-hardening/spec.md` | **当前阶段 Spec**：核心功能补全 4 阶段需求 |
+| `.trae/specs/mvp-hardening/tasks.md` | **当前阶段 Tasks**：35 项可勾选任务清单 |
+| `.trae/specs/mvp-hardening/checklist.md` | **当前阶段验收清单**：75 个检查点 |
+| `docs/detailed/MVP-01_MVP_HARDENING_PLAN.md` | 核心功能补全实施计划（v2.0） |
+| `docs/detailed/MVP-02_MVP_VERIFICATION_CHECKLIST.md` | 配套验收清单 |
 
 ## 6. Git 提交规范
 
@@ -357,3 +366,38 @@ git checkout -b refactor/v2-p{N+1} refactor/v2
 - **不确定命名格式** → 查 C-01 第 6 节完整命名表
 - **不确定测试怎么写** → 查 C-05 第 8/9 节模板
 - **不确定依赖是否合规** → 运行 `python scripts/check_dependencies.py`
+
+---
+
+## 8. 当前阶段：核心功能补全（架构收尾）
+
+P0-P9 架构实施阶段已全部完成，当前处于**重构后的收尾阶段**。基于两份代码审计（36 项真实问题），定义了 4 阶段补全计划。
+
+### 8.1 四阶段总览
+
+| 阶段 | 任务数 | 目标 | 对应问题 |
+|------|--------|------|---------|
+| **Phase 1 接口对齐** | 10 | 消除类型/接口不匹配和实现错误 | C 类 + D 类 |
+| **Phase 2 认知管线接通** | 7 | Pipeline 真正驱动推理，L3 知识沉淀 | A 类（核心） |
+| **Phase 3 持久化闭环** | 5 | 服务重启不丢数据 | B 类 |
+| **Phase 4 代码质量** | 13 | 死代码清理、导出补全、命名规范 | E 类 |
+| **合计** | **35** | **14-18 天** | **36 项全覆盖** |
+
+### 8.2 阶段依赖关系
+
+```
+Phase 1 (接口对齐) ──→ Phase 2 (认知管线) ──→ Phase 3 (持久化)
+                                                         │
+Phase 4 (代码质量) ──── 与 Phase 1-3 并行 ──────────────┘
+```
+
+### 8.3 每次被分配任务时的执行流程
+
+```
+1. 确认环境：conda activate reqradar && pip install -e reqradar/kernel
+2. 定位任务：读 .trae/specs/mvp-hardening/tasks.md → 找到当前 Day 的 Task
+3. 读 Spec：.trae/specs/mvp-hardening/spec.md → 理解该 Task 所属的 Requirement
+4. 读实施计划：docs/detailed/MVP-01_MVP_HARDENING_PLAN.md → 看代码模板+降级策略
+5. 按 §3 Phase 开发工作流 执行 Step 0→7
+6. 提交：git add . && git commit -m "feat(core): ...（英文）" && git push
+```
