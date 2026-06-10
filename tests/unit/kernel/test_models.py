@@ -114,7 +114,7 @@ class TestModelMapping:
         ), f"Missing: {expected_tables - actual_tables}"
 
     def test_total_table_count(self):
-        assert len(Base.metadata.tables) == 26
+        assert len(Base.metadata.tables) == 33
 
 
 class TestUserModel:

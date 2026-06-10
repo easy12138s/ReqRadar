@@ -331,7 +331,7 @@ class SessionService:
         self._checkpoint_storage.save(record)
 
         # 更新 session 的 checkpoint version
-        sm._state.last_checkpoint_version = record.version
+        sm.state.last_checkpoint_version = record.version
 
         # 转换回 RUNNING
         if sm.status == SessionStatus.CHECKPOINTING:
@@ -395,8 +395,8 @@ class SessionService:
             payload = evt.payload or {}
             if "dimension_status" in payload:
                 return payload["dimension_status"]
-        if sm._state.last_checkpoint_version > 0:
-            return {"status": "available", "version": sm._state.last_checkpoint_version}
+        if sm.state.last_checkpoint_version > 0:
+            return {"status": "available", "version": sm.state.last_checkpoint_version}
         return {"status": "no_data"}
 
     async def _run_analysis(
@@ -463,7 +463,7 @@ class SessionService:
             sm = self._get(session_id)
             if sm.status == SessionStatus.RUNNING:
                 sm.transition(SessionStatus.CHECKPOINTING)
-                sm._state.last_checkpoint_version = version
+                sm.state.last_checkpoint_version = version
                 sm.transition(SessionStatus.RUNNING)
             self._publisher.publish(
                 session_id=session_id,

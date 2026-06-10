@@ -136,7 +136,11 @@ class ProjectMemorySource:
                     len(items),
                     duration_ms,
                 )
-                return items
+                # 过滤 context_kind（如果指定）
+                if context_kind:
+                    items = [i for i in items if i.context_kind.value == context_kind]
+                # 截断到 max_items
+                return items[:max_items]
         except Exception as e:
             logger.warning("ProjectMemorySource 收集失败: %s", e)
             return []
@@ -201,7 +205,11 @@ class UserMemorySource:
                 logger.info(
                     "UserMemorySource: collected %d items, duration_ms=%d", len(items), duration_ms
                 )
-                return items
+                # 过滤 context_kind（如果指定）
+                if context_kind:
+                    items = [i for i in items if i.context_kind.value == context_kind]
+                # 截断到 max_items
+                return items[:max_items]
         except Exception as e:
             logger.warning("UserMemorySource 收集失败: %s", e)
             return []
@@ -266,7 +274,11 @@ class CodeGraphSource:
                 logger.info(
                     "CodeGraphSource: collected %d items, duration_ms=%d", len(items), duration_ms
                 )
-                return items
+                # 过滤 context_kind（如果指定）
+                if context_kind:
+                    items = [i for i in items if i.context_kind.value == context_kind]
+                # 截断到 max_items
+                return items[:max_items]
         except Exception as e:
             logger.warning("CodeGraphSource 收集失败: %s", e)
             return []
@@ -333,7 +345,11 @@ class VectorResultSource:
                     len(items),
                     duration_ms,
                 )
-                return items
+                # 过滤 context_kind（如果指定）
+                if context_kind:
+                    items = [i for i in items if i.context_kind.value == context_kind]
+                # 截断到 max_items
+                return items[:max_items]
         except Exception as e:
             logger.warning("VectorResultSource 收集失败: %s", e)
             return []
@@ -398,7 +414,11 @@ class GitHistorySource:
                 logger.info(
                     "GitHistorySource: collected %d items, duration_ms=%d", len(items), duration_ms
                 )
-                return items
+                # 过滤 context_kind（如果指定）
+                if context_kind:
+                    items = [i for i in items if i.context_kind.value == context_kind]
+                # 截断到 max_items
+                return items[:max_items]
         except Exception as e:
             logger.warning("GitHistorySource 收集失败: %s", e)
             return []
@@ -498,7 +518,11 @@ class ArchitectureDocSource:
                     len(items),
                     duration_ms,
                 )
-                return items
+                # 过滤 context_kind（如果指定）
+                if context_kind:
+                    items = [i for i in items if i.context_kind.value == context_kind]
+                # 截断到 max_items
+                return items[:max_items]
         except Exception as e:
             logger.warning("ArchitectureDocSource 收集失败: %s", e)
             return []

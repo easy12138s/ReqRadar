@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 
 from reqradar.cognitive_rt.cognition.llm_client import LiteLLMClient
 from reqradar.cognitive_rt.runtime.checkpoint import CheckpointManager
@@ -26,6 +27,59 @@ INTERNAL_API_KEY = os.environ.get("INTERNAL_API_KEY", "dev-internal-key")
 
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite+aiosqlite:///./reqradar_dev.db")
+
+
+# ── Pydantic 请求/响应模型 ────────────────────────────────────────────────
+
+
+class CreateSessionRequest(BaseModel):
+    """创建 Session 请求。"""
+
+    project_id: str = Field(description="项目 ID")
+    user_id: str = Field(default="system", description="用户 ID")
+    config: dict | None = Field(default=None, description="会话配置")
+
+
+class StartSessionRequest(BaseModel):
+    """启动 Session 请求。"""
+
+    requirement_text: str = Field(default="", description="需求文本")
+    resume_from: int | None = Field(default=None, description="从指定步骤恢复")
+    config: dict = Field(default_factory=dict, description="运行配置")
+
+
+class CheckpointRequest(BaseModel):
+    """创建 Checkpoint 请求。"""
+
+    checkpoint_type: str = Field(default="step_complete", description="Checkpoint 类型")
+    current_step: int = Field(default=0, description="当前步骤")
+    evidence_count: int = Field(default=0, description="证据数量")
+    dimension_status: dict | None = Field(default=None, description="维度状态")
+
+
+class SessionResponse(BaseModel):
+    """Session 信息响应。"""
+
+    session_id: str = Field(description="Session ID")
+    project_id: str = Field(description="项目 ID")
+    user_id: str = Field(description="用户 ID")
+    status: str = Field(description="状态")
+    created_at: str | None = Field(default=None, description="创建时间")
+    started_at: str | None = Field(default=None, description="启动时间")
+    finished_at: str | None = Field(default=None, description="完成时间")
+
+
+class EventResponse(BaseModel):
+    """事件信息响应。"""
+
+    event_id: str = Field(description="事件 ID")
+    session_id: str = Field(description="Session ID")
+    sequence: int = Field(description="序号")
+    event_type: str = Field(description="事件类型")
+    event_level: str = Field(description="事件层级")
+    timestamp: str = Field(description="时间戳")
+    producer: str = Field(description="生产者")
+    payload: dict = Field(default_factory=dict, description="负载")
 
 
 @asynccontextmanager
@@ -108,27 +162,15 @@ async def health():
 
 
 @app.post("/internal/v2/sessions", status_code=201)
-async def create_session(body: dict):
+async def create_session(body: CreateSessionRequest):
     """创建 Session。"""
-    project_id = body.get("project_id")
-    if not project_id:
-        raise HTTPException(
-            status_code=400,
-            detail={"error": {"code": "VALIDATION_FAILED", "message": "project_id 必填"}},
-        )
-    user_id = body.get("user_id", "system")
-    config = body.get("config")
-    info = _service.create(project_id=project_id, user_id=user_id, config=config)
+    info = _service.create(project_id=body.project_id, user_id=body.user_id, config=body.config)
     return _info_to_dict(info)
 
 
 @app.post("/internal/v2/sessions/{session_id}/start")
-async def start_session(session_id: str, body: dict):
+async def start_session(session_id: str, body: StartSessionRequest):
     """启动 Session — 创建 Runner 组件并触发真实推理。"""
-    resume_from = body.get("resume_from")
-    requirement_text = body.get("requirement_text", "")
-    config = body.get("config", {})
-
     try:
         info = _service.get(session_id)
     except KeyError as e:
@@ -141,10 +183,10 @@ async def start_session(session_id: str, body: dict):
 
     agent, llm_client, tool_registry = create_runner_components(
         session_id=session_id,
-        requirement_text=requirement_text,
+        requirement_text=body.requirement_text,
         project_id=str(project_id),
         user_id=str(user_id),
-        config=config,
+        config=body.config,
     )
 
     try:
@@ -153,8 +195,8 @@ async def start_session(session_id: str, body: dict):
             agent=agent,
             llm_client=llm_client,
             tool_registry=tool_registry,
-            requirement_text=requirement_text,
-            resume_from=resume_from,
+            requirement_text=body.requirement_text,
+            resume_from=body.resume_from,
         )
     except KeyError as e:
         raise HTTPException(
