@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 import time
@@ -11,6 +12,38 @@ import httpx
 from reqradar.kernel.types import ContextKind
 
 logger = logging.getLogger("reqradar.cognitive_rt.cognition.context_sources")
+
+# 重试配置
+MAX_RETRIES = 3
+RETRY_BACKOFF_BASE = 0.5  # 秒
+
+
+async def _retry_request(
+    func,
+    *args,
+    max_retries: int = MAX_RETRIES,
+    **kwargs,
+):
+    """带重试的 HTTP 请求包装器。"""
+    last_error = None
+    for attempt in range(max_retries + 1):
+        try:
+            return await func(*args, **kwargs)
+        except (httpx.ConnectError, httpx.ReadTimeout, httpx.WriteTimeout) as e:
+            last_error = e
+            if attempt < max_retries:
+                backoff = RETRY_BACKOFF_BASE * (2 ** attempt)
+                logger.warning(
+                    "HTTP 请求失败 (attempt %d/%d), %.1fs 后重试: %s",
+                    attempt + 1,
+                    max_retries + 1,
+                    backoff,
+                    e,
+                )
+                await asyncio.sleep(backoff)
+            else:
+                raise
+    raise last_error  # type: ignore[misc]
 
 
 class ContextItem:
@@ -71,7 +104,8 @@ class ProjectMemorySource:
         start = time.monotonic()
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.get(
+                resp = await _retry_request(
+                    client.get,
                     "%s/internal/v2/knowledge/query" % self._service_url,
                     params={
                         "project_id": project_id,
@@ -140,7 +174,8 @@ class UserMemorySource:
         start = time.monotonic()
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.get(
+                resp = await _retry_request(
+                    client.get,
                     "%s/internal/v2/knowledge/query" % self._service_url,
                     params={"project_id": project_id, "knowledge_types": "historical_decision"},
                     headers={"X-Internal-API-Key": self._internal_api_key},
@@ -204,7 +239,8 @@ class CodeGraphSource:
         start = time.monotonic()
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.post(
+                resp = await _retry_request(
+                    client.post,
                     "%s/internal/v2/search/vector" % self._service_url,
                     json={"project_id": project_id, "query_text": query, "top_k": 10, "collection": "code"},
                     headers={"X-Internal-API-Key": self._internal_api_key},
@@ -268,7 +304,8 @@ class VectorResultSource:
         start = time.monotonic()
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.post(
+                resp = await _retry_request(
+                    client.post,
                     "%s/internal/v2/search/vector" % self._service_url,
                     json={"project_id": project_id, "query_text": query, "top_k": 10, "collection": "requirements"},
                     headers={"X-Internal-API-Key": self._internal_api_key},
@@ -334,7 +371,8 @@ class GitHistorySource:
         start = time.monotonic()
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.get(
+                resp = await _retry_request(
+                    client.get,
                     "%s/internal/v2/knowledge/query" % self._service_url,
                     params={"project_id": project_id, "knowledge_types": "pattern"},
                     headers={"X-Internal-API-Key": self._internal_api_key},

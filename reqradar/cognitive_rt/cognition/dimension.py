@@ -87,6 +87,14 @@ class DimensionTracker:
     def from_snapshot(self, snapshot: dict) -> None:
         for dim_id, data in snapshot.items():
             if dim_id in self.dimensions:
-                self.dimensions[dim_id].status = data.get("status", "pending")
+                status_str = data.get("status", "pending")
+                # 将字符串转换为 DimensionStatus 枚举
+                if isinstance(status_str, DimensionStatus):
+                    self.dimensions[dim_id].status = status_str
+                else:
+                    try:
+                        self.dimensions[dim_id].status = DimensionStatus(status_str)
+                    except ValueError:
+                        self.dimensions[dim_id].status = DimensionStatus.PENDING
                 self.dimensions[dim_id].evidence_ids = data.get("evidence_ids", [])
                 self.dimensions[dim_id].draft_content = data.get("draft_content")

@@ -35,7 +35,7 @@ class AnalysisAgent:
     def __init__(
         self,
         requirement_text: str,
-        project_id: int,
+        project_id: str,
         user_id: int,
         depth: str = "standard",
         max_steps: int | None = None,

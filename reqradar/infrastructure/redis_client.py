@@ -21,7 +21,7 @@ class RedisClient:
         self._url = url
         self._redis: Any = None
         self.is_connected: bool = False
-        self._memory_store: dict[str, Any] = {}
+        self._memory_store: dict[str, tuple[Any, float | None]] = {}  # (value, expire_at)
         self._memory_streams: dict[str, list[tuple[str, dict[str, Any]]]] = {}
 
     async def connect(self) -> None:
@@ -47,13 +47,22 @@ class RedisClient:
         if self.is_connected and self._redis is not None:
             await self._redis.set(key, value, ex=ex)
         else:
-            self._memory_store[key] = value
+            # 内存模式：记录过期时间
+            expire_at = time.monotonic() + ex if ex is not None else None
+            self._memory_store[key] = (value, expire_at)
 
     async def get(self, key: str) -> Any:
         """获取键对应的值，不存在返回 None。"""
         if self.is_connected and self._redis is not None:
             return await self._redis.get(key)
-        return self._memory_store.get(key)
+        # 内存模式：检查是否过期
+        if key not in self._memory_store:
+            return None
+        value, expire_at = self._memory_store[key]
+        if expire_at is not None and time.monotonic() > expire_at:
+            del self._memory_store[key]
+            return None
+        return value
 
     async def delete(self, key: str) -> int:
         """删除键，返回删除数量。"""

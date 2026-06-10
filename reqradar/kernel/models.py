@@ -666,7 +666,7 @@ class EvidenceRecord(Base):
     source_context_kind: Mapped[str] = mapped_column(String(32), nullable=False)
     source_uri: Mapped[str] = mapped_column(Text, nullable=False)
     source_display_name: Mapped[str] = mapped_column(String(256), server_default="", nullable=False)
-    content: Mapped[str] = mapped_column(String(200), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
     detail: Mapped[dict] = mapped_column(JSON, server_default="{}", nullable=False)
     dimension_refs: Mapped[list] = mapped_column(JSON, server_default="[]", nullable=False)
     step_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -759,7 +759,9 @@ class L3Knowledge(Base):
     __tablename__ = "l3_knowledge"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    project_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    project_id: Mapped[UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     knowledge_type: Mapped[str] = mapped_column(String(32), nullable=False)
     freshness: Mapped[str] = mapped_column(
         String(20), server_default=FreshnessStatus.ACTIVE.value, nullable=False

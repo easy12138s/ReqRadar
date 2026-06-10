@@ -7,6 +7,7 @@ Checkpoint、事件和缓存六项管控能力。
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import random
 import time
@@ -19,6 +20,7 @@ from uuid import uuid4
 from pydantic import BaseModel, Field
 
 from reqradar.cognitive_rt.cognition.tools.security import ToolPermissionChecker
+from reqradar.cognitive_rt.runtime.checkpoint import StateSummary
 from reqradar.kernel.enums import CheckpointType, EventLevel, EventType
 from reqradar.kernel.exceptions import ReqRadarException
 
@@ -188,29 +190,35 @@ class SlidingWindowRateLimiter:
 
 
 class ToolResultCache:
-    """简单的进程内结果缓存。"""
+    """LRU 结果缓存。"""
 
     def __init__(self, max_size: int = 256) -> None:
+        from collections import OrderedDict
+
         self._max_size = max_size
-        self._cache: dict[str, tuple[ManagedToolResult, float]] = {}
+        self._cache: OrderedDict[str, tuple[ManagedToolResult, float]] = OrderedDict()
 
     def get(self, key: str, ttl: int) -> ManagedToolResult | None:
         """获取缓存结果。"""
-        entry = self._cache.get(key)
-        if entry is None:
+        if key not in self._cache:
             return None
-        result, ts = entry
+        result, ts = self._cache[key]
         if time.monotonic() - ts > ttl:
             del self._cache[key]
             return None
+        # LRU: 移动到末尾
+        self._cache.move_to_end(key)
         result.from_cache = True
         return result
 
     def put(self, key: str, result: ManagedToolResult) -> None:
         """写入缓存。"""
-        if len(self._cache) >= self._max_size:
-            oldest_key = next(iter(self._cache))
-            del self._cache[oldest_key]
+        if key in self._cache:
+            # 已存在，更新并移动到末尾
+            self._cache.move_to_end(key)
+        elif len(self._cache) >= self._max_size:
+            # 缓存满，淘汰最久未使用的（第一个）
+            self._cache.popitem(last=False)
         self._cache[key] = (result, time.monotonic())
 
     def clear(self) -> None:
@@ -357,7 +365,9 @@ class ToolRuntime:
         # 缓存检查
         cache_key = ""
         if not skip_cache and capability.cache_ttl > 0:
-            cache_key = f"{tool_id}:{hash(frozenset(params.items()))}"
+            # 使用 json.dumps 处理嵌套 dict，生成稳定的缓存 key
+            params_str = json.dumps(params, sort_keys=True, default=str)
+            cache_key = f"{tool_id}:{params_str}"
             cached = self._cache.get(cache_key, capability.cache_ttl)
             if cached is not None:
                 cached.execution_id = execution_id
@@ -374,7 +384,9 @@ class ToolRuntime:
                 cp = self._checkpoint_mgr.create_checkpoint(
                     session_id=session_id,
                     checkpoint_type=CheckpointType.TOOL_PRE,
-                    state_summary={"tool_id": tool_id, "params_keys": list(params.keys())},
+                    state_summary=StateSummary(
+                        dimension_status={"tool_id": tool_id, "params_keys": list(params.keys())},
+                    ),
                 )
                 pre_checkpoint_id = cp.checkpoint_id if hasattr(cp, "checkpoint_id") else str(cp)
             except Exception as e:
@@ -486,11 +498,13 @@ class ToolRuntime:
                 self._checkpoint_mgr.create_checkpoint(
                     session_id=session_id,
                     checkpoint_type=CheckpointType.TOOL_POST,
-                    state_summary={
-                        "tool_id": tool_id,
-                        "success": result_success,
-                        "duration_ms": duration_ms,
-                    },
+                    state_summary=StateSummary(
+                        dimension_status={
+                            "tool_id": tool_id,
+                            "success": result_success,
+                            "duration_ms": duration_ms,
+                        },
+                    ),
                 )
             except Exception as e:
                 logger.warning("后置 Checkpoint 创建失败，降级继续: %s", e)
