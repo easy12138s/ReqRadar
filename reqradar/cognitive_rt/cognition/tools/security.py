@@ -4,7 +4,7 @@ import fnmatch
 import logging
 from pathlib import Path
 
-logger = logging.getLogger("reqradar.agent.security")
+logger = logging.getLogger("reqradar.cognitive_rt.cognition.tools.security")
 
 DEFAULT_SENSITIVE_PATTERNS = [
     ".env",

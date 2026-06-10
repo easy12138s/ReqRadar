@@ -10,6 +10,7 @@ from reqradar.cognitive_rt.cognition.tools.read_file import ReadFileTool
 from reqradar.cognitive_rt.cognition.tools.read_module_summary import ReadModuleSummaryTool
 from reqradar.cognitive_rt.cognition.tools.registry import ToolRegistry
 from reqradar.cognitive_rt.cognition.tools.search_code import SearchCodeTool
+from reqradar.cognitive_rt.cognition.tools.search_git_history import SearchGitHistoryTool
 from reqradar.cognitive_rt.cognition.tools.search_requirements import SearchRequirementsTool
 
 __all__ = [
@@ -17,6 +18,7 @@ __all__ = [
     "ToolResult",
     "ToolRegistry",
     "SearchCodeTool",
+    "SearchGitHistoryTool",
     "ReadFileTool",
     "ReadModuleSummaryTool",
     "ListModulesTool",

@@ -7,7 +7,7 @@ from enum import Enum
 from reqradar.cognitive_rt.cognition.dimension import DimensionTracker
 from reqradar.cognitive_rt.cognition.evidence import EvidenceCollector
 
-logger = logging.getLogger("reqradar.agent.analysis_agent")
+logger = logging.getLogger("reqradar.cognitive_rt.cognition.analysis_agent")
 
 
 def _use_context_pipeline() -> bool:

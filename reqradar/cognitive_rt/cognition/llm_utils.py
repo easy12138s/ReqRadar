@@ -6,7 +6,7 @@ import json
 import logging
 import re
 
-logger = logging.getLogger("reqradar.agent")
+logger = logging.getLogger("reqradar.cognitive_rt.cognition.llm_utils")
 
 
 def _strip_thinking_tags(text: str) -> str:

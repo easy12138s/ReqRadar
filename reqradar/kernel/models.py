@@ -6,9 +6,11 @@ V1 搬迁表（19 张）：
   synonym_mappings, report_templates, report_versions, report_chats,
   llm_call_logs, mcp_access_keys, requirement_releases, mcp_tool_calls
 
-V2 新增核心表（6 张，Batch 3）：
-  cognitive_sessions, events, checkpoints,
-  evidence_records, evidence_relations, dimension_results
+V2 新增核心表（14 张）：
+  Batch 3: cognitive_sessions, events, checkpoints,
+           evidence_records, evidence_relations, dimension_results
+  Batch 2: raw_context, chunks, code_modules, git_commits,
+           req_code_links, l3_knowledge, output_tasks
 """
 
 from __future__ import annotations

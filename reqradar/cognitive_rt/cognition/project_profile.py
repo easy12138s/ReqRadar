@@ -23,7 +23,7 @@ from reqradar.kernel.exceptions import LLMException
 if TYPE_CHECKING:
     from reqradar.index_svc.memory.project_memory import ProjectMemory
 
-logger = logging.getLogger("reqradar.agent")
+logger = logging.getLogger("reqradar.cognitive_rt.cognition.project_profile")
 
 
 async def step_build_project_profile(

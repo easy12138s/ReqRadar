@@ -15,7 +15,7 @@ try:
 except ImportError:
     LoaderRegistry = None  # type: ignore[assignment,misc]
 
-logger = logging.getLogger("reqradar.agent.preprocessor")
+logger = logging.getLogger("reqradar.cognitive_rt.cognition.requirement_preprocessor")
 
 
 def _load_file_content(file_path: Path, llm_client=None) -> dict:

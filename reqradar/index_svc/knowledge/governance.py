@@ -16,7 +16,6 @@ logger = logging.getLogger(__name__)
 
 # 新鲜度阈值（天）
 STALE_THRESHOLD_DAYS = 90
-HISTORICAL_THRESHOLD_DAYS = 180
 
 
 class FreshnessManager:

@@ -32,7 +32,7 @@ from reqradar.cognitive_rt.cognition.schemas import REPORT_DATA_SCHEMA, STEP_OUT
 from reqradar.cognitive_rt.cognition.tool_call_tracker import ToolCallTracker
 from reqradar.cognitive_rt.cognition.tools import ToolRegistry
 
-logger = logging.getLogger("reqradar.agent.runner")
+logger = logging.getLogger("reqradar.cognitive_rt.cognition.runner")
 
 _RESULT_TRUNCATE_LENGTH = 4000
 
@@ -253,23 +253,6 @@ def _safe_truncate_history(
         current_tokens += msg_tokens
 
     return truncated
-
-
-def _build_messages_chain(
-    system_prompt: str,
-    user_prompt: str,
-    history: list[dict],
-    llm_client,
-    max_history_tokens: int = 6000,
-) -> list[dict]:
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_prompt},
-    ]
-    if history:
-        recent = _safe_truncate_history(history, llm_client, max_history_tokens)
-        messages = messages[:1] + recent + messages[1:]
-    return messages
 
 
 def update_agent_from_step_result(agent: AnalysisAgent, step_data: dict) -> None:

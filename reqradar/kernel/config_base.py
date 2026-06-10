@@ -41,7 +41,7 @@ class ConfigResolutionChain:
     _defaults: dict[str, Any] = field(default_factory=dict)
 
     _SCOPE_PRIORITY: dict[Scope, int] = field(
-        default_factory=lambda: {Scope.USER: 3, Scope.PROJECT: 2, Scope.GLOBAL: 1}
+        default_factory=lambda: {Scope.SESSION: 4, Scope.USER: 3, Scope.PROJECT: 2, Scope.GLOBAL: 1}
     )
 
     def add(self, config: ScopeDomainConfig) -> None:

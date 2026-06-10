@@ -14,7 +14,7 @@ from reqradar.cognitive_rt.cognition.schemas import MEMORY_EVOLUTION_SCHEMA
 if TYPE_CHECKING:
     from reqradar.index_svc.memory.project_memory import ProjectMemory
 
-logger = logging.getLogger("reqradar.agent.memory_evolution")
+logger = logging.getLogger("reqradar.cognitive_rt.cognition.memory_evolution")
 
 
 def extract_candidates_from_analysis(agent: AnalysisAgent) -> dict:
