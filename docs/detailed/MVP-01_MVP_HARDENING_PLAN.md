@@ -1,789 +1,514 @@
-# ReqRadar V2 — MVP Hardening 实施计划
+# ReqRadar V2 — 核心功能补全实施计划
 
 ## 文档信息
 
 | 项目 | 内容 |
 |------|------|
-| 文档版本 | v1.0 |
-| 文档定位 | 路由图 04 P0-P9 已完成后的"MVP 冲刺"实施计划，专攻剩余的 8 项 MVP 必做和中优先任务 |
-| 前置文档 | 04_IMPLEMENTATION_ROADMAP.md（路线图）、CHECKLIST.md（验收记录）、MVP-02_MVP_VERIFICATION_CHECKLIST.md（配套验收清单） |
-| 核心目标 | 把"能跑通的 Demo"提升为"单人可演示、关键状态不丢、用户感知流畅"的 MVP 级别交付 |
-| 文档职责 | 定义 8 项任务的输入、任务清单、验收标准、可演示成果、风险与回滚策略 |
+| 文档版本 | v2.0 |
+| 文档定位 | 基于 36 项问题真实验证结果，重新定义实施计划——从"bug 修复"正名为"核心功能补全" |
+| 前置文档 | MVP-01_MVP_HARDENING_PLAN.md（v1.0，已被本计划替代）、MVP-1_BUG_LOG.md |
+| 核心目标 | 把"LLM 裸跑出报告的 Demo"补全为"上下文增强 + 知识沉淀 + 数据持久化的认知运行时" |
+| 文档职责 | 定义 4 个阶段的任务清单、依赖关系、验收标准 |
 
 ---
 
-## 一、文档说明
+## 一、现状诊断
 
-本计划面向**编码 Agent**。每项任务含：目标 / 任务清单 / 验收标准 / 必读参考 / 涉及文件 / 注意事项。
+### 1.1 E2E 验证结论
 
-**前置必读**（按顺序读完再动手）：
-
-1. [AGENTS.md §0.5 环境准备](../../../AGENTS.md)
-2. [AGENTS.md §3 Phase 开发工作流](../../../AGENTS.md)
-3. [C-01 编码规范](C-01_CODING_CONVENTIONS.md)（Pydantic / FastAPI / SQLAlchemy 模板）
-4. [C-02 模块依赖地图 §9.1 决策树](C-02_MODULE_DEPENDENCY_MAP.md)（新增文件放哪）
-5. [C-05 测试规范 §3 §6 §13](C-05_TEST_SPECIFICATION.md)（测试目录 / Fixture / 9 项边界）
-6. [C-06 数据库迁移计划](C-06_DATABASE_MIGRATION_PLAN.md)（Alembic 迁移命名）
-7. [C-04 API 契约注册表](C-04_API_CONTRACT_REGISTRY.md)（端点 schema）
-8. [C-03 配置注册表](C-03_CONFIGURATION_REGISTRY.md)（配置项 schema）
-9. [CHECKLIST.md](../CHECKLIST.md)（P0-P9 验收基线）
-10. [MVP-02 验收清单](MVP-02_MVP_VERIFICATION_CHECKLIST.md)（每项任务的验证步骤）
-
-**核心约束**（违反任一 = 代码不可合入）：
-
-- 绝对导入，禁止 `from ..`
-- `str | None` / `list[str]`，禁 `Optional` / `List`
-- 异常必须带 `cause` 链（用 `raise X from y`）
-- 端点用 `request.app.state.config`，禁模块级 `load_config()`
-- 9 项测试边界：成功/401/403/404/422/409/空列表/外部失败/路径遍历
-- mock 必做：LLM / 网络 / Git / MinIO / Redis
-- 每个测试用独立 SQLite + `tmp_path`
-
-**当前项目状态**（基线）：
-- 12 容器微服务架构（`docker-compose.yml`，含 Traefik + PG + Redis + ChromaDB + 7 个业务服务 + Frontend）
-- 核心推理链已通（Runner + ReAct + **11 工具** + LiteLLMClient）
-- 已知 MVP 痛点：内存 TaskStore / 内存 Session / asyncio.run 嵌套 / 无监控
-- 认证方式：BFF 层通过 Header 注入 JWT，**无 `/api/v2/auth/login` 路由**（认证由 auth-service 独立处理）
-
----
-
-## 一.5、Day 0 准备（启动 MVP 任务前的强制前置）
-
-> **本节是 8 项任务的前置门槛**，不完成不能开始 Day 1。
-
-### 1.5.1 测试目录补建
-
-按 C-05 §3 测试目录结构，**当前 `tests/` 缺少 `integration/` 和 `e2e/` 子目录**，需在 Day 0 补建：
+MVP-1 端到端测试已通过（9 步全链路 PASS），但验证的是**链路可达性**而非**功能正确性**：
 
 ```
-tests/
-├── conftest.py              # 已有
-├── unit/                    # 已有
-├── integration/             # 【新建】 集成测试
-│   ├── __init__.py
-│   ├── conftest.py          # 集成测试 fixture
-│   ├── api/                 # API 端点集成测试
-│   ├── services/            # Service 层集成测试
-│   └── tools/               # 工具真调测试（MVP-8 用）
-└── e2e/                     # 【新建】 端到端测试
-    ├── __init__.py
-    ├── conftest.py          # E2E fixture：mock LLM + 独立 DB
-    └── test_mvp1_smoke.py   # Day 1 真跑脚本（MVP-1.5 产出）
+设计路径（未接通）：
+  Runner → ContextPipeline.execute() → Sources.collect() → Strategy.get_weights()
+         → score_items(weights) → select → compress → assemble → 注入 prompt
+  推理完成 → L3Writer.append() → 知识沉淀 → 下次推理可检索
+
+实际路径（E2E 跑通的）：
+  Runner → build_dynamic_system_prompt(f-string) → LLM 裸跑 → 出报告
 ```
 
-| # | 子任务 | 产出 | 估时 |
-|---|--------|------|------|
-| 0.1 | `tests/integration/__init__.py` + `conftest.py`（集成测试 fixture） | 目录结构 | 0.5h |
-| 0.2 | `tests/e2e/__init__.py` + `conftest.py`（E2E fixture：mock LLM） | 目录结构 | 0.5h |
-| 0.3 | 检查 `pytest.ini` / `pyproject.toml` 的 `asyncio_mode = "auto"` 配置 | 配置确认 | 0.5h |
-| 0.4 | `pytest --collect-only` 验证两个新目录可被 pytest 发现 | 收集成功 | 0.5h |
+### 1.2 36 项问题分类
 
-### 1.5.2 通用 Fixture 准备
-
-按 C-05 §6.2 Fixture 表，**当前 `tests/conftest.py` 缺少以下 mock fixture**，需在 Day 0 注册：
-
-| Fixture | 用途 | 存放位置 | Day 0 必做 |
-|---------|------|---------|-----------|
-| `mock_llm_client` | mock LLM 客户端（含 complete / complete_with_tools） | `tests/conftest.py` | ✅ |
-| `mock_redis` | mock Redis Streams/PubSub | `tests/conftest.py` | ✅ |
-| `mock_minio` | mock MinIO 客户端 | `tests/conftest.py` | ✅ |
-| E2E 版 `mock_llm_client` | E2E 专用 mock LLM | `tests/e2e/conftest.py` | ✅ |
-
-> **关于 boto3 mock**：MVP-7 用 `mocker.patch("boto3.client")` 临时 mock 即可，**不**注册为 fixture。
-
-**校验命令**：`pytest -k "mock_llm or mock_redis or mock_minio" --co` 能看到 fixture 列表。
-
-### 1.5.3 文档基线确认
-
-- [ ] `docs/CHECKLIST.md` 反映 P0-P9 最新验收状态
-- [ ] 当前分支 `refactor/v2` 工作区干净
-- [ ] `.env` 文件已配置真实 LLM API Key
-
-### 1.5.4 Day 0 验收
-
-```
-[ ] tests/integration/ 和 tests/e2e/ 目录已创建，__init__.py 齐全
-[ ] 4 个 mock fixture 已在 conftest.py 注册
-[ ] pytest --collect-only 能发现两个新目录
-[ ] 4 个 mock fixture 能在测试中正确获取（`pytest --fixtures tests/` 列出 mock_llm_client / mock_redis / mock_minio / e2e_mock_llm_client）
-[ ] ruff check tests/ 无 lint 错误
-[ ] 当前工作区 git status 干净
-```
-
-**Day 0 估时**：3 小时
-
----
-
-## 二、任务总览
-
-| 编号 | 任务 | 优先级 | 估时 | 状态 |
-|------|------|--------|------|------|
-| **MVP-1** | 端到端真跑一次（docker compose up + cool-agent）发现真 bug | 🔴 P0 | 3-4 天 | ⬜ 未做 |
-| **MVP-2** | TaskStore 落 PG（含 `_session_tasks` 字典迁移） | 🔴 P0 | 1 天 | ⬜ 未做 |
-| **MVP-3** | Session 状态机从 PG 恢复（基于现有 checkpoint 扩展） | 🔴 P0 | 1.5 天 | ⬜ 未做 |
-| **MVP-4** | Container 模型去嵌套（删除 `analysis_agent.py` 的 ThreadPoolExecutor workaround） | 🟡 P1 | 0.5 天 | ⬜ 未做 |
-| **MVP-5** | 前端抽核心组件（基于 antd 6 二次封装 AppButton/AppTable/AppLoading） | 🟡 P1 | 0.5 天 | ⬜ 未做 |
-| **MVP-6** | 结构化日志 + /health 深健康（扩展现有 `infrastructure/logging.py`） | 🟡 P1 | 0.5 天 | ⬜ 未做 |
-| **MVP-7** | MinIO 接入 L0 原始文件 | 🟢 P2 可选 | 0.5 天 | ⬜ 推后 |
-| **MVP-8** | 11 工具真调验证 + L3Writer PG 注入验证 + Graph 端点真验 | 🟡 P1 | 1 天 | ⬜ 未做 |
-| **合计** | | | **8.5 天** | |
-
-> **预估收益**：执行后综合分从 55 提升到 80（+25 分）。
->
-> **MVP-7 说明**：MinIO 推到第二轮，当前本地文件存储能满足 MVP 单人演示需求。
-
----
-
-## 三、任务详细设计
-
----
-
-### MVP-1：端到端真跑一次（高优先级，最高 ROI）
-
-**目标**：用真实环境跑通"创建项目 → 上传 → 摄取 → 启动 Session → 拿到报告"全链路，发现并记录真 bug。这是后续 7 项任务的输入。
-
-**依赖**：无（Day 0 完成即可开始）
-
-**涉及文件**：
-- `tests/e2e/test_mvp1_smoke.py`（新建，E2E 测试）
-- `tests/e2e/conftest.py`（如 Day 0 未建，补建）
-- `docs/MVP-1_BUG_LOG.md`（新建，Bug 登记）
-
-**任务清单**：
-
-| # | 子任务 | 具体操作 | 估时 |
-|---|--------|---------|------|
-| MVP-1.1 | 准备 `.env` | 复制 `.env.example` 为 `.env`，填入真实 `LLM_API_KEY`（`grep -i 'llm_api_key' .env.example` 查键名） | 0.5h |
-| MVP-1.2 | 启动容器 | `docker compose up -d`，等 30 秒，`docker compose ps` 全部 `healthy` | 0.5h |
-| MVP-1.3 | 应用迁移 | `docker compose exec api-service alembic upgrade head`，确认输出 `Running upgrade -> head, ...` | 0.5h |
-| MVP-1.4 | 准备测试项目 | 准备 3 个：① `D:\EasyFiles\private\project\cool-agent` ② 任一开源小项目 ③ 1 个 zip 压缩包；每项目附 1 份 markdown 需求文档 | 1h |
-| MVP-1.5 | 写 E2E 脚本 | 在 `tests/e2e/test_mvp1_smoke.py` 实现 `test_mvp1_full_flow()`，9 步调用见下方"必读 API" | 2h |
-| MVP-1.6 | 跑 3 轮 × 3 类 | 改参数循环执行；失败步骤记录到 `docs/MVP-1_BUG_LOG.md` | 2h |
-| MVP-1.7 | 修 P0 bug | 阻塞主链路的 bug 必须修；非阻塞可记到遗留问题。**估时 2-3 天**（CHECKLIST 有 7 个 Phase 待复核，可能发现 10+ bug） | 2-3 天 |
-| MVP-1.8 | 复测 | 重新跑脚本 3 轮全成功，更新 BUG_LOG 状态 | 1h |
-
-**必读 API**（9 步调用）：
-
-> **认证说明**：BFF 无 `/api/v2/auth/login` 路由。E2E 脚本需先调用 auth-service 的 `/internal/v2/auth/issue` 获取 JWT，后续请求携带 `Authorization: Bearer <token>` Header。
-
-```
-1. POST http://localhost:8001/internal/v2/auth/issue  → 获取 JWT（auth-service 直连）
-2. POST /api/v2/projects              → 创建项目（source_type: git|local|zip）
-3. POST /api/v2/projects/{id}/upload  → 上传需求文档
-4. POST /api/v2/projects/{id}/ingest  → 触发摄取
-5. GET  /api/v2/projects/{id}         → 验证 indexed_at 不为空
-6. POST /api/v2/sessions              → 创建 Session
-7. POST /api/v2/sessions/{id}/start   → 启动推理
-8. GET  /api/v2/sessions/{id}/events  → 轮询直到 status=COMPLETED
-9. GET  /api/v2/sessions/{id}/report  → 验证报告有 ≥ 3 风险点 + ≥ 5 证据
-```
-
-**验收标准**（对照 MVP-02 §MVP-1）：
-- [ ] 脚本可 `pytest tests/e2e/test_mvp1_smoke.py -v` 运行
-- [ ] 3 轮 × 3 类 = 9 次全部 PASS
-- [ ] 0 次 5xx 错误
-- [ ] BUG_LOG.md 记录所有发现 → 修复 → 复测
-- [ ] `ruff check tests/e2e/` 无 lint 错误
-
-**E2E 脚本模板要点**（参考 C-05 §10 异步测试模板）：
-- 用 `httpx.AsyncClient` 调 HTTP 接口
-- 用 `conftest.py` 的 `e2e_session` / `e2e_project` / `e2e_token` fixture
-- LLM 调用**用真 API**（这是 E2E，**不 mock LLM**）
-- 每步加 `assert response.status_code in (200, 201)`
-- 报告验证：`assert len(data["risks"]) >= 3 and len(data["evidence"]) >= 5`
-
-**风险与应对**：
-
-| 风险 | 概率 | 应对 |
-|------|------|------|
-| LLM API 不稳定 | 高 | 在脚本里加 3 次重试 + 失败统计 |
-| markitdown 首次下载模型失败 | 中 | 复用 `docker-model-cache/`（已加 .gitignore），预热 |
-| 容器端口冲突 | 低 | 参照 `docker-compose.yml` 端口分配段 |
-
-**回滚策略**：本任务无破坏性改动，仅新增 `tests/e2e/` 和 `docs/MVP-1_BUG_LOG.md`，git revert 即可。
-
----
-
-### MVP-2：TaskStore 落 PG（高优先级）
-
-**目标**：`services/output/app.py` 的 `_tasks` 和 `_session_tasks` 两个内存字典（行号先 `grep -n '_tasks\|_session_tasks' services/output/app.py` 确认）改为 PG 表，重启后 task_id 和 session→task 映射仍可查。
-
-**依赖**：MVP-1
-
-**涉及文件**：
-- `alembic/versions/V2_MVP-2_create_output_tasks.py`（新建，Alembic 迁移）
-- `reqradar/output_svc/store.py`（新建，OutputTaskStore 类）
-- `services/output/app.py`（修改，替换 `_tasks` + `_session_tasks` 引用）
-- `reqradar/kernel/models.py`（新增 `OutputTask` ORM 模型）
-- `tests/unit/output_svc/test_store.py`（新建，单测）
-- `docs/CHECKLIST.md`（更新 MVP-2 验收记录）
-
-**任务清单**：
-
-| # | 子任务 | 具体操作 | 估时 |
-|---|--------|---------|------|
-| MVP-2.1 | 设计 `output_tasks` 表 | 字段：`id (UUID PK)` / `session_id (UUID, 索引)` / `status (str)` / `request (JSONB)` / `result (JSONB nullable)` / `error (text nullable)` / `created_at (timestamptz)` / `updated_at (timestamptz)`；`status` 和 `session_id` 上加 B-tree 索引。**注意**：`session_id` 字段用于替代 `_session_tasks` 字典的 session→task 映射功能 | 1h |
-| MVP-2.2 | 写 Alembic 迁移 | `alembic revision -m "V2_MVP-2_create_output_tasks"`；**`upgrade()` 和 `downgrade()` 都必须实现**（参考 C-06 §9.4 Checklist） | 1h |
-| MVP-2.3 | 新增 ORM 模型 | 在 `reqradar/kernel/models.py` 加 `OutputTask` 类（参考同文件中 `Event` 模型结构） | 1h |
-| MVP-2.4 | 实现 `OutputTaskStore` | 文件 `reqradar/output_svc/store.py`，类方法：`async create(request, session_id) -> str` / `async get(task_id) -> OutputTask \| None` / `async update(task_id, **fields)` / `async list_by_session(session_id) -> list[OutputTask]`；参考 `reqradar/index_svc/knowledge/writer.py` 的异步 SQLAlchemy 写法 | 2h |
-| MVP-2.5 | 替换 `services/output/app.py` | 找到所有 `self._tasks[...]` 和 `self._session_tasks[...]`，改为 `await self._store.get(...)` / `await self._store.list_by_session(...)`；**保留属性名 `_store` 不变**，减少端点代码改动 | 1h |
-| MVP-2.6 | 注册 store | 在 `app.py` 的 lifespan 里 `app.state.task_store = OutputTaskStore(session_factory)` | 0.5h |
-| MVP-2.7 | 写单测 | 9 项边界：成功创建/成功查询/404（不存在 task）/409（重复 ID）/422（非法字段）/空列表查询/session_id 查询/状态机非法转换/DB 故障降级 | 1h |
-| MVP-2.8 | 自检 | `ruff check reqradar/output_svc/ services/output/ tests/unit/output_svc/ && pytest tests/unit/output_svc/ -v` | 0.5h |
-
-**关键代码定位指令**（Agent 拿到后直接执行）：
-
-```bash
-# 1. 定位 _tasks
-grep -n "_tasks" services/output/app.py
-# 2. 看现有 ORM 风格
-grep -n "class.*Base\b" reqradar/kernel/models.py
-# 3. 看现有 async SQLAlchemy 写法
-grep -n "async def" reqradar/index_svc/knowledge/writer.py | head -5
-# 4. 看 alembic 历史命名
-ls alembic/versions/ | tail -3
-```
-
-**验收标准**（对照 MVP-02 §MVP-2）：
-- [ ] `alembic upgrade head` + `alembic downgrade -1` 双向 OK
-- [ ] `pytest tests/unit/output_svc/ --cov=reqradar/output_svc/store --cov-report=term-missing` 覆盖率 ≥ 80%
-- [ ] 9 项边界全部通过
-- [ ] 真跑验证：创建 task → `docker compose restart output-service` → 旧 task_id 仍可查
-
-**回滚策略**：
-- 迁移脚本 `downgrade()` 一键回滚
-- 设置环境变量 `FEATURE_OUTPUT_PERSIST=false` 时降级为内存版（保留旧代码路径）
-
----
-
-### MVP-3：Session 状态机从 PG 恢复（高优先级）
-
-**目标**：`reqradar/cognitive_rt/runtime/session.py` 的 `_sessions` 内存字典支持从 PG 恢复，container 重启后历史 Session 仍可查、可续推。
-
-**依赖**：MVP-1
-
-**涉及文件**：
-- `alembic/versions/V2_MVP-3_create_session_snapshots.py`（新建）
-- `reqradar/cognitive_rt/runtime/session_repo.py`（新建，SessionStateRepo 类）
-- `reqradar/cognitive_rt/runtime/session_api.py`（修改，`SessionService` 类的 `_sessions` 字典，L67）
-- `reqradar/kernel/models.py`（新增 SessionSnapshot ORM）
-- `reqradar/cognitive_rt/runtime/server.py`（lifespan 启动时调用 load，L31-50）
-- `tests/unit/cognitive_rt/runtime/test_session_repo.py`（新建单测）
-- `tests/integration/cognitive_rt/test_session_recovery.py`（新建集成测，验证 kill -9 恢复）
-- `docs/CHECKLIST.md`
-
-**任务清单**：
-
-| # | 子任务 | 具体操作 | 估时 |
-|---|--------|---------|------|
-| MVP-3.1 | 设计 `session_snapshots` 表 | 字段：`session_id (UUID PK)` / `status (str, 索引)` / `state_data (JSONB)` / `checkpoint_version (int)` / `last_event_id (UUID nullable)` / `created_at` / `updated_at` | 1h |
-| MVP-3.2 | 写 Alembic 迁移 | `alembic revision -m "V2_MVP-3_create_session_snapshots"`；**upgrade() + downgrade() 都实现**；`status` 字段加 B-tree 索引便于 `WHERE status IN ('CREATED','READY','RUNNING')` 查询 | 1h |
-| MVP-3.3 | 新增 ORM 模型 | `class SessionSnapshot(Base)` 在 `reqradar/kernel/models.py` | 0.5h |
-| MVP-3.4 | 实现 `SessionStateRepo` | 文件 `reqradar/cognitive_rt/runtime/session_repo.py`；方法：`async save(session)` / `async load(session_id) -> SessionSnapshot \| None` / `async list_active() -> list[SessionSnapshot]` / `async delete(session_id)`；**所有方法包 try/except，DB 故障时返回 None 或抛 StorageUnavailableError，由调用方降级** | 2h |
-| MVP-3.5 | 修改 `SessionService` | 在 `session_api.py` 的 `SessionService` 类中：① 状态转换方法内追加 `await self._repo.save(self.to_dict())`，但**用 `asyncio.shield()` 包装，确保失败不阻塞状态变更**；② 加 `async restore(snapshot)` 方法，从 `SessionSnapshot.state_data` 重建 `SessionStateMachine` 对象 | 2h |
-| MVP-3.6 | lifespan 接入 load | 在 `server.py` 的 `lifespan` 函数（L31）里：`active = await session_repo.list_active()` → 对每个 session 调用 `SessionService.restore(snapshot)` 重建 → 放入 `SessionService._sessions` 字典 | 1h |
-| MVP-3.7 | 单测 | 9 项边界 + 持久化失败降级路径 + JSON 序列化反序列化正确性 | 2h |
-| MVP-3.8 | 集成测 | 在 `tests/integration/cognitive_rt/test_session_recovery.py` 写 `test_session_survives_restart()`：① 启动 cognitive-rt ② 创建 Session ③ 推进到 RUNNING ④ `docker compose kill cognitive-rt` ⑤ `docker compose up -d cognitive-rt` ⑥ 验证 `GET /api/v2/sessions/{id}` 仍可查到且状态正确 | 1h |
-| MVP-3.9 | 自检 | `ruff check reqradar/cognitive_rt/ tests/ && pytest tests/unit/cognitive_rt/runtime/ tests/integration/cognitive_rt/ -v` | 0.5h |
-
-**降级策略**（重要）：
-
-```python
-# 在 transition() 内
-try:
-    await asyncio.shield(self._repo.save(self.to_dict()))
-except StorageUnavailableError as e:
-    logger.warning("session_persist_failed", session_id=self.id, error=str(e))
-    # 不重新抛出，不阻塞状态变更
-```
-
-**验收标准**（对照 MVP-02 §MVP-3）：
-- [ ] `alembic upgrade head` + `downgrade -1` 双向 OK
-- [ ] cognitive-rt 重启后，CREATED/READY/RUNNING 状态 Session 全部恢复（log: "Loaded N active sessions"）
-- [ ] 持久化失败时**状态转换仍成功**（仅记 warn 日志）
-- [ ] 单测覆盖率 ≥ 80%
-- [ ] 集成测 `test_session_survives_restart` 通过
-- [ ] 9 项边界 + 异常路径测试
-
-**回滚策略**：
-- 迁移脚本 `downgrade()` 一键回滚
-- `FEATURE_SESSION_PERSIST=false` 时**关闭 load 逻辑**（仅保留 save，降级为写日志不读写）
-
----
-
-### MVP-4：Container 模型去嵌套（中优先级）
-
-**目标**：`reqradar/cognitive_rt/cognition/context_pipeline.py` 的 `pipeline.execute` 在 agent 内被 `asyncio.run` 嵌套调用的事件循环反模式重构。
-
-**依赖**：MVP-1
-
-**涉及文件**：
-- `reqradar/cognitive_rt/cognition/analysis_agent.py`（**主改**，L176-201 的 `asyncio.run` + `ThreadPoolExecutor` workaround）
-- `reqradar/cognitive_rt/cognition/context_pipeline.py`（辅改，加 `execute_async` 纯异步接口）
-- `tests/unit/cognitive_rt/cognition/test_context_pipeline.py`（修改，新增 async 测试）
-- `docs/CHECKLIST.md`
-
-**任务清单**：
-
-| # | 子任务 | 具体操作 | 估时 |
-|---|--------|---------|------|
-| MVP-4.1 | 定位所有反模式 | `grep -rn "asyncio.run\|ThreadPoolExecutor" reqradar/cognitive_rt/`，把找到的所有行号记录到 `docs/MVP-4_NESTED_LOOP_LOG.md`。**已知位置**：`analysis_agent.py:176-201`（用 `ThreadPoolExecutor` 包装 `asyncio.run`） | 0.5h |
-| MVP-4.2 | 设计双接口 | `pipeline.execute_sync()` 保持原签名不变（同步 wrapper，内部用 `asyncio.run` 仅在确认无事件循环时调用）；新加 `pipeline.execute_async()`（纯 async） | 1h |
-| MVP-4.3 | 修改 `analysis_agent.py` | **删除 L176-201 的 ThreadPoolExecutor workaround**，改为：`result = await pipeline.execute_async(...)`。因为 `analysis_agent` 的 `_build_context()` 方法本身就在 async 上下文中被调用（由 `runner.py` 的 `run_react_analysis` 调用），所以直接用 `await` 即可 | 1h |
-| MVP-4.4 | 单测补全 | 在 `test_context_pipeline.py` 加 `async def test_pipeline_execute_async_in_running_loop()`，验证在已运行 loop 中调用不抛 `RuntimeError: This event loop is already running` | 1h |
-| MVP-4.5 | 真跑验证 | 跑 `tests/e2e/test_mvp1_smoke.py` 10 轮；统计成功率（必须 100%）+ 平均延迟 | 1h |
-| MVP-4.6 | 自检 | `grep -rn "asyncio.run\|ThreadPoolExecutor" reqradar/cognitive_rt/ 2>&1` 输出必须为空（除 `execute_sync` 内部保留的 1 处外） | 0.5h |
-
-**关键代码定位**：
-
-```bash
-# 已知 asyncio.run 嵌套位置
-grep -n "asyncio.run\|ThreadPoolExecutor" reqradar/cognitive_rt/cognition/analysis_agent.py
-# pipeline.execute 定义
-grep -n "def execute" reqradar/cognitive_rt/cognition/context_pipeline.py
-# 确认 _build_context 的调用链
-grep -n "_build_context" reqradar/cognitive_rt/cognition/analysis_agent.py
-```
-
-**双接口实现模板**：
-
-```python
-# context_pipeline.py
-class ContextPipeline:
-    async def execute_async(self, inputs) -> ContextBundle:
-        """纯异步版本，供已在事件循环中调用的场景使用。"""
-        return await self._execute_core(inputs)
-
-    def execute_sync(self, inputs) -> ContextBundle:
-        """同步版本，仅用于无事件循环的脚本场景。"""
-        try:
-            asyncio.get_running_loop()
-            has_loop = True
-        except RuntimeError:
-            has_loop = False
-        if has_loop:
-            raise RuntimeError(
-                "execute_sync called inside running event loop, "
-                "use execute_async instead"
-            )
-        return asyncio.run(self._execute_core(inputs))
-```
-
-**验收标准**（对照 MVP-02 §MVP-4）：
-- [ ] `grep -rn "asyncio.run" reqradar/ services/` 输出 = 0
-- [ ] `tests/unit/cognitive_rt/cognition/test_context_pipeline.py` 全过
-- [ ] `tests/e2e/test_mvp1_smoke.py` 10 轮成功率 = 100%
-- [ ] context assembly 平均延迟 ≤ 2s
-
-**回滚策略**：`FEATURE_PIPELINE_SYNC_FALLBACK=true` 时保留旧 `execute()` 路径，新 `execute_async` 不启用。
-
----
-
-### MVP-5：前端抽核心组件（中优先级）
-
-**目标**：`frontend/src/components/` 增加 `AppButton` / `AppTable` / `AppLoading` 三个二次封装组件，基于现有 antd 6 组件库，重构 8 页面统一使用。
-
-**依赖**：MVP-1
-
-**涉及文件**：
-- `frontend/src/components/AppButton.tsx`（新建，基于 antd `Button` 二次封装）
-- `frontend/src/components/AppTable.tsx`（新建，基于 antd `Table` 二次封装）
-- `frontend/src/components/AppLoading.tsx`（新建，基于 antd `Spin` + `Skeleton` 二次封装）
-- `frontend/src/components/index.ts`（新建，统一导出）
-- `frontend/src/pages/*.tsx`（8 个页面，修改）
-
-**任务清单**：
-
-| # | 子任务 | 具体操作 | 估时 |
-|---|--------|---------|------|
-| MVP-5.1 | 设计 AppButton 组件 | 基于 antd `Button` 封装，TS props：`variant: 'primary' \| 'secondary' \| 'ghost'` / `size: 'sm' \| 'md' \| 'lg'` / `loading: boolean` / `disabled: boolean` / `onClick` / `children`；内部映射到 antd 的 `type` + `size` 属性 | 0.5h |
-| MVP-5.2 | 设计 AppTable 组件 | 基于 antd `Table` 封装，TS props：`columns` / `dataSource` / `loading` / `emptyText` / `rowKey`；统一空态和 loading 样式 | 0.5h |
-| MVP-5.3 | 设计 AppLoading 组件 | 基于 antd `Spin` + `Skeleton` 封装，两种变体：`<AppLoading.Spinner />`（小区域）+ `<AppLoading.Skeleton rows={3} />`（列表骨架屏） | 0.5h |
-| MVP-5.4 | 重构 8 页面 | 替换所有直接使用 antd 组件为二次封装组件；用 `grep -rn "from 'antd'" frontend/src/pages` 验证减少程度 | 1h |
-| MVP-5.5 | type-check + build | `cd frontend && npm run type-check && npm run build`；build 产物能产出到 `dist/` | 0.5h |
-
-**关键代码定位指令**：
-
-```bash
-# 找所有直接使用 antd 的地方
-grep -rn "from 'antd'" frontend/src/pages | wc -l
-# 看现有 page 结构
-ls frontend/src/pages/
-# 看现有 antd 用法
-grep -rn "import.*Button\|import.*Table\|import.*Spin" frontend/src/pages
-```
-
-**AppButton 组件实现模板**（基于 antd 二次封装）：
-
-```tsx
-// frontend/src/components/AppButton.tsx
-import React from 'react';
-import { Button, ButtonProps } from 'antd';
-
-interface AppButtonProps extends Omit<ButtonProps, 'type' | 'size'> {
-  variant?: 'primary' | 'secondary' | 'ghost';
-  size?: 'sm' | 'md' | 'lg';
-}
-
-const variantMap = {
-  primary: 'primary',
-  secondary: 'default',
-  ghost: 'text',
-} as const;
-
-const sizeMap = {
-  sm: 'small',
-  md: 'middle',
-  lg: 'large',
-} as const;
-
-export const AppButton: React.FC<AppButtonProps> = ({
-  variant = 'primary',
-  size = 'md',
-  ...props
-}) => {
-  return (
-    <Button
-      type={variantMap[variant]}
-      size={sizeMap[size]}
-      {...props}
-    />
-  );
-};
-```
-
-**验收标准**（对照 MVP-02 §MVP-5）：
-- [ ] `npm run type-check` 0 错误
-- [ ] `npm run build` 成功
-- [ ] `grep -rn "<button" frontend/src/pages` 输出 ≤ 2
-- [ ] `grep -rn "<table" frontend/src/pages` 输出 ≤ 2
-- [ ] 8 页面在浏览器无 console 错误
-
-**回滚策略**：每个组件独立 PR，git revert 单 commit 即可。
-
----
-
-### MVP-6：结构化日志 + /health 深健康（中优先级）
-
-**目标**：日志改为 JSON 格式携带 `session_id` / `request_id`；`/health` 改为深健康（检查 PG / Chroma / Redis 真实可用性）。
-
-**依赖**：MVP-1
-
-**涉及文件**：
-- `reqradar/infrastructure/logging.py`（**扩展现有文件**，当前只有 contextvars 辅助函数，需新增 `JSONFormatter` 类和 `setup_json_logging()` 函数）
-- `reqradar/infrastructure/health.py`（新建，深健康检查）
-- `services/{api,auth,cognitive-rt,index,output,ingestion,integration}/app.py`（7 个服务，修改）
-- `tests/unit/infrastructure/test_logging.py`（新建）
-- `tests/unit/infrastructure/test_health.py`（新建）
-
-**任务清单**：
-
-| # | 子任务 | 具体操作 | 估时 |
-|---|--------|---------|------|
-| MVP-6.1 | 实现 JSON formatter | **扩展** `reqradar/infrastructure/logging.py`（保留现有 `set_log_context` / `clear_log_context` / `get_session_id` 函数）；新增 `JSONFormatter` 类和 `setup_json_logging()` 函数；输出字段：`timestamp` / `level` / `msg` / `session_id` / `request_id` / `module` / `extra` | 1h |
-| MVP-6.2 | 替换 7 个服务的 logging 配置 | 找 `logging.basicConfig` 全部替换为 `setup_json_logging()`；**保留原有 logger 名称不变**；**注意**：每个服务的入口文件不同（api→app.py, cognitive-rt→server.py, index→app.py 等） | 1h |
-| MVP-6.3 | 实现深健康检查 | 文件 `reqradar/infrastructure/health.py`；函数 `async def check_dependencies() -> dict` 包含 `pg` / `redis` / `chroma` 三个键；PG 用 `SELECT 1`，Redis 用 `PING`，Chroma 用 `heartbeat()` | 1h |
-| MVP-6.4 | 替换 7 个服务的 /health 端点 | 把每个服务 `/health` 端点改为 `await check_dependencies()`；任一依赖失败返回 503 + JSON 错误 | 1h |
-| MVP-6.5 | 单测 | `test_logging.py` 验证 JSON 输出可被 `json.loads` 解析；`test_health.py` mock PG/Redis/Chroma 验证 3 种场景 | 0.5h |
-| MVP-6.6 | 真跑验证 | `curl http://localhost:8000/health` 返回 200 + JSON；`docker compose stop postgres` 后返回 503 | 0.5h |
-
-**关键代码定位指令**：
-
-```bash
-grep -rn "logging.basicConfig" services/ reqradar/
-grep -rn "/health" services/
-```
-
-**JSON formatter 实现模板**：
-
-```python
-# reqradar/infrastructure/logging.py
-import json
-import logging
-from datetime import datetime, timezone
-
-
-class JSONFormatter(logging.Formatter):
-    """JSON 日志格式器，输出可被 jq 解析。"""
-
-    def format(self, record: logging.LogRecord) -> str:
-        payload = {
-            "timestamp": datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat(),
-            "level": record.levelname,
-            "msg": record.getMessage(),
-            "module": record.module,
-            "session_id": getattr(record, "session_id", None),
-            "request_id": getattr(record, "request_id", None),
-        }
-        if record.exc_info:
-            payload["exception"] = self.formatException(record.exc_info)
-        return json.dumps(payload, ensure_ascii=False)
-
-
-def setup_json_logging(level: str = "INFO") -> None:
-    """统一替换 root logger 的 formatter。"""
-    handler = logging.StreamHandler()
-    handler.setFormatter(JSONFormatter())
-    root = logging.getLogger()
-    root.handlers = [handler]
-    root.setLevel(level)
-```
-
-**验收标准**（对照 MVP-02 §MVP-6）：
-- [ ] `docker compose logs api-service | head -1 | jq .` 合法 JSON
-- [ ] `/health` 返回 200 时所有依赖可用
-- [ ] `docker compose stop postgres` 后 `/health` 返回 503
-- [ ] 7 个服务全部接入
-
-**回滚策略**：保留旧 `logging.basicConfig` 路径为 `FEATURE_JSON_LOG=false` 时的 fallback。
-
----
-
-### MVP-7：MinIO 接入 L0 原始文件（中优先级）
-
-**目标**：`docker-compose.yml` 增加 minio service，ingestion-service 的 L0 写入改用 MinIO（替代本地路径）。
-
-**依赖**：MVP-1
-
-**涉及文件**：
-- `docker-compose.yml`（修改，新增 minio + createbucket 服务）
-- `services/ingestion/requirements.txt`（加 boto3）
-- `reqradar/ingestion/storage/__init__.py`（新建）
-- `reqradar/ingestion/storage/s3_client.py`（新建，MinIO/S3 客户端封装）
-- `reqradar/ingestion/storage/local_fallback.py`（新建，本地路径 fallback）
-- `services/ingestion/app.py`（修改，L0 写入逻辑）
-- `.env.example`（加 `L0_STORAGE_BACKEND` / `MINIO_*` 变量）
-- `tests/unit/ingestion/test_s3_client.py`（新建）
-
-**任务清单**：
-
-| # | 子任务 | 具体操作 | 估时 |
-|---|--------|---------|------|
-| MVP-7.1 | docker-compose.yml 加 minio | 新增 `minio` service（`minio/minio:latest`，端口 9000/9001）+ `createbucket` 一次性 init container（创建 `reqradar-l0` bucket） | 1h |
-| MVP-7.2 | 加 boto3 依赖 | `services/ingestion/requirements.txt` 追加 `boto3==1.34.0`；`docker compose build ingestion-service` | 0.5h |
-| MVP-7.3 | 实现 S3Client 封装 | 文件 `reqradar/ingestion/storage/s3_client.py`；类 `S3Client`，方法 `async def upload(key, bytes) -> str` / `async def download(key) -> bytes` / `async def exists(key) -> bool`；用 `aioboto3` 异步客户端 | 1.5h |
-| MVP-7.4 | 实现 LocalFallback | 文件 `reqradar/ingestion/storage/local_fallback.py`；同样三个方法，落本地 `L0_STORAGE_PATH` | 0.5h |
-| MVP-7.5 | 工厂方法 | 文件 `reqradar/ingestion/storage/__init__.py` 加 `def get_l0_storage() -> S3Client \| LocalFallback`；按 `L0_STORAGE_BACKEND` 环境变量切换 | 0.5h |
-| MVP-7.6 | 替换 L0 写入 | `services/ingestion/app.py` 找到 L0 写入逻辑（`grep -n 'L0\|raw_context'`），改为 `await get_l0_storage().upload(key, content)` | 0.5h |
-| MVP-7.7 | 配 .env.example | 加：`L0_STORAGE_BACKEND=minio` / `MINIO_ENDPOINT=minio:9000` / `MINIO_ACCESS_KEY=reqradar` / `MINIO_SECRET_KEY=reqradar-dev-secret` / `MINIO_BUCKET=reqradar-l0` | 0.5h |
-| MVP-7.8 | 单测 | `test_s3_client.py`：3 场景：成功上传下载/连接失败降级/不存在 key 抛 404 | 1h |
-| MVP-7.9 | 真跑验证 | `docker compose up -d`；`docker compose exec api-service python -c "import boto3; ..."` 上传 + 列对象 + 下载 | 0.5h |
-
-**降级策略模板**：
-
-```python
-# reqradar/ingestion/storage/__init__.py
-def get_l0_storage():
-    backend = os.getenv("L0_STORAGE_BACKEND", "local")
-    if backend == "minio":
-        try:
-            return S3Client(...)
-        except Exception as e:
-            logger.warning("minio_unavailable_fallback_local", error=str(e))
-            return LocalFallback(...)
-    return LocalFallback(...)
-```
-
-**验收标准**（对照 MVP-02 §MVP-7）：
-- [ ] `docker compose up -d minio` 容器 healthy
-- [ ] http://localhost:9001 控制台可登录
-- [ ] 上传文档后 MinIO 中可见对象
-- [ ] `docker compose stop minio` 后上传仍能成功（降级到本地）
-- [ ] 9 项边界单测全过
-
-**回滚策略**：`L0_STORAGE_BACKEND=local` 一键切回本地路径。
-
----
-
-### MVP-8：11 工具 + L3Writer + Graph 端点真验（中优先级）
-
-**目标**：对全部 11 个工具 + L3Writer + Graph 三端点（neighbors / path / subgraph）逐个真跑验证。
-
-**工具清单**（11 个，位于 `reqradar/cognitive_rt/cognition/tools/`）：
-- **核心 5 个**：`search_code` / `read_file` / `search_requirements` / `list_modules` / `get_project_profile`
-- **扩展 6 个**：`get_dependencies` / `get_contributors` / `search_git_history` / `read_module_summary` / `get_terminology` / `security`
-
-**依赖**：MVP-2、MVP-3（持久化层稳定后做真验才有意义）
-
-**涉及文件**：
-- `tests/integration/tools/test_tools_smoke.py`（新建）
-- `tests/integration/index_svc/test_l3_writer.py`（新建）
-- `tests/integration/index_svc/test_graph_endpoints.py`（新建）
-- 各工具 / 端点的 bug 修复（如有）
-
-**任务清单**：
-
-| # | 子任务 | 具体操作 | 估时 |
-|---|--------|---------|------|
-| MVP-8.1 | 核心 5 工具真调测试 | 文件 `tests/integration/tools/test_tools_smoke.py`；5 工具 × 3 场景 = 15 用例；用 `httpx.AsyncClient` 调 cognitive-rt 内部 API | 1.5h |
-| MVP-8.2 | 扩展 6 工具真调测试 | 同文件；6 工具 × 2 场景 = 12 用例（扩展工具只需验证成功路径 + 404） | 1h |
-| MVP-8.3 | L3Writer 验证 | 文件 `tests/integration/index_svc/test_l3_writer.py`；7 种知识类型各 `test_create_X` + `test_query_X` = 14 用例 | 1h |
-| MVP-8.4 | Graph 端点验证 | 文件 `tests/integration/index_svc/test_graph_endpoints.py`；3 端点 × 3 查询场景 = 9 用例 | 1h |
-| MVP-8.5 | 修复发现的 bug | 把真跑发现的问题记录到 `docs/MVP-8_BUG_LOG.md`，阻塞主链路的必修 | 0.5h |
-| MVP-8.6 | 自检 | `pytest tests/integration/ -v && ruff check tests/integration/` | 0.5h |
-
-**关键代码定位指令**：
-
-```bash
-# 工具实现位置
-grep -rn "search_code\|read_file\|search_requirements" reqradar/cognitive_rt/cognition/tools/
-# L3Writer 实现
-grep -n "class L3Writer" reqradar/index_svc/knowledge/writer.py
-# Graph 端点
-grep -n "graph_neighbors\|graph_path\|graph_subgraph" services/index/app.py
-```
-
-**工具真调测试模板**：
-
-```python
-# tests/integration/tools/test_tools_smoke.py
-import pytest
-from httpx import AsyncClient
-
-
-@pytest.mark.asyncio
-async def test_search_code_returns_results(client: AsyncClient, project_with_code):
-    """成功：search_code 工具返回 ≥ 3 个代码片段。"""
-    resp = await client.post(
-        "/internal/v2/tools/invoke",
-        json={"tool": "search_code", "params": {"query": "用户认证", "project_id": str(project_with_code.id), "top_k": 10}},
-    )
-    assert resp.status_code == 200
-    data = resp.json()
-    assert len(data["results"]) >= 3
-
-
-@pytest.mark.asyncio
-async def test_search_code_project_not_found_returns_404(client: AsyncClient):
-    """边界：项目不存在返回 404。"""
-    resp = await client.post(
-        "/internal/v2/tools/invoke",
-        json={"tool": "search_code", "params": {"query": "test", "project_id": "00000000-0000-0000-0000-000000000000"}},
-    )
-    assert resp.status_code == 404
-```
-
-**验收标准**（对照 MVP-02 §MVP-8）：
-- [ ] 核心 5 工具 × 3 场景 = 15 用例全过
-- [ ] 扩展 6 工具 × 2 场景 = 12 用例全过
-- [ ] L3 7 种知识类型可写可查（14 用例全过）
-- [ ] Graph 3 端点 × 3 场景 = 9 用例全过
-- [ ] 真问题 100% 修复并有回归测
-- [ ] BUG_LOG.md 记录所有发现
-
-**回滚策略**：每个工具 / 端点的修复独立 commit，独立可回滚。
-
----
-
-## 四、依赖关系图
-
-```
-MVP-1（端到端真跑）─────────┐
-                            ├──→ MVP-2（TaskStore PG）  ──→ MVP-8（9 工具 + L3 + Graph）
-                            ├──→ MVP-3（Session PG）    ──┘
-                            ├──→ MVP-4（Container 去嵌套）
-                            ├──→ MVP-5（前端抽组件）
-                            ├──→ MVP-6（日志 + health）
-                            └──→ MVP-7（MinIO）[可选]
-```
-
-**关键路径**：MVP-1 → MVP-2 / MVP-3 → MVP-8（共 5 天）
-**并行任务**：MVP-4 / MVP-5 / MVP-6 全部依赖 MVP-1，可串行或 2 人并行（共 2 天）
-**可选任务**：MVP-7（MinIO）推到第二轮，当前轮聚焦核心功能
-
----
-
-## 五、执行计划（8 天冲刺）
-
-```
-Day 0 上午  §一.5 Day 0 准备：补 tests/integration + e2e 目录 + 4 个 mock fixture
-Day 0 下午  §一.5.4 验收 Day 0 全过
-
-Day 1  上午  MVP-1.1 ~ 1.5  准备环境 + 写 tests/e2e/test_mvp1_smoke.py
-Day 1  下午  MVP-1.6        跑 3 轮 × 3 类，记录所有 bug
-
-Day 2-3      MVP-1.7        修 P0 bug（CHECKLIST 有 7 个 Phase 待复核，预计 10+ bug）
-Day 4  上午  MVP-1.8        复测全链路 ✅
-
-Day 4  下午  MVP-2         TaskStore 落 PG（含 _session_tasks 迁移）
-Day 5  上午  MVP-6         结构化日志 + 深健康
-Day 5  下午  MVP-3 前半    Session snapshot 表 + repo
-
-Day 6  上午  MVP-3 后半    集成 + 状态机接入 + 真跑验证
-Day 6  下午  MVP-4         Container 去嵌套（删除 ThreadPoolExecutor workaround）
-
-Day 7  上午  MVP-5         前端抽 3 组件（基于 antd 二次封装）
-Day 7  下午  MVP-8 前半    11 工具真调测试
-
-Day 8  上午  MVP-8 后半    L3Writer + Graph 端点真验 + 修复 bug
-Day 8  下午  写 MVP 完成报告 + 更新 CHECKLIST + 合并到 refactor/v2
-```
-
-**总周期**：Day 0 半天 + Day 1-8 共 8.5 天。
-
-> **MVP-7（MinIO）推到第二轮**：当前本地文件存储（`L0_STORAGE_PATH`）能满足 MVP 单人演示需求，MinIO 是 P3 的基础设施要求，不需要在 MVP 阶段引入。
-
----
-
-## 六、里程碑与验收
-
-| 里程碑 | 完成节点 | 验收依据 |
-|--------|---------|---------|
-| **M-MVP-1** | Day 4 上午 | 端到端脚本能跑通，全部 9 步成功，3 轮 × 3 项目 = 9 次无 P0 错，所有 P0 bug 已修复 |
-| **M-MVP-2** | Day 6 下午 | TaskStore + Session 状态机持久化通过测试，重启后旧状态可查；Container 去嵌套完成 |
-| **M-MVP-3** | Day 8 下午 | 全部 7 项任务完成（MVP-7 推后），综合分从 55 提升到 80+ |
-| **M-MVP-4** | Day 8 + 1 天 | 全部 7 项任务有回归测试 + 文档记录 + CHECKLIST 更新 |
-
-> **每个 M-MVP 通过后**：合并到 `refactor/v2` + 更新 `docs/CHECKLIST.md` + 在 PR 链接中附上验证截图。
-
----
-
-## 七、风险总览
-
-| 风险 | 概率 | 影响 | 应对 |
+| 类别 | 数量 | 本质 | 阶段 |
 |------|------|------|------|
-| MVP-1 真跑发现大量 P0 bug（>10） | 高 | Day 2-3 无法收尾 | 已调整估时为 3-4 天；优先修阻塞主链路的 bug，次要 bug 记录到遗留问题 |
-| LLM API 限流或余额不足 | 中 | MVP-1 跑不通 | 准备 2 个 API Key 切换；限流时记录重试次数；增加"Mini-LM"模式（最小 prompt 跑 1 轮验证链路） |
-| 估时超支（实际 > 8.5 天） | 中 | 冲刺延期 | 已基于评估报告调整估时；MVP-7 已推后；如仍超支，MVP-5 前端组件化可进一步推后 |
-| 持久化方案性能瓶颈 | 低 | MVP-2/3 延迟超标 | 用 JSONB + 索引；按 session_id 分区 |
-| 前端组件化引入新 bug | 中 | MVP-5 页面渲染异常 | 基于 antd 二次封装（非从零手写），降低风险；每个组件独立 PR |
+| A 类：已设计未接通 | 7 | 核心功能缺失，代码存在但从未被主流程调用 | Phase 2 |
+| B 类：已实现未持久化 | 3 | 功能半成品，内存版能工作但重启丢数据 | Phase 3 |
+| C 类：类型/接口不匹配 | 6 | 集成未做，接口契约未对齐 | Phase 1 |
+| D 类：实现错误 | 4 | 真正的 bug | Phase 1 |
+| E 类：代码质量 | 16 | 死代码、命名不一致、导出缺失 | Phase 4 |
+
+### 1.3 各层完成度
+
+| 层次 | 已完成 | 未完成 |
+|------|--------|--------|
+| L0 原始上下文 | 文档摄取 ✅、PDF 解析 ✅、向量化 ✅ | — |
+| L1 结构化事实 | PG 存储 ✅、ChromaDB 索引 ✅ | — |
+| L2 推理过程 | Session 生命周期 ✅、LLM 调用 ✅、报告生成 ✅ | Pipeline 空转、Sources 未注入、策略未调用、Evidence 未收集 |
+| L3 持久知识 | L3Writer 类实现 ✅、index-service API ✅ | cognitive_rt 从未调用 L3 写入 |
+| 推理增强 | f-string prompt 模板 ✅ | 上下文组装、策略权重、质量门控、token 预算——全部死代码 |
+| 数据持久化 | 项目/文档 PG 持久化 ✅ | Session/Event/Checkpoint 全内存，重启丢数据 |
 
 ---
 
-## 八、回滚策略
+## 二、实施阶段总览
 
-每个任务独立 commit，**不引入破坏性 schema 变更**：
-- MVP-2 / MVP-3：新增 PG 表 + 字段，原行为可通过 `FEATURE_OUTPUT_PERSIST=false` / `FEATURE_SESSION_PERSIST=false` 关闭
-- MVP-4：保留旧 `pipeline.execute` 同步路径作为 fallback
-- MVP-5：纯前端重构，git revert 即可
-- MVP-6：日志中间件可关闭
-- MVP-8：纯测试 + bug 修复，无功能开关
+```
+Phase 1: 接口对齐 + 基础修复 ──→ Phase 2: 认知管线接通 ──→ Phase 3: 持久化闭环 ──→ Phase 4: 代码质量
+  (C类 + D类, 10项)              (A类, 7项)               (B类, 3项)           (E类, 16项)
+  打地基                          接神经                    存数据               打扫卫生
+```
 
-**总回滚开关**：`MVP_HARDENING_ENABLED=false` 一次性关闭 MVP-2/3/4/6 的新增功能（环境变量级总闸）。
+**阶段依赖关系**：
+- Phase 1 是 Phase 2 的前置（接口不对齐，管线接不通）
+- Phase 2 是 Phase 3 的前置（管线不通，持久化无意义）
+- Phase 4 可穿插在 Phase 1-3 间隙做，但优先级最低
 
 ---
 
-## 九、文档配套
+## Phase 1：接口对齐 + 基础修复
 
-| 文档 | 关系 |
+> **目标**：消除所有类型/接口不匹配和实现错误，为 Phase 2 管线接通扫清障碍。
+
+### P1-1: project_id 类型统一为 str（#11）
+
+| 项目 | 内容 |
 |------|------|
-| [MVP-02_MVP_VERIFICATION_CHECKLIST.md](MVP-02_MVP_VERIFICATION_CHECKLIST.md) | 配套验收清单：8 项任务的逐项验证步骤 + 判定标准 + 签字栏 |
-| [04_IMPLEMENTATION_ROADMAP.md](../04_IMPLEMENTATION_ROADMAP.md) | 母路线图，本计划是其 v1.0 后续的"补完冲刺" |
-| [CHECKLIST.md](../CHECKLIST.md) | 验收记录，每个 M-MVP 通过后更新 |
-| [C-04_API_CONTRACT_REGISTRY.md](C-04_API_CONTRACT_REGISTRY.md) | 如新增 API 端点需同步注册 |
-| [C-06_DATABASE_MIGRATION_PLAN.md](C-06_DATABASE_MIGRATION_PLAN.md) | 新增表需同步注册 |
-| [C-03_CONFIGURATION_REGISTRY.md](C-03_CONFIGURATION_REGISTRY.md) | 新增配置项需同步注册 |
+| 问题 | `analysis_agent.py:38` 声明 `project_id: int`，实际传入 UUID 字符串 |
+| 修复 | 将 `AnalysisAgent.__init__` 的 `project_id: int` 改为 `project_id: str` |
+| 涉及文件 | `reqradar/cognitive_rt/cognition/analysis_agent.py` |
+| 验收 | `grep -n "project_id.*int" reqradar/cognitive_rt/cognition/analysis_agent.py` 无结果 |
+
+### P1-2: StateSummary 类型对齐（#9）
+
+| 项目 | 内容 |
+|------|------|
+| 问题 | `tool_runtime.py:374-377` 传 `state_summary={...}` dict，但接收方期望 StateSummary 对象 |
+| 修复 | 改为构造 `StateSummary(...)` 对象传入；若 StateSummary 无合适构造函数，则让接收方兼容 dict |
+| 涉及文件 | `reqradar/cognitive_rt/runtime/tool_runtime.py` |
+| 验收 | `mypy reqradar/cognitive_rt/runtime/tool_runtime.py` 无类型错误（或 ruff check 通过） |
+
+### P1-3: DimensionStatus 枚举对齐（#10）
+
+| 项目 | 内容 |
+|------|------|
+| 问题 | `dimension.py:87-92` `from_snapshot()` 存字符串，但与 `DimensionStatus` 枚举比较 |
+| 修复 | `from_snapshot()` 中将字符串转为 `DimensionStatus(status_str)` 枚举值 |
+| 涉及文件 | `reqradar/cognitive_rt/cognition/dimension.py` |
+| 验收 | checkpoint 恢复后 `dim.status == DimensionStatus.COMPLETED` 判断正确 |
+
+### P1-4: EvidenceRecord.content 长度扩展（#20）
+
+| 项目 | 内容 |
+|------|------|
+| 问题 | `EvidenceRecord.content` 为 `String(200)`，长证据被截断 |
+| 修复 | 改为 `Text`（无长度限制） |
+| 涉及文件 | `reqradar/kernel/models.py` |
+| 迁移 | 新增 Alembic 迁移 `V2_P1_extend_evidence_content.py`：`ALTER TABLE evidence_records ALTER COLUMN content TYPE TEXT` |
+| 验收 | 可存储 10000+ 字符的证据内容 |
+
+### P1-5: L3Knowledge.project_id 改为 UUID FK（#21）
+
+| 项目 | 内容 |
+|------|------|
+| 问题 | `L3Knowledge.project_id` 是 `String(36)` 而非 UUID 外键，与其他模型不一致 |
+| 修复 | 改为 `ForeignKey("projects.id")` 的 UUID 列 |
+| 涉及文件 | `reqradar/kernel/models.py` |
+| 迁移 | 新增 Alembic 迁移 |
+| 验收 | `SELECT conname FROM pg_constraint WHERE conrelid = 'l3_knowledge'::regclass AND contype = 'f'` 返回 FK 约束 |
+
+### P1-6: ToolResultCache 缓存 key 嵌套 dict 处理（#18）
+
+| 项目 | 内容 |
+|------|------|
+| 问题 | `hash(frozenset(params.items()))` 在 params 含嵌套 dict 时 TypeError |
+| 修复 | 用 `json.dumps(params, sort_keys=True)` 生成稳定字符串 key |
+| 涉及文件 | `reqradar/cognitive_rt/runtime/tool_runtime.py` |
+| 验收 | `cache_key({"a": {"b": 1}})` 不崩溃 |
+
+### P1-7: ToolResultCache 改为 LRU（#19）
+
+| 项目 | 内容 |
+|------|------|
+| 问题 | 缓存是 FIFO（`next(iter(self._cache))`），文档声称 LRU |
+| 修复 | 改用 `collections.OrderedDict` + `move_to_end()` 实现 LRU |
+| 涉及文件 | `reqradar/cognitive_rt/runtime/tool_runtime.py` |
+| 验收 | 访问已有 key 后，该 key 不再是最先被淘汰的 |
+
+### P1-8: asyncio.run 反模式修复（#7）→ 合入 P2-1
+
+| 项目 | 内容 |
+|------|------|
+| 问题 | `analysis_agent.py:176-201` 用 `ThreadPoolExecutor` + `asyncio.run` 嵌套事件循环 |
+| 评估 | `asyncio.run` 出现在 `_get_context_text_via_pipeline()` 中，因为该方法是同步函数但需调异步 `pipeline.execute()`。P2-1 将 Pipeline 提升到 Runner 层（异步环境）后，`_get_context_text_via_pipeline()` 整个方法可删除，`asyncio.run` 自然消失 |
+| 修复 | **与 P2-1 合并执行**。P2-1 完成后，删除 `_get_context_text_via_pipeline()` 方法及 `get_context_text()` 中的分支逻辑 |
+| 涉及文件 | `reqradar/cognitive_rt/cognition/analysis_agent.py` |
+| 验收 | `grep -rn "asyncio.run\|ThreadPoolExecutor" reqradar/cognitive_rt/cognition/` 输出为空 |
+
+### P1-9: Redis 内存模式支持 TTL（#22）
+
+| 项目 | 内容 |
+|------|------|
+| 问题 | `redis_client.py` 内存降级模式忽略 `ex` 参数，缓存永不过期 |
+| 修复 | 内存模式 `set()` 记录 `(value, expire_at)` 元组，`get()` 检查过期 |
+| 涉及文件 | `reqradar/infrastructure/redis_client.py` |
+| 验收 | `client.set("k", "v", ex=1); time.sleep(1.1); assert client.get("k") is None` |
+
+### P1-10: 服务间调用增加重试（#23）
+
+| 项目 | 内容 |
+|------|------|
+| 问题 | `context_sources.py` 中 httpx 调用无 retry，级联失败 |
+| 修复 | 引入 `httpx.AsyncClient(transport=httpx.AsyncHTTPTransport(retries=3))` 或简单 for-retry 循环 |
+| 涉及文件 | `reqradar/cognitive_rt/cognition/context_sources.py` |
+| 验收 | 模拟 2 次连接失败后第 3 次成功，请求仍能完成 |
+
+### Phase 1 验收标准
+
+- [ ] E2E 冒烟测试仍通过（回归验证）
+- [ ] `ruff check reqradar/` 无新增错误
+- [ ] Phase 1 新增/修改的代码有对应单元测试
+- [ ] Alembic 迁移可执行
 
 ---
 
-## 十、总结
+## Phase 2：认知管线接通
 
-本计划定义 8 项 MVP 必做任务，总计 5 天完成，预期把 V2 从"代码到位 Demo 阶段（55 分）"提升到"MVP 可交付阶段（80 分）"。核心原则：
+> **目标**：把 Context Pipeline 从"空转"变为"真正驱动推理"，让推理结果受上下文增强而非纯靠 LLM 裸跑。
 
-1. **MVP 优先**：砍掉所有非 MVP 必要工作（gRPC、性能、组件库美化、多租户等）
-2. **真跑验证**：MVP-1 是所有后续任务的输入，真问题比读代码猜的准 10 倍
-3. **关键持久化**：TaskStore + Session 状态机是 MVP 阶段最常被忽视的"重启即丢"问题
-4. **可观测性补丁**：深健康检查 + 结构化日志是排障必备，0.5 天工作量价值 5 分
-5. **每个任务独立可回滚**：通过 feature flag 关闭，总闸一键回退
+### P2-1: Context Pipeline 输出接入 Runner（#1）⭐ 最关键
 
-完成本计划后，V2 进入"接近 Beta 级"状态，可作为内部 demo 工具长期使用，下一轮可开始 P10 性能升级或认知飞轮 E2E 验证。
+| 项目 | 内容 |
+|------|------|
+| 问题 | `runner.py:500-517` 用 f-string 构建 prompt，从未调用 `pipeline.execute()` |
+| 修复 | 在 `runner._execute_step()` 中调用 `pipeline.execute()`，将 `PipelineResult.context` 注入 system_prompt |
+| 涉及文件 | `reqradar/cognitive_rt/cognition/runner.py` |
+| 设计 | 1. Runner 构造时接收 `ContextPipeline` 实例<br>2. `_execute_step()` 中 `result = await self.pipeline.execute(session_id, project_id, query, context_budget=128000)`<br>3. 将 `result.context` 追加到 system_prompt 的 `## 上下文增强` 段落<br>4. 保留 `build_dynamic_system_prompt()` 作为 fallback（pipeline 不可用时） |
+| 验收 | 推理过程中日志输出 `Pipeline 完成: strategy=..., collected=N, scored=N, selected=N, tokens=N/M` |
+
+### P2-2: ContextSource 注入 service_url（#2）
+
+| 项目 | 内容 |
+|------|------|
+| 问题 | `CodeGraphSource()` 无参创建，`.configure()` 从未被调，所有 Source 返回空列表 |
+| 修复 | 在 Pipeline 创建处（`analysis_agent.py:165-174` 的 `_get_context_text_via_pipeline()`，或 P2-1 后的 Runner 层 Pipeline 工厂），对每个 Source 调用 `.configure(service_url=..., internal_api_key=...)`<br>service_url 从环境变量 `REQRADAR_INDEX_SERVICE_URL`（默认 `http://index-service:8003`）获取 |
+| 涉及文件 | `reqradar/cognitive_rt/cognition/analysis_agent.py`（若 Pipeline 留在 agent 层）<br>或 `reqradar/cognitive_rt/cognition/runner.py`（若 P2-1 将 Pipeline 提升到 runner 层） |
+| 验收 | Source.collect() 返回非空列表（至少向量检索源有数据） |
+
+### P2-3: 策略权重 key 对齐（#5）
+
+| 项目 | 内容 |
+|------|------|
+| 问题 | 策略返回 `w1_semantic`，pipeline 读 `w1`，key 不匹配 |
+| 修复 | 统一 key 命名。两种方案：<br>A. 策略改为返回 `w1/w2/w3/w4`（简单）<br>B. pipeline 改为读 `w1_semantic/w2_time_decay/w3_user_mark/w4_context_kind`（语义清晰）<br>**推荐方案 A**，因为 pipeline 内部用 w1-w4 更简洁 |
+| 涉及文件 | `reqradar/cognitive_rt/cognition/context_strategies.py` |
+| 验收 | `strategy.get_score_weights()["w1"]` 返回非 None 值 |
+
+### P2-4: Pipeline.execute() 使用策略（#6）
+
+| 项目 | 内容 |
+|------|------|
+| 问题 | `execute()` 硬编码，4 个策略方法全是死代码 |
+| 修复 | 1. `execute()` 中调用 `self.strategy.get_source_budgets()` 替代硬编码预算<br>2. `score_items()` 传入 `weights=self.strategy.get_score_weights()`<br>3. `select_context()` 传入 `min_score=self.strategy.get_select_min_score()`<br>4. `quality_gate.check()` 传入 `thresholds=self.strategy.get_quality_gate_thresholds()` |
+| 涉及文件 | `reqradar/cognitive_rt/cognition/context_pipeline.py` |
+| 验收 | 切换策略后，pipeline 的 collected/scored/selected 数量有变化 |
+
+### P2-5: 实现 ARCH_DOC 上下文源（#17）
+
+| 项目 | 内容 |
+|------|------|
+| 问题 | Pipeline 定义了 `ContextKind.ARCH_DOC` 权重，但无 Source 实现 |
+| 修复 | 新增 `ArchitectureDocSource` 类，从 index-service 的向量检索中获取架构文档 |
+| 涉及文件 | `reqradar/cognitive_rt/cognition/context_sources.py` |
+| 验收 | `ArchitectureDocSource.collect()` 返回 `ContextKind.ARCH_DOC` 类型的上下文项 |
+
+### P2-6: L3 知识沉淀接入 cognitive_rt（#3）⭐ 核心闭环
+
+| 项目 | 内容 |
+|------|------|
+| 问题 | cognitive_rt 推理完成后从未调用 L3 写入，知识永远不沉淀 |
+| 修复 | 1. Runner 完成推理后，调用 index-service 的 `/internal/v2/knowledge/append` API<br>2. 从推理结果中提取可沉淀知识（术语、风险、决策记录等）<br>3. 通过 `KnowledgeEvolution` 或新建 `KnowledgePrecipitator` 类统一沉淀逻辑 |
+| 涉及文件 | `reqradar/cognitive_rt/cognition/runner.py`（推理完成后调用沉淀）<br>可能新建 `reqradar/cognitive_rt/cognition/knowledge_precipitator.py` |
+| 验收 | Session COMPLETED 后，`GET /internal/v2/knowledge/query?project_id=X` 返回非空 L3 知识 |
+
+### P2-7: 项目画像自动触发（#33）
+
+| 项目 | 内容 |
+|------|------|
+| 问题 | `step_build_project_profile()` 存在但 runner 不调 |
+| 修复 | 在 Runner 的推理步骤中，首次遇到项目画像为空时自动触发 `step_build_project_profile()` |
+| 涉及文件 | `reqradar/cognitive_rt/cognition/runner.py` |
+| 验收 | 首次推理时日志输出 "Building project profile"，后续推理使用已构建的画像 |
+
+### Phase 2 验收标准
+
+- [ ] E2E 冒烟测试通过，且推理日志中可见 Pipeline 执行记录
+- [ ] 推理结果中包含上下文增强内容（非纯 LLM 裸跑）
+- [ ] Session COMPLETED 后 L3 知识表有新增记录
+- [ ] 切换策略后推理行为有可观测差异
+- [ ] 项目画像在首次推理时自动构建
+
+---
+
+## Phase 3：持久化闭环
+
+> **目标**：所有运行时状态可持久化，服务重启不丢数据。
+
+### P3-1: Session PG 持久化（#4a）
+
+| 项目 | 内容 |
+|------|------|
+| 问题 | `SessionService._sessions: dict` 内存存储，重启丢数据 |
+| 修复 | 1. 新增 `SessionSnapshot` ORM 模型（已有 `session_snapshots` 表）<br>2. `SessionService` 状态转换时异步写 PG（`asyncio.shield` 防阻塞）<br>3. 服务启动时从 PG load 活跃 Session<br>4. 保留内存缓存作为热路径，PG 作为持久化后端 |
+| 涉及文件 | `reqradar/cognitive_rt/runtime/session_api.py`<br>可能新建 `reqradar/cognitive_rt/runtime/session_repo.py` |
+| 验收 | 创建 Session → 重启 cognitive-rt → GET Session 仍返回正确状态 |
+
+### P3-2: Event PG 持久化 await（#12）
+
+| 项目 | 内容 |
+|------|------|
+| 问题 | `EventPublisher` 的 PG 持久化是 fire-and-forget，`_pending_tasks` 未 await |
+| 修复 | 1. 在 `EventPublisher` 中增加 `async flush()` 方法，await 所有 pending tasks<br>2. 在 Session 完成时调用 `flush()`<br>3. 在服务 shutdown 时调用 `flush()` |
+| 涉及文件 | `reqradar/cognitive_rt/runtime/events.py` |
+| 验收 | Session 完成后立即重启服务，事件数据仍可查 |
+
+### P3-3: Checkpoint 冷存储 fallback 修复（#8）
+
+| 项目 | 内容 |
+|------|------|
+| 问题 | `checkpoint_storage.py:182-193` 热区未找到时仍在热区循环，不读冷存储 |
+| 修复 | 热区未找到时，跳转到冷存储（PG）查询逻辑 |
+| 涉及文件 | `reqradar/cognitive_rt/runtime/checkpoint_storage.py` |
+| 验收 | 热区无数据时，从 PG 恢复历史 checkpoint 成功 |
+
+### P3-4: 内存存储驱逐上限（#13）
+
+| 项目 | 内容 |
+|------|------|
+| 问题 | `_events`/`_checkpoints`/`_sessions` 无 maxsize，无限增长 OOM |
+| 修复 | 1. Session 完成后从内存缓存移除（已持久化到 PG）<br>2. Event 保留最近 N 条（默认 1000）<br>3. Checkpoint 热区保留最近 N 个版本（默认 10） |
+| 涉及文件 | `reqradar/cognitive_rt/runtime/session_api.py`、`events.py`、`checkpoint_storage.py` |
+| 验收 | 运行 100 个 Session 后，内存中活跃 Session 数 ≤ 10（已完成的已移除） |
+
+### P3-5: Output TaskStore PG 持久化（原 MVP-2）
+
+| 项目 | 内容 |
+|------|------|
+| 问题 | `services/output/app.py` 的 `_tasks` 内存字典 |
+| 修复 | 新增 `OutputTaskStore`（PG 后端），替代内存 `_tasks` + `_session_tasks` |
+| 涉及文件 | 新建 `reqradar/output_svc/store.py`<br>修改 `services/output/app.py`<br>新增 Alembic 迁移 |
+| 验收 | 创建报告任务 → 重启 output-service → 旧 task_id 仍可查 |
+
+### Phase 3 验收标准
+
+- [ ] 全部服务重启后，历史数据（Session/Event/Checkpoint/Task）仍可查
+- [ ] 内存使用不随 Session 数量线性增长
+- [ ] E2E 冒烟测试通过（回归验证）
+
+---
+
+## Phase 4：代码质量
+
+> **目标**：清理死代码、修复命名、补全导出，降低维护负担。
+
+### P4-1: 删除死代码（#26, #27, #25）
+
+| 项目 | 内容 |
+|------|------|
+| 问题 | `_build_messages_chain()` 从未调用、`HISTORICAL_THRESHOLD_DAYS` 未使用、`archive_days/delete_days` 死配置 |
+| 修复 | 删除这些未使用的代码和配置 |
+| 涉及文件 | `runner.py`、相关配置文件 |
+
+### P4-2: 补全工具导出（#34）
+
+| 项目 | 内容 |
+|------|------|
+| 问题 | `SearchGitHistoryTool` 未从 `tools/__init__.py` 导出 |
+| 修复 | 在 `__init__.py` 中添加导出 |
+| 涉及文件 | `reqradar/cognitive_rt/cognition/tools/__init__.py` |
+
+### P4-3: 补全异常导出（#35）
+
+| 项目 | 内容 |
+|------|------|
+| 问题 | `IngestionException` 未从 `kernel/__init__.py` 导出 |
+| 修复 | 在 `kernel/__init__.py` 中添加导出 |
+| 涉及文件 | `reqradar/kernel/__init__.py` |
+
+### P4-4: Logger 名称修正（#32）
+
+| 项目 | 内容 |
+|------|------|
+| 问题 | `tools/security.py` 用 `reqradar.agent.security`，不符合模块层级 |
+| 修复 | 改为 `reqradar.cognitive_rt.cognition.tools.security` |
+| 涉及文件 | `reqradar/cognitive_rt/cognition/tools/security.py` |
+
+### P4-5: Scope.SESSION 加入 _SCOPE_PRIORITY（#36）
+
+| 项目 | 内容 |
+|------|------|
+| 问题 | `Scope.SESSION` 不在 `_SCOPE_PRIORITY` 中 |
+| 修复 | 添加 `Scope.SESSION` 到优先级映射 |
+| 涉及文件 | `reqradar/kernel/config_base.py` |
+
+### P4-6: models.py 表数注释修正（#28）
+
+| 项目 | 内容 |
+|------|------|
+| 问题 | 注释说 25 张表，实际 32 张 |
+| 修复 | 更新注释 |
+| 涉及文件 | `reqradar/kernel/models.py` |
+
+### P4-7: ContextSource max_items 执行（#29）
+
+| 项目 | 内容 |
+|------|------|
+| 问题 | 所有 Source 接受 `max_items` 参数但不限制返回数量 |
+| 修复 | 在 `collect()` 返回前截断到 `max_items` |
+| 涉及文件 | `reqradar/cognitive_rt/cognition/context_sources.py` |
+| 备注 | **Phase 2 后验收**：P2-2 注入 service_url 后 Source 才有真实返回数据，此时 max_items 截断才有意义 |
+
+### P4-8: ContextSource context_kind 使用（#30）
+
+| 项目 | 内容 |
+|------|------|
+| 问题 | `context_kind` 参数未使用 |
+| 修复 | 在 `collect()` 中按 `context_kind` 过滤返回结果 |
+| 涉及文件 | `reqradar/cognitive_rt/cognition/context_sources.py` |
+| 备注 | **Phase 2 后验收**：同 P4-7 |
+
+### P4-9: embedding.py 运行时依赖声明（#31）
+
+| 项目 | 内容 |
+|------|------|
+| 问题 | `httpx`/`onnxruntime`/`numpy` 未在 `pyproject.toml` 声明 |
+| 修复 | 添加 `onnxruntime` 和 `numpy` 到可选依赖组 `[embedding]`，`httpx` 已是核心依赖 |
+| 涉及文件 | `pyproject.toml` |
+
+### P4-10: server.py Pydantic 模型化（#15）
+
+| 项目 | 内容 |
+|------|------|
+| 问题 | `server.py` 端点全用 dict 而非 Pydantic 模型，违 C-01 §6 |
+| 修复 | 为每个端点定义 Pydantic Request/Response 模型 |
+| 涉及文件 | `reqradar/cognitive_rt/runtime/server.py` |
+
+### P4-11: 私有属性访问修复（#14）
+
+| 项目 | 内容 |
+|------|------|
+| 问题 | `session_api.py` 访问 `sm._state`，`server.py` 访问 `_publisher._bus` |
+| 修复 | 添加公共访问方法（如 `SessionMachine.state` property、`EventPublisher.get_bus()`） |
+| 涉及文件 | `reqradar/cognitive_rt/runtime/session_api.py`、`server.py` |
+
+### P4-12: 代码解析扩展（#24）
+
+| 项目 | 内容 |
+|------|------|
+| 问题 | `code_parser.py` 仅支持 `.py` |
+| 修复 | 添加 `.js/.ts/.java/.go` 等常见语言的解析支持 |
+| 涉及文件 | `reqradar/ingestion/code_parser.py` |
+| 备注 | 优先级最低，可推到后续迭代 |
+
+### P4-13: Evidence/Dimension Pydantic 迁移评估（#16）
+
+| 项目 | 内容 |
+|------|------|
+| 问题 | 用 dataclass 而非 Pydantic，违 C-01 §8.1 |
+| 评估 | dataclass 在纯计算层是合理的（无需序列化/校验），但如果需要跨服务传输则应改为 Pydantic<br>**建议**：保持 dataclass 用于内部计算，在 API 边界用 Pydantic 做序列化 |
+| 涉及文件 | 仅评估，可能不改 |
+
+### Phase 4 验收标准
+
+- [ ] `ruff check reqradar/` 无新增错误
+- [ ] `grep -rn "reqradar.agent" reqradar/` 输出为空（logger 名称已修正）
+- [ ] 所有 `__init__.py` 导出完整
+- [ ] 无明显死代码
+
+---
+
+## 三、执行节奏建议
+
+| 阶段 | 任务数 | 建议时长 | 关键里程碑 |
+|------|--------|---------|-----------|
+| Phase 1 | 9 | 3-4 天 | 所有接口类型对齐，E2E 回归通过 |
+| Phase 2 | 8 | 5-6 天 | Pipeline 真正驱动推理，L3 知识可沉淀，asyncio.run 消除 |
+| Phase 3 | 5 | 3-4 天 | 服务重启不丢数据 |
+| Phase 4 | 13 | 3-4 天 | 代码质量达标 |
+| **总计** | **35** | **14-18 天** | |
+
+### 每日节奏
+
+1. 每个任务完成后立即跑 E2E 回归（`scripts/e2e_smoke.py`）
+2. Phase 2 每完成一个 P2 任务，用真实 PDF 文档做一次完整推理，对比报告质量
+3. Phase 3 每完成一个 P3 任务，做一次重启恢复测试
+
+### 风险与缓解
+
+| 风险 | 影响 | 缓解 |
+|------|------|------|
+| P2-1 接入 Pipeline 后推理质量下降 | 报告变差 | 保留 `FEATURE_CONTEXT_PIPELINE=false` 降级开关 |
+| P2-6 L3 沉淀逻辑复杂 | 知识提取不准 | 先实现最简单的"全量沉淀"，后续迭代优化 |
+| P3-1 Session PG 持久化影响性能 | 推理变慢 | 用 `asyncio.shield` 异步写，不阻塞主路径 |
+| Phase 2 工作量超预期 | 延期 | P2-5（ARCH_DOC）和 P2-7（项目画像）可推到 Phase 2.5 |
+
+---
+
+## 四、与旧计划的关系
+
+| 旧计划任务 | 新计划对应 | 变化 |
+|-----------|-----------|------|
+| MVP-1 端到端真跑 | ✅ 已完成 | E2E 已通过，脚本在 `tests/e2e/test_mvp1_smoke.py` |
+| MVP-2 TaskStore PG | P3-5 | 不变 |
+| MVP-3 Session PG | P3-1 | 不变，但基于现有 checkpoint_storage 扩展而非新建 repo |
+| MVP-4 asyncio.run | P1-8 | 不变 |
+| MVP-5 前端组件 | **移除** | 非核心功能，推到独立迭代 |
+| MVP-6 日志+健康 | **移除** | 非核心功能，推到独立迭代 |
+| MVP-7 MinIO | **移除** | 非核心功能，推到独立迭代 |
+| MVP-8 工具+L3+Graph | P2-6（L3 部分） | 工具/Graph 验证推到 Phase 4 后 |
+| — | P2-1~P2-4 | **新增**：认知管线接通（旧计划未覆盖） |
+| — | P2-5, P2-7 | **新增**：ARCH_DOC 源 + 项目画像（旧计划未覆盖） |
+| — | P1-1~P1-7 | **新增**：接口对齐（旧计划未覆盖） |
+
+---
+
+## 五、36 项问题 → 任务映射
+
+| # | 问题 | 任务 | 阶段 |
+|---|------|------|------|
+| 1 | Pipeline 输出未用 | P2-1 | Phase 2 |
+| 2 | Source URL 未注入 | P2-2 | Phase 2 |
+| 3 | L3 无写入入口 | P2-6 | Phase 2 |
+| 4 | Session/Event/L3 内存存储 | P3-1, P3-2, P3-4 | Phase 3 |
+| 5 | 策略权重 key 不匹配 | P2-3 | Phase 2 |
+| 6 | 策略未被 execute 调用 | P2-4 | Phase 2 |
+| 7 | asyncio.run 反模式 | P1-8 | Phase 1 |
+| 8 | 冷存储 fallback 错误 | P3-3 | Phase 3 |
+| 9 | dict vs StateSummary | P1-2 | Phase 1 |
+| 10 | str vs DimensionStatus | P1-3 | Phase 1 |
+| 11 | int vs str project_id | P1-1 | Phase 1 |
+| 12 | Event fire-and-forget | P3-2 | Phase 3 |
+| 13 | 内存无驱逐上限 | P3-4 | Phase 3 |
+| 14 | 私有属性直接访问 | P4-11 | Phase 4 |
+| 15 | server.py 用 dict | P4-10 | Phase 4 |
+| 16 | dataclass vs Pydantic | P4-13 | Phase 4 |
+| 17 | 无 ARCH_DOC 源 | P2-5 | Phase 2 |
+| 18 | frozenset 嵌套 dict | P1-6 | Phase 1 |
+| 19 | FIFO 非 LRU | P1-7 | Phase 1 |
+| 20 | content 200 字符 | P1-4 | Phase 1 |
+| 21 | project_id 非 FK | P1-5 | Phase 1 |
+| 22 | Redis 忽略 TTL | P1-9 | Phase 1 |
+| 23 | 无重试 | P1-10 | Phase 1 |
+| 24 | 代码解析仅 Python | P4-12 | Phase 4 |
+| 25 | archive_days 死配置 | P4-1 | Phase 4 |
+| 26 | _build_messages_chain 死代码 | P4-1 | Phase 4 |
+| 27 | HISTORICAL_THRESHOLD_DAYS | P4-1 | Phase 4 |
+| 28 | 表数注释不符 | P4-6 | Phase 4 |
+| 29 | max_items 未执行 | P4-7 | Phase 4 |
+| 30 | context_kind 未使用 | P4-8 | Phase 4 |
+| 31 | 依赖未声明 | P4-9 | Phase 4 |
+| 32 | Logger 名称不匹配 | P4-4 | Phase 4 |
+| 33 | 项目画像未触发 | P2-7 | Phase 2 |
+| 34 | SearchGitHistoryTool 未导出 | P4-2 | Phase 4 |
+| 35 | IngestionException 未导出 | P4-3 | Phase 4 |
+| 36 | Scope.SESSION 缺失 | P4-5 | Phase 4 |
