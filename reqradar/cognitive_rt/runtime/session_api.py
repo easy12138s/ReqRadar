@@ -216,6 +216,9 @@ class SessionService:
 
         logger.info("Session 取消: %s", session_id)
 
+        # 更新 PG 状态
+        self._update_pg_status_sync(session_id, SessionStatus.CANCELLED)
+
         # 从内存缓存移除（已持久化到 PG）
         self._sessions.pop(session_id, None)
 
@@ -268,6 +271,9 @@ class SessionService:
 
         logger.info("Session 完成: %s", session_id)
 
+        # 更新 PG 状态
+        self._update_pg_status_sync(session_id, SessionStatus.COMPLETED)
+
         # 从内存缓存移除（已持久化到 PG）
         self._sessions.pop(session_id, None)
 
@@ -296,6 +302,9 @@ class SessionService:
         )
 
         logger.info("Session 失败: %s, error=%s", session_id, error_message)
+
+        # 更新 PG 状态
+        self._update_pg_status_sync(session_id, SessionStatus.FAILED)
 
         # 从内存缓存移除（已持久化到 PG）
         self._sessions.pop(session_id, None)
@@ -547,9 +556,11 @@ class SessionService:
             )
             from reqradar.kernel.models import CognitiveSession
 
-            # 创建同步引擎
+            # 创建同步引擎（需将异步驱动替换为同步驱动）
             database_url = os.environ.get("DATABASE_URL", "sqlite:///./reqradar_dev.db")
-            sync_url = database_url.replace("sqlite+aiosqlite", "sqlite")
+            sync_url = database_url.replace("sqlite+aiosqlite", "sqlite").replace(
+                "postgresql+asyncpg", "postgresql+psycopg2"
+            )
 
             engine = create_engine(sync_url)
             with DBSession(engine) as db_session:
@@ -577,6 +588,38 @@ class SessionService:
         except Exception as e:
             logger.debug("PG 同步查询失败: %s", e)
             return None
+
+    def _update_pg_status_sync(self, session_id: str, status: SessionStatus) -> None:
+        """同步更新 PG 中的 Session 状态（终态转换时调用）。"""
+        try:
+            import os
+            from datetime import UTC, datetime
+
+            from sqlalchemy import create_engine, update
+            from sqlalchemy.orm import Session as DBSession
+
+            from reqradar.kernel.models import CognitiveSession
+
+            database_url = os.environ.get("DATABASE_URL", "sqlite:///./reqradar_dev.db")
+            sync_url = database_url.replace("sqlite+aiosqlite", "sqlite").replace(
+                "postgresql+asyncpg", "postgresql+psycopg2"
+            )
+
+            engine = create_engine(sync_url)
+            with DBSession(engine) as db_session:
+                now = datetime.now(UTC)
+                values: dict = {"status": status.value, "updated_at": now}
+                if status == SessionStatus.COMPLETED:
+                    values["finished_at"] = now
+                db_session.execute(
+                    update(CognitiveSession)
+                    .where(CognitiveSession.session_id == session_id)
+                    .values(**values)
+                )
+                db_session.commit()
+                logger.debug("PG 状态更新成功: session=%s, status=%s", session_id, status.value)
+        except Exception as e:
+            logger.warning("PG 状态更新失败: session=%s, error=%s", session_id, e)
 
     def _to_info(self, sm: SessionStateMachine) -> SessionInfo:
         """转换为 SessionInfo。"""

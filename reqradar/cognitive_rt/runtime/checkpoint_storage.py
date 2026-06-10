@@ -215,9 +215,11 @@ class CheckpointStorage:
 
             from reqradar.kernel.models import Checkpoint as CheckpointModel
 
-            # 创建同步引擎
+            # 创建同步引擎（需将异步驱动替换为同步驱动）
             database_url = os.environ.get("DATABASE_URL", "sqlite:///./reqradar_dev.db")
-            sync_url = database_url.replace("sqlite+aiosqlite", "sqlite")
+            sync_url = database_url.replace("sqlite+aiosqlite", "sqlite").replace(
+                "postgresql+asyncpg", "postgresql+psycopg2"
+            )
 
             engine = create_engine(sync_url)
             with DBSession(engine) as db_session:
