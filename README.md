@@ -18,11 +18,20 @@
 
 ## 快速开始
 
+### 安装与启动
+
 ```bash
-pip install reqradar && reqradar serve
+# 源码安装（开发模式）
+git clone https://github.com/easy12138s/reqradar.git
+cd reqradar && pip install -e reqradar/kernel
+
+# 启动 Web 服务
+reqradar serve
 ```
 
-启动后访问：
+> 完整部署方式（Docker、源码、一键脚本）见 [其他安装方式](#其他安装方式) 章节。
+
+### 启动后访问
 
 | 服务 | 地址 |
 |------|------|
@@ -30,7 +39,7 @@ pip install reqradar && reqradar serve
 | API 文档 | http://localhost:8000/docs |
 | MCP Server | http://localhost:8765/mcp |
 
-默认账号: `admin@reqradar.io` / `Admin12138%`
+**默认账号**：`admin@reqradar.io` / `Admin12138%`
 
 ---
 

@@ -130,6 +130,9 @@ docs/.superpowers/
 .superpowers/
 .worktrees/
 
+# 设计文档（V2 重构已完成使命，核心规则提取至 AGENTS.md）
+docs/
+
 # 临时测试/调试文件
 /test_req.md
 /tmp_create_project.json
