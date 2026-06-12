@@ -139,6 +139,21 @@ class CheckpointManager:
         """获取版本数量。"""
         return len(self._checkpoints.get(session_id, []))
 
+    def sync_version(self, session_id: str, version: int) -> None:
+        """同步版本计数器（服务重启恢复时使用）。
+
+        将内存中的版本计数器设置为不低于给定 version 的值，
+        避免重启后从 1 开始计数与 PG 已有记录冲突。
+        """
+        current = self._versions.get(session_id, 0)
+        if version > current:
+            self._versions[session_id] = version
+            logger.debug(
+                "Checkpoint 版本计数器同步: session=%s, version=%s",
+                session_id,
+                version,
+            )
+
     def _compute_diff(self, old: CheckpointRecord, new: CheckpointRecord) -> dict:
         """计算两个 Checkpoint 之间的差异。"""
         old_dims = set(old.state_summary.dimension_status.keys())

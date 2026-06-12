@@ -348,8 +348,8 @@ class SessionService:
             checkpoint_type=checkpoint_type,
             state_summary=summary,
         )
-
-        self._checkpoint_storage.save(record)
+        # create_checkpoint 内部已通过 self._storage.save() 持久化
+        # 此处不再重复调用 save() 以避免双写导致 PG UNIQUE 冲突
 
         # 更新 session 的 checkpoint version
         sm.state.last_checkpoint_version = record.version
@@ -683,8 +683,9 @@ class SessionService:
             return 0
 
         try:
-            from sqlalchemy import select
+            from sqlalchemy import func, select
 
+            from reqradar.kernel.models import Checkpoint as CheckpointModel
             from reqradar.kernel.models import CognitiveSession
 
             # 查询非终态的 Session
@@ -727,6 +728,21 @@ class SessionService:
                         sm = SessionStateMachine(state)
                         self._sessions[session_id] = sm
                         loaded_count += 1
+
+                # 同步 Checkpoint 版本计数器，避免重启后从 1 开始导致 UNIQUE 冲突
+                if self._sessions:
+                    session_uuids = [UUID(sid) for sid in self._sessions]
+                    version_result = await db_session.execute(
+                        select(
+                            CheckpointModel.session_id,
+                            func.max(CheckpointModel.version).label("max_version"),
+                        ).where(
+                            CheckpointModel.session_id.in_(session_uuids)
+                        ).group_by(CheckpointModel.session_id)
+                    )
+                    for version_row in version_result:
+                        sid = str(version_row.session_id)
+                        self._checkpoint_mgr.sync_version(sid, version_row.max_version)
 
                 logger.info("从 PG 加载 %d 个活跃 Session", loaded_count)
                 return loaded_count

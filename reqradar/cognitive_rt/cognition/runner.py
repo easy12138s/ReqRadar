@@ -756,8 +756,8 @@ async def run_react_analysis(
                             checkpoint_type=CheckpointType.STEP_COMPLETE,
                             state_summary=summary,
                         )
-                        if checkpoint_storage is not None:
-                            checkpoint_storage.save(record)
+                        # create_checkpoint 内部已通过 mgr._storage.save() 持久化
+                        # 此处不再重复调用 checkpoint_storage.save()
                         if on_checkpoint is not None:
                             await on_checkpoint(
                                 effective_session_id,
