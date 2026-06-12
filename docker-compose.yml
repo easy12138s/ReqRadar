@@ -153,12 +153,7 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://reqradar:reqradar_dev@postgres:5432/reqradar
       REDIS_URL: redis://redis:6379/2
-      CHROMADB_URL: http://chromadb:8000
-      CHROMADB_PATH: /app/vectorstore
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-change-in-production}
-      HF_ENDPOINT: https://hf-mirror.com
-      REQRADAR_EMBEDDING__HF_ENDPOINT: https://hf-mirror.com
-      REQRADAR_EMBEDDING__MODEL_CACHE: /app/model_cache
       LOG_LEVEL: INFO
     expose:
       - "8003"
@@ -217,17 +212,6 @@ services:
       redis:
         condition: service_healthy
 
-  # ── ChromaDB (向量数据库) ──────────────────────────────────
-  chromadb:
-    image: chromadb/chroma:latest
-    container_name: reqradar-chromadb
-    ports:
-      - "8006:8000"
-    volumes:
-      - chromadata:/chroma/chroma
-    networks:
-      - reqradar-net
-
   ingestion-service:
     build:
       context: .
@@ -235,16 +219,10 @@ services:
     container_name: reqradar-ingestion
     environment:
       - DATABASE_URL=postgresql+asyncpg://reqradar:reqradar_dev@postgres:5432/reqradar
-      - CHROMADB_PATH=/app/vectorstore
-      - EMBEDDING_MODEL=default
       - L0_STORAGE_PATH=/app/data/l0
       - INTERNAL_API_KEY=${INTERNAL_API_KEY:-dev-internal-key-change-in-production}
-      - HF_ENDPOINT=https://hf-mirror.com
-      - REQRADAR_EMBEDDING__HF_ENDPOINT=https://hf-mirror.com
-      - REQRADAR_EMBEDDING__MODEL_CACHE=/app/model_cache
     volumes:
       - project-data:/app/data
-      - chromadata:/app/vectorstore
     expose:
       - "8007"
     ports:
@@ -272,7 +250,6 @@ services:
 volumes:
   pgdata:
   redisdata:
-  chromadata:
   project-data:
 
 networks:

@@ -83,10 +83,18 @@ class MCPConfig:
 
 
 @dataclass(frozen=True)
-class ChromaDBConfig:
-    """ChromaDB 配置。"""
+class EmbeddingConfig:
+    """嵌入配置（独立于 LLM，解耦供应商）。"""
 
-    url: str = field(default_factory=lambda: _env("CHROMADB_URL", "http://localhost:8006"))
+    provider: str = field(default_factory=lambda: _env("EMBEDDING__PROVIDER", "openai"))
+    model: str = field(
+        default_factory=lambda: _env("EMBEDDING__MODEL", "text-embedding-3-small")
+    )
+    api_key: str = field(default_factory=lambda: _env("EMBEDDING__API_KEY", ""))
+    api_base: str = field(
+        default_factory=lambda: _env("EMBEDDING__API_BASE", "https://api.openai.com/v1")
+    )
+    dimensions: int = field(default_factory=lambda: _env_int("EMBEDDING__DIMENSIONS", 384))
 
 
 @dataclass(frozen=True)
@@ -99,7 +107,7 @@ class AppConfig:
     auth: AuthConfig = field(default_factory=AuthConfig)
     services: ServiceURLs = field(default_factory=ServiceURLs)
     mcp: MCPConfig = field(default_factory=MCPConfig)
-    chromadb: ChromaDBConfig = field(default_factory=ChromaDBConfig)
+    embedding: EmbeddingConfig = field(default_factory=EmbeddingConfig)
     log_level: str = field(default_factory=lambda: _env("LOG_LEVEL", "INFO"))
 
 

@@ -5,6 +5,5 @@ sqlalchemy[asyncio]>=2.0
 aiosqlite>=0.20
 asyncpg>=0.30
 markitdown[pdf,docx,pptx,xlsx,html]>=0.1
-chromadb>=0.6
 pydantic>=2.10
 python-multipart>=0.0.9

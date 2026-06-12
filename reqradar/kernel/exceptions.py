@@ -45,7 +45,7 @@ class IngestionException(ReqRadarException):
 
 
 class VectorStoreException(ReqRadarException):
-    """向量存储异常 — ChromaDB 连接失败、查询错误。"""
+    """向量存储异常 — 连接失败或查询错误。"""
 
 
 class GitException(ReqRadarException):

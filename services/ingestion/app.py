@@ -30,7 +30,7 @@ from reqradar.ingestion.chunking.chunker import MarkdownChunker
 from reqradar.ingestion.parsers.code_parser import CodeParser
 from reqradar.ingestion.parsers.document_parser import DocumentParser
 from reqradar.ingestion.parsers.git_parser import GitParser
-from reqradar.ingestion.vectorizer import IngestionVectorizer, VectorizeInput
+from reqradar.ingestion.vectorizer import IngestionVectorizer, VectorizeInput, VectorizeResult
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +61,7 @@ class IngestResponse(BaseModel):
 
     raw_context_id: str = Field(description="L0 原始上下文 ID")
     items_count: int = Field(description="摄取条目数")
-    embedding_ids: list[str] | None = Field(default=None, description="向量 ID 列表")
+    embedding_ids: list[str] | None = Field(default=None, description="Chunk/Module ID 列表")
 
 
 # ── 应用生命周期 ────────────────────────────────────────────────────────
@@ -79,17 +79,12 @@ async def lifespan(app: FastAPI):
 
     engine = create_engine(database_url)
     app.state.db_session_factory = create_session_factory(engine)
-
-    chromadb_path = os.environ.get("CHROMADB_PATH", ".reqradar/vectorstore")
-    app.state.vectorizer = IngestionVectorizer(
-        persist_directory=chromadb_path,
-        use_onnx=True,
-    )
+    app.state.vectorizer = IngestionVectorizer()
 
     l0_storage = os.environ.get("L0_STORAGE_PATH", "data/l0")
     app.state.l0_storage_path = Path(l0_storage)
 
-    logger.info("Ingestion Service 就绪: DB=%s, ChromaDB=%s", database_url[:50], chromadb_path)
+    logger.info("Ingestion Service 就绪: DB=%s", database_url[:50])
 
     yield
 
@@ -220,8 +215,9 @@ async def ingest_document(
     chunker = MarkdownChunker()
     chunk_datas = chunker.chunk(markdown_text)
 
-    # 5. 向量化（失败时降级，embedding_id 留空，后续可补索引）
-    embedding_ids: list[str] = []
+    # 5. 向量化（失败时降级，embedding 留空，后续可补索引）
+    chunk_ids: list[str] = []
+    vector_results: list[VectorizeResult] = []
     try:
         vector_inputs = [
             VectorizeInput(
@@ -235,14 +231,17 @@ async def ingest_document(
             )
             for cd in chunk_datas
         ]
-        embedding_ids = vectorizer.vectorize_chunks(vector_inputs)
+        vector_results = vectorizer.vectorize(vector_inputs)
+        chunk_ids = [vr.id for vr in vector_results]
     except Exception as e:
         logger.warning("向量化失败（降级跳过）: %s", e)
 
     # 6. 写入 chunks 表
+    vec_map = {vr.id: vr.vector for vr in vector_results}
     for i, cd in enumerate(chunk_datas):
+        cid = chunk_ids[i] if i < len(chunk_ids) else str(uuid4())
         chunk = Chunk(
-            id=uuid4(),
+            id=UUID(cid),
             project_id=project_uuid,
             raw_context_id=raw_id,
             chunk_type=cd.chunk_type,
@@ -252,7 +251,7 @@ async def ingest_document(
             offset_start=cd.offset_start,
             offset_end=cd.offset_end,
             section_path=cd.section_path,
-            embedding_id=embedding_ids[i] if i < len(embedding_ids) else None,
+            embedding={"v": vec_map[cid]} if cid in vec_map else None,
         )
         session.add(chunk)
 
@@ -261,7 +260,7 @@ async def ingest_document(
     return IngestResponse(
         raw_context_id=str(raw_id),
         items_count=len(chunk_datas),
-        embedding_ids=embedding_ids,
+        embedding_ids=chunk_ids,
     )
 
 
@@ -300,7 +299,8 @@ async def ingest_code(
     modules = parser.parse_directory(repo_path)
 
     # 3. 向量化（失败时降级）
-    embedding_ids: list[str] = []
+    module_ids: list[str] = []
+    vector_results: list[VectorizeResult] = []
     try:
         vector_inputs = [
             VectorizeInput(
@@ -316,14 +316,17 @@ async def ingest_code(
             )
             for m in modules
         ]
-        embedding_ids = vectorizer.vectorize_code_modules(vector_inputs)
+        vector_results = vectorizer.vectorize(vector_inputs)
+        module_ids = [vr.id for vr in vector_results]
     except Exception as e:
         logger.warning("代码向量化失败（降级跳过）: %s", e)
 
     # 4. 写入 code_modules 表
+    vec_map = {vr.id: vr.vector for vr in vector_results}
     for i, m in enumerate(modules):
+        mid = module_ids[i] if i < len(module_ids) else str(uuid4())
         code_mod = CodeModule(
-            id=uuid4(),
+            id=UUID(mid),
             project_id=project_uuid,
             module_type=m.module_type,
             qualified_name=m.qualified_name,
@@ -333,7 +336,7 @@ async def ingest_code(
             line_end=m.line_end,
             signature=m.signature,
             docstring=m.docstring,
-            embedding_id=embedding_ids[i] if i < len(embedding_ids) else None,
+            embedding={"v": vec_map[mid]} if mid in vec_map else None,
         )
         session.add(code_mod)
 
@@ -342,7 +345,7 @@ async def ingest_code(
     return IngestResponse(
         raw_context_id=str(raw_id),
         items_count=len(modules),
-        embedding_ids=embedding_ids,
+        embedding_ids=module_ids,
     )
 
 

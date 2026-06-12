@@ -319,19 +319,17 @@ async def lifespan(app: FastAPI):
     # 初始化 L3Writer 并注入 db_session_factory
     app.state.writer = L3Writer(db_session_factory)
 
-    # 初始化 ChromaDB 向量存储（只读查询）
-    chromadb_path = os.environ.get("CHROMADB_PATH", ".reqradar/vectorstore")
+    # 初始化 PgVectorStore（替代 ChromaDB）
     try:
-        from reqradar.index_svc.vector_store import ChromaVectorStore
+        from reqradar.index_svc.vector_store import PgVectorStore
 
-        app.state.vector_store = ChromaVectorStore(
-            persist_directory=chromadb_path,
+        app.state.vector_store = PgVectorStore(
+            db_session_factory=db_session_factory,
             collection_name="requirements",
-            use_onnx=True,
         )
-        logger.info("ChromaDB 向量存储已连接: %s", chromadb_path)
+        logger.info("PgVectorStore 已初始化")
     except Exception as e:
-        logger.warning("ChromaDB 向量存储初始化失败，检索降级为空: %s", e)
+        logger.warning("PgVectorStore 初始化失败，检索降级为空: %s", e)
         app.state.vector_store = None
 
     yield
@@ -587,12 +585,12 @@ async def diff_checkpoints(
 
 @app.post("/internal/v2/search/vector", response_model=VectorSearchResponse)
 async def search_vector(req: VectorSearchRequest, request: Request):
-    """向量检索 (§3.5) — ChromaDB 真实查询。"""
+    """向量检索 (§3.5) — PgVectorStore 查询。"""
     start_time = time.monotonic()
 
     store = request.app.state.vector_store
     if store is None:
-        logger.warning("向量检索: ChromaDB 不可用，返回空结果")
+        logger.warning("向量检索: PgVectorStore 不可用，返回空结果")
         return VectorSearchResponse(results=[], query_time_ms=0)
 
     logger.info(
@@ -604,21 +602,19 @@ async def search_vector(req: VectorSearchRequest, request: Request):
     )
 
     # 按 collection 切换集合
-    if req.collection == "code" and store._collection_name != "code":
-        from reqradar.index_svc.vector_store import ChromaVectorStore
-
-        chromadb_path = os.environ.get("CHROMADB_PATH", ".reqradar/vectorstore")
+    if req.collection != store._collection_name:
         try:
-            store = ChromaVectorStore(
-                persist_directory=chromadb_path,
-                collection_name="code",
-                use_onnx=True,
+            from reqradar.index_svc.vector_store import PgVectorStore
+
+            store = PgVectorStore(
+                db_session_factory=request.app.state.db_session_factory,
+                collection_name=req.collection,
             )
         except Exception:
             return VectorSearchResponse(results=[], query_time_ms=0)
 
     try:
-        search_results = store.search(
+        search_results = await store.search(
             query=req.query_text,
             top_k=req.top_k,
         )

@@ -842,7 +842,7 @@ class Chunk(Base):
     offset_end: Mapped[int | None] = mapped_column(Integer, nullable=True)
     page_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
     section_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    embedding_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    embedding: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     is_stale: Mapped[bool] = mapped_column(
         Boolean, server_default=text("false"), nullable=False
     )
@@ -881,7 +881,7 @@ class CodeModule(Base):
     line_end: Mapped[int | None] = mapped_column(Integer, nullable=True)
     signature: Mapped[str | None] = mapped_column(Text, nullable=True)
     docstring: Mapped[str | None] = mapped_column(Text, nullable=True)
-    embedding_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    embedding: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     is_stale: Mapped[bool] = mapped_column(
         Boolean, server_default=text("false"), nullable=False
     )

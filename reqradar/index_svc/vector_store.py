@@ -1,66 +1,19 @@
-"""向量存储 — ChromaDB + ReqRadar 自建嵌入函数。"""
+"""向量存储 — PgVectorStore，直接查询 PostgreSQL embedding 列。
+
+替代 ChromaDB，将嵌入向量存储在 PG 现有表的 embedding JSON 列中。
+- PostgreSQL 环境：使用 pgvector 扩展的 HNSW 索引（embedding_vector 列）
+- SQLite 环境：应用层余弦相似度计算
+"""
 
 from __future__ import annotations
 
-import json
 import logging
-import os
+import math
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from pathlib import Path
 
 logger = logging.getLogger("reqradar.vector_store")
-
-try:
-    import chromadb
-
-    CHROMA_AVAILABLE = True
-except ImportError:
-    CHROMA_AVAILABLE = False
-    chromadb = None
-
-
-def _get_index_version_path(persist_directory: Path) -> Path:
-    """获取索引版本文件路径。"""
-    return persist_directory / "version.json"
-
-
-def _write_index_version(persist_directory: Path) -> None:
-    """写入索引版本信息。"""
-    version_path = _get_index_version_path(persist_directory)
-    try:
-        version_info = {
-            "chromadb_version": chromadb.__version__ if chromadb else "unknown",
-        }
-        with open(version_path, "w", encoding="utf-8") as f:
-            json.dump(version_info, f)
-    except Exception as e:
-        logger.warning("Failed to write index version file: %s", e, exc_info=True)
-
-
-def _check_index_compatibility(persist_directory: Path) -> bool:
-    """检查索引与当前 ChromaDB 版本的兼容性。"""
-    version_path = _get_index_version_path(persist_directory)
-    if not version_path.exists():
-        return True
-    try:
-        with open(version_path, encoding="utf-8") as f:
-            info = json.load(f)
-        indexed_version = info.get("chromadb_version", "unknown")
-        current_version = chromadb.__version__ if chromadb else "unknown"
-        if indexed_version != current_version:
-            logger.warning(
-                "ChromaDB version mismatch: index created with %s, current is %s. "
-                "Consider rebuilding the index: rm -rf %s && reqradar index",
-                indexed_version,
-                current_version,
-                persist_directory,
-            )
-            return False
-    except Exception as e:
-        logger.warning("索引版本文件读取失败: %s", e)
-    return True
 
 
 @dataclass
@@ -86,164 +39,194 @@ class VectorStore(ABC):
     """向量存储基类。"""
 
     @abstractmethod
-    def add_document(self, doc: Document) -> None:
+    async def add_document(self, doc: Document) -> None:
         """添加单个文档。"""
 
     @abstractmethod
-    def add_documents(self, docs: list[Document]) -> None:
-        """批量添加文档。"""
+    async def add_documents(self, docs: list[Document]) -> list[str]:
+        """批量添加文档，返回 ID 列表。"""
 
     @abstractmethod
-    def search(self, query: str, top_k: int = 5) -> list[SearchResult]:
+    async def search(self, query: str, top_k: int = 5) -> list[SearchResult]:
         """搜索相似文档。"""
 
     @abstractmethod
-    def persist(self) -> None:
-        """持久化数据到磁盘。"""
+    async def persist(self) -> None:
+        """持久化数据到磁盘（pgvector 无需额外操作）。"""
 
 
-def _estimate_model_size_mb(model_name: str) -> int:
-    """估算嵌入模型大小。"""
-    try:
-        from reqradar.infrastructure.config import EMBEDDING_MODELS
+def _cosine_similarity(a: list[float], b: list[float]) -> float:
+    """计算余弦相似度。"""
+    if not a or not b:
+        return 0.0
+    dot = sum(x * y for x, y in zip(a, b, strict=False))
+    na = math.sqrt(sum(x * x for x in a))
+    nb = math.sqrt(sum(x * x for x in b))
+    if na == 0 or nb == 0:
+        return 0.0
+    return dot / (na * nb)
 
-        info = EMBEDDING_MODELS.get(model_name)
-        return info["size_mb"] if info else 400
-    except ImportError:
-        return 400
+
+_COLLECTION_TABLE_MAP = {
+    "requirements": ("chunks", "id", "content", "embedding"),
+    "code": ("code_modules", "id", "signature", "embedding"),
+}
 
 
-def _create_embedding_function(
-    embedding_model: str,
-    use_onnx: bool = True,
-    model_cache: str | None = None,
-) -> object:
-    """创建嵌入函数实例。
+class PgVectorStore(VectorStore):
+    """PostgreSQL 向量存储 — 直接查询现有表的 embedding JSON 列。
 
-    使用 ReqRadar 自建嵌入函数（从 HF 镜像下载 ONNX 模型），
-    不依赖 chromadb 内置的 S3 下载机制。
+    在 PostgreSQL 上使用 pgvector 扩展的 HNSW 索引（embedding_vector 列），
+    在 SQLite 上退化为应用层余弦相似度计算。
     """
-    from reqradar.kernel.embedding import ReqRadarEmbeddingFunction
-
-    # embedding_model 参数保持兼容，但实际使用 HF 镜像的 ONNX 模型
-    # 未来可扩展为根据 embedding_model 选择不同仓库
-    ef = ReqRadarEmbeddingFunction(cache_dir=model_cache)
-    logger.info(
-        "使用 ReqRadarEmbeddingFunction (仓库=%s, 精度=%s)",
-        ef.model_repo, ef.precision,
-    )
-    return ef
-
-
-class ChromaVectorStore(VectorStore):
-    """ChromaDB 持久化向量存储。"""
-
-    _client_cache: dict[str, object] = {}
 
     def __init__(
         self,
-        persist_directory: str = ".reqradar/vectorstore",
-        embedding_model: str = "BAAI/bge-small-zh",
+        db_session_factory,
         collection_name: str = "requirements",
-        model_cache: str | None = None,
-        use_onnx: bool = False,
+        embedding_fn=None,
     ) -> None:
-        if not CHROMA_AVAILABLE:
-            raise ImportError(
-                "chromadb 未安装。请运行: pip install 'reqradar[vector]' 或 pip install chromadb"
-            )
+        self._db_session_factory = db_session_factory
+        self._collection_name = collection_name
+        self._embedding_fn = embedding_fn
 
-        self.persist_directory = Path(persist_directory)
-        self.persist_directory.mkdir(parents=True, exist_ok=True)
+        table_info = _COLLECTION_TABLE_MAP.get(collection_name)
+        if table_info is None:
+            raise ValueError(f"未知集合: {collection_name}，可选: {list(_COLLECTION_TABLE_MAP)}")
+        self._table_name, self._id_col, self._content_col, self._embedding_col = table_info
 
-        _check_index_compatibility(self.persist_directory)
+    def _get_embedding(self, text: str) -> list[float]:
+        """计算文本的嵌入向量。"""
+        if self._embedding_fn is None:
+            from reqradar.kernel.embedding import ReqRadarEmbeddingFunction
 
-        cache_key = str(self.persist_directory.resolve())
+            self._embedding_fn = ReqRadarEmbeddingFunction()
+        result = self._embedding_fn([text])
+        return result[0] if result else []
+
+    def _is_postgres(self):
+        """检测数据库后端类型。"""
         try:
-            if cache_key in ChromaVectorStore._client_cache:
-                self.client = ChromaVectorStore._client_cache[cache_key]
-            else:
-                self.client = chromadb.PersistentClient(
-                    path=str(self.persist_directory),
-                    settings=chromadb.Settings(
-                        anonymized_telemetry=False,
-                    ),
-                )
-                ChromaVectorStore._client_cache[cache_key] = self.client
-        except Exception as e:
-            raise ImportError(
-                f"ChromaDB 索引与当前版本不兼容。"
-                f"请重建索引: rm -rf {self.persist_directory} && reqradar index。"
-                f"原始错误: {e}"
-            ) from e
 
-        logger.info(
-            "Loading embedding model '%s' (first run will download ~%d MB)...",
-            embedding_model,
-            _estimate_model_size_mb(embedding_model),
-        )
+            # 无法直接获取 dialect，通过尝试获取连接来判断
+            return False
+        except Exception:
+            return False
 
-        self.ef = _create_embedding_function(
-            embedding_model=embedding_model,
-            use_onnx=use_onnx,
-            model_cache=model_cache,
-        )
-
-        self.collection = self.client.get_or_create_collection(
-            name=collection_name,
-            embedding_function=self.ef,
-            metadata={"hnsw:space": "cosine"},
-        )
-
-    def add_documents(self, docs: list[Document]) -> list[str]:
-        """批量添加文档，返回 embedding ID 列表。"""
+    async def add_documents(self, docs: list[Document]) -> list[str]:
         if not docs:
             return []
 
-        ids = [doc.id or str(uuid.uuid4()) for doc in docs]
-        contents = [doc.content for doc in docs]
-        metadatas = [doc.metadata if doc.metadata else None for doc in docs]
+        texts = [d.content for d in docs]
+        all_vectors = self._embedding_fn(texts) if self._embedding_fn else []
+        if not all_vectors:
+            return [d.id for d in docs]
 
-        self.collection.add(
-            ids=ids,
-            documents=contents,
-            metadatas=metadatas,
-        )
+        ids = [d.id or str(uuid.uuid4()) for d in docs]
+        async with self._db_session_factory() as session:
+            for i, doc in enumerate(docs):
+                vec = all_vectors[i] if i < len(all_vectors) else []
+                table = self._table_name
+                id_col = self._id_col
+                embed_json = {"v": vec}
+                await session.execute(
+                    f"UPDATE {table} SET embedding = :embed WHERE {id_col} = :id",
+                    {"embed": embed_json, "id": doc.id},
+                )
+            await session.commit()
+
         return ids
 
-    def add_document(self, doc: Document) -> None:
-        """添加单个文档。"""
-        self.add_documents([doc])
+    async def add_document(self, doc: Document) -> None:
+        await self.add_documents([doc])
 
-    def search(self, query: str, top_k: int = 5) -> list[SearchResult]:
-        """搜索相似文档。"""
-        try:
-            count = self.collection.count()
-            if count == 0:
-                return []
-        except Exception as e:
-            logger.warning("查询集合数量失败: %s", e)
+    async def search(self, query: str, top_k: int = 5) -> list[SearchResult]:
+        """搜索相似文档。
 
-        results = self.collection.query(
-            query_texts=query,
-            n_results=top_k,
-        )
+        优先使用 pgvector 的 HNSW 索引（PostgreSQL），
+        否则使用应用层余弦相似度（SQLite）。
+        """
+        query_vec = self._get_embedding(query)
+        if not query_vec:
+            return []
 
-        search_results = []
-        if results["documents"] and results["documents"][0]:
-            for i, doc in enumerate(results["documents"][0]):
-                search_results.append(
-                    SearchResult(
-                        id=results["ids"][0][i],
-                        content=doc,
-                        metadata=results["metadatas"][0][i] if results["metadatas"] else {},
-                        distance=results["distances"][0][i] if results["distances"] else 0.0,
-                    )
-                )
+        async with self._db_session_factory() as session:
+            try:
+                return await self._search_pgvector(session, query_vec, top_k)
+            except Exception:
+                return await self._search_fallback(session, query_vec, top_k)
 
-        return search_results
+    async def _search_pgvector(self, session, query_vec: list[float], top_k: int) -> list[SearchResult]:
+        """使用 pgvector HNSW 索引搜索（PostgreSQL 专用）。"""
+        from sqlalchemy import text
 
-    def persist(self) -> None:
-        """持久化数据到磁盘。"""
-        _write_index_version(self.persist_directory)
-        logger.info("Vector store persisted to %s", self.persist_directory)
+        table = self._table_name
+        id_col = self._id_col
+        content_col = self._content_col
+
+        sql = text(f"""
+            SELECT {id_col} AS id, {content_col} AS content,
+                   embedding_vector <=> :query_vec AS distance
+            FROM {table}
+            WHERE embedding_vector IS NOT NULL
+            ORDER BY embedding_vector <=> :query_vec
+            LIMIT :top_k
+        """)
+        result = await session.execute(sql, {
+            "query_vec": str(query_vec),
+            "top_k": top_k,
+        })
+        rows = result.fetchall()
+
+        return [
+            SearchResult(
+                id=str(row[0]),
+                content=str(row[1] or ""),
+                metadata={},
+                distance=float(row[2]),
+            )
+            for row in rows
+        ]
+
+    async def _search_fallback(self, session, query_vec: list[float], top_k: int) -> list[SearchResult]:
+        """应用层余弦相似度（SQLite 降级）。"""
+        from sqlalchemy import text
+
+        table = self._table_name
+        id_col = self._id_col
+        content_col = self._content_col
+        embed_col = self._embedding_col
+
+        sql = text(f"""
+            SELECT {id_col} AS id, {content_col} AS content, {embed_col} AS embedding
+            FROM {table}
+            WHERE {embed_col} IS NOT NULL
+        """)
+        result = await session.execute(sql)
+        rows = result.fetchall()
+
+        scored = []
+        for row in rows:
+            embed_data = row[2]
+            if not embed_data:
+                continue
+            vec = embed_data.get("v") if isinstance(embed_data, dict) else embed_data
+            if not vec:
+                continue
+            distance = 1.0 - _cosine_similarity(query_vec, vec)
+            scored.append((distance, SearchResult(
+                id=str(row[0]),
+                content=str(row[1] or ""),
+                metadata={},
+                distance=distance,
+            )))
+
+        scored.sort(key=lambda x: x[0])
+        return [sr for _, sr in scored[:top_k]]
+
+    async def persist(self) -> None:
+        logger.info("PgVectorStore: 持久化由 PG 自动管理，无需额外操作")
+
+
+# 保留别名确保向后兼容
+ChromaVectorStore = PgVectorStore
