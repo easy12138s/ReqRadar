@@ -471,6 +471,32 @@ async def create_checkpoint(req: CheckpointCreateRequest, request: Request):
     session_cps.append(checkpoint)
     session_cps.sort(key=lambda c: c["version"])
 
+    # PG 持久化
+    try:
+        from uuid import UUID
+
+        from reqradar.kernel.models import Checkpoint as CheckpointModel
+
+        session = request.app.state.sync_db_session_factory()
+        db_cp = CheckpointModel(
+            checkpoint_id=UUID(checkpoint_id),
+            session_id=UUID(req.session_id),
+            version=req.version,
+            previous_version=req.previous_version,
+            created_by="cognitive-rt",
+            type=req.type,
+            state_summary=req.state_summary,
+            diff=req.diff or {},
+            hot_state=req.hot_state,
+            full_state_uri=f"minio://checkpoints/{req.session_id}/v{req.version}/context_snapshot.json",
+            metadata_=req.metadata or {},
+        )
+        session.add(db_cp)
+        session.commit()
+        session.close()
+    except Exception as e:
+        logger.warning("Checkpoint PG 持久化失败: %s", e)
+
     logger.info(
         "Checkpoint 创建: session=%s version=%d type=%s", req.session_id, req.version, req.type
     )

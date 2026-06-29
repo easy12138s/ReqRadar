@@ -9,6 +9,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
 from services.integration.client import ServiceClient
 from services.integration.mcp_audit import AuditLog
@@ -60,6 +62,12 @@ class CreateKeyResponse(BaseModel):
 async def lifespan(app: FastAPI):
     global _start_time
     _start_time = time.time()
+    # 初始化同步 DB 会话工厂
+    database_url = os.environ.get("DATABASE_URL", "sqlite:///./reqradar_dev.db")
+    sync_url = database_url.replace("+asyncpg", "").replace("+aiosqlite", "")
+    app.state.sync_db_session_factory = sessionmaker(create_engine(sync_url))
+    _key_manager.set_session_factory(app.state.sync_db_session_factory)
+    _audit_log.set_session_factory(app.state.sync_db_session_factory)
     logger.info("Integration Service 启动")
     mcp = _mcp_manager.create_server()
     if mcp is not None:

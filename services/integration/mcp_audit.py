@@ -60,6 +60,10 @@ class AuditLog:
         self._entries: list[AuditEntry] = []
         self._max_entries = max_entries
         self._retention_hours = retention_hours
+        self._db_session_factory = None
+
+    def set_session_factory(self, factory):
+        self._db_session_factory = factory
 
     def clear(self) -> None:
         self._entries.clear()
@@ -86,6 +90,27 @@ class AuditLog:
             key_name=key_name,
         )
         self._entries.append(entry)
+        # PG 持久化
+        if self._db_session_factory:
+            try:
+                from reqradar.kernel.models import MCPToolCall
+
+                session = self._db_session_factory()
+                session.add(
+                    MCPToolCall(
+                        id=entry.entry_id,
+                        access_key_id=entry.key_id or "",
+                        tool_name=entry.tool_name,
+                        arguments_json=entry.sanitized_arguments,
+                        result_summary=entry.result_summary[:500],
+                        duration_ms=entry.duration_ms,
+                        success=True,
+                    )
+                )
+                session.commit()
+                session.close()
+            except Exception as e:
+                logger.warning("MCP audit PG 持久化失败: %s", e)
         logger.info("审计记录: tool=%s, duration=%dms", tool_name, duration_ms)
         return entry
 

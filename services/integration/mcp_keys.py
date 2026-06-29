@@ -44,6 +44,10 @@ class KeyManager:
 
     def __init__(self) -> None:
         self._keys: dict[str, AccessKey] = {}
+        self._db_session_factory = None
+
+    def set_session_factory(self, factory):
+        self._db_session_factory = factory
 
     def clear(self) -> None:
         self._keys.clear()
@@ -65,6 +69,28 @@ class KeyManager:
             scopes=scopes or ["read"],
         )
         self._keys[ak.key_id] = ak
+        # PG 持久化
+        if self._db_session_factory:
+            try:
+                from reqradar.kernel.models import MCPAccessKey
+
+                session = self._db_session_factory()
+                session.add(
+                    MCPAccessKey(
+                        id=ak.key_id,
+                        user_id="",
+                        key_prefix="rr_mcp_",
+                        key_hash=ak.key_hash,
+                        name=ak.name,
+                        scopes=ak.scopes,
+                        is_active=True,
+                        created_at=ak.created_at,
+                    )
+                )
+                session.commit()
+                session.close()
+            except Exception as e:
+                logger.warning("MCPKey PG 持久化失败: %s", e)
         logger.info("MCP 密钥已生成: name=%s, key_id=%s", name, ak.key_id)
         return raw_key, ak
 
@@ -92,6 +118,20 @@ class KeyManager:
             return False
         ak.status = "revoked"
         ak.revoked_at = datetime.now(UTC)
+        # PG 持久化
+        if self._db_session_factory:
+            try:
+                from reqradar.kernel.models import MCPAccessKey
+
+                session = self._db_session_factory()
+                ak_db = session.query(MCPAccessKey).filter_by(id=key_id).first()
+                if ak_db:
+                    ak_db.is_active = False
+                    ak_db.revoked_at = ak.revoked_at
+                    session.commit()
+                session.close()
+            except Exception as e:
+                logger.warning("MCPKey revoke PG 持久化失败: %s", e)
         logger.info("MCP 密钥已撤销: key_id=%s", key_id)
         return True
 
