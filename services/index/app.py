@@ -16,8 +16,10 @@ from uuid import uuid4
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+from sqlalchemy import create_engine as sync_create_engine
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import sessionmaker
 
 from reqradar.index_svc.knowledge.models import L3KnowledgeBase
 from reqradar.index_svc.knowledge.writer import L3Writer
@@ -238,6 +240,21 @@ class KnowledgeQueryResponse(BaseModel):
     total: int = Field(description="总数")
 
 
+class EntityLinkCreate(BaseModel):
+    """创建实体链接请求体。"""
+    project_id: str
+    source_layer: str
+    source_type: str
+    source_id: str
+    target_layer: str
+    target_type: str
+    target_id: str
+    relation_type: str
+    confidence: float | None = None
+    source_session_id: str | None = None
+    evidence: str | None = None
+
+
 # ── 辅助函数 ────────────────────────────────────────────────────────────
 
 # 合法的检查点类型集合
@@ -298,6 +315,26 @@ def _knowledge_to_dict(knowledge: L3KnowledgeBase, payloads: dict[str, dict]) ->
     }
 
 
+def _entity_link_to_dict(row) -> dict:
+    """将 EntityLink ORM 行转换为字典。"""
+    return {
+        "id": row.id,
+        "project_id": str(row.project_id),
+        "source_layer": row.source_layer,
+        "source_type": row.source_type,
+        "source_id": row.source_id,
+        "target_layer": row.target_layer,
+        "target_type": row.target_type,
+        "target_id": row.target_id,
+        "relation_type": row.relation_type,
+        "confidence": row.confidence,
+        "source_session_id": row.source_session_id,
+        "evidence": row.evidence,
+        "is_stale": row.is_stale,
+        "created_at": _iso(row.created_at),
+    }
+
+
 # ── 应用生命周期 ────────────────────────────────────────────────────────
 
 
@@ -315,6 +352,10 @@ async def lifespan(app: FastAPI):
     engine = create_engine(database_url)
     db_session_factory = create_session_factory(engine)
     app.state.db_session_factory = db_session_factory
+
+    # 初始化同步 DB 会话工厂（entity_links 等同步操作使用）
+    sync_db_url = database_url.replace("+asyncpg", "").replace("+aiosqlite", "")
+    app.state.sync_db_session_factory = sessionmaker(sync_create_engine(sync_db_url))
 
     # 初始化 L3Writer 并注入 db_session_factory
     app.state.writer = L3Writer(db_session_factory)
@@ -873,6 +914,115 @@ async def memory_query(
     except Exception as e:
         logger.warning("知识查询失败: project=%s, query=%s, error=%s", project_id, query, e)
         return {"project_id": project_id}
+
+
+# ── entity_links CRUD ──────────────────────────────────────────
+
+@app.post("/internal/v2/links/create")
+async def create_link(req: EntityLinkCreate, request: Request):
+    """创建一条实体链接。"""
+    from reqradar.kernel.models import EntityLink as EntityLinkModel
+
+    session = request.app.state.sync_db_session_factory()
+    try:
+        db_link = EntityLinkModel(
+            id=str(uuid4()),
+            project_id=req.project_id,
+            source_layer=req.source_layer,
+            source_type=req.source_type,
+            source_id=req.source_id,
+            target_layer=req.target_layer,
+            target_type=req.target_type,
+            target_id=req.target_id,
+            relation_type=req.relation_type,
+            confidence=req.confidence or 0.5,
+            source_session_id=req.source_session_id,
+            evidence=req.evidence,
+        )
+        session.add(db_link)
+        session.commit()
+        return {"status": "ok", "id": db_link.id}
+    finally:
+        session.close()
+
+
+@app.get("/internal/v2/links/query")
+async def query_links(
+    project_id: str,
+    source_type: str | None = None,
+    source_id: str | None = None,
+    target_type: str | None = None,
+    target_id: str | None = None,
+    relation_type: str | None = None,
+    request: Request = None,
+):
+    """条件查询实体链接。"""
+    from reqradar.kernel.models import EntityLink as EntityLinkModel
+
+    session = request.app.state.sync_db_session_factory()
+    try:
+        q = session.query(EntityLinkModel).filter(
+            EntityLinkModel.project_id == project_id,
+            ~EntityLinkModel.is_stale,
+        )
+        if source_type:
+            q = q.filter(EntityLinkModel.source_type == source_type)
+        if source_id:
+            q = q.filter(EntityLinkModel.source_id == source_id)
+        if target_type:
+            q = q.filter(EntityLinkModel.target_type == target_type)
+        if target_id:
+            q = q.filter(EntityLinkModel.target_id == target_id)
+        if relation_type:
+            q = q.filter(EntityLinkModel.relation_type == relation_type)
+        results = q.all()
+        return {"items": [_entity_link_to_dict(r) for r in results], "total": len(results)}
+    finally:
+        session.close()
+
+
+@app.get("/internal/v2/links/neighbors")
+async def get_neighbors(
+    project_id: str,
+    node_type: str,
+    node_id: str,
+    depth: int = 1,
+    request: Request = None,
+):
+    """获取指定节点的邻域链接。"""
+    from reqradar.kernel.models import EntityLink as EntityLinkModel
+
+    session = request.app.state.sync_db_session_factory()
+    try:
+        from sqlalchemy import or_
+        direct = session.query(EntityLinkModel).filter(
+            EntityLinkModel.project_id == project_id,
+            ~EntityLinkModel.is_stale,
+            or_(
+                (EntityLinkModel.source_type == node_type) & (EntityLinkModel.source_id == node_id),
+                (EntityLinkModel.target_type == node_type) & (EntityLinkModel.target_id == node_id),
+            ),
+        ).all()
+        return {"items": [_entity_link_to_dict(r) for r in direct], "total": len(direct)}
+    finally:
+        session.close()
+
+
+@app.put("/internal/v2/links/stale")
+async def mark_stale(link_id: str, request: Request):
+    """标记链接为 stale。"""
+    from reqradar.kernel.models import EntityLink as EntityLinkModel
+
+    session = request.app.state.sync_db_session_factory()
+    try:
+        link = session.query(EntityLinkModel).filter_by(id=link_id).first()
+        if not link:
+            raise HTTPException(404, "Link not found")
+        link.is_stale = True
+        session.commit()
+        return {"status": "ok"}
+    finally:
+        session.close()
 
 
 # ── Graph 端点 ──────────────────────────────────────────────
