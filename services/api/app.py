@@ -752,6 +752,71 @@ async def get_graph_subgraph(
         raise await _proxy_error(exc) from exc
 
 
+# ── Entity Links ──────────────────────────────────────────────
+
+
+@app.post("/api/v2/projects/{project_id}/links", status_code=201)
+async def create_entity_link(
+    project_id: str,
+    data: dict,
+    request: Request,
+    user: CurrentUser,
+):
+    """创建实体链接。"""
+    jwt = _extract_jwt(request)
+    data["project_id"] = project_id
+    try:
+        return await service_client.create_link(project_id, data, jwt)
+    except httpx.HTTPStatusError as exc:
+        raise await _proxy_error(exc) from exc
+
+
+@app.get("/api/v2/projects/{project_id}/links")
+async def query_entity_links(
+    project_id: str,
+    request: Request,
+    user: CurrentUser,
+    source_type: str | None = None,
+    source_id: str | None = None,
+    target_type: str | None = None,
+    target_id: str | None = None,
+    relation_type: str | None = None,
+):
+    """查询实体链接。"""
+    jwt = _extract_jwt(request)
+    params: dict = {"project_id": project_id}
+    if source_type:
+        params["source_type"] = source_type
+    if source_id:
+        params["source_id"] = source_id
+    if target_type:
+        params["target_type"] = target_type
+    if target_id:
+        params["target_id"] = target_id
+    if relation_type:
+        params["relation_type"] = relation_type
+    try:
+        return await service_client.query_links(project_id, params, jwt)
+    except httpx.HTTPStatusError as exc:
+        raise await _proxy_error(exc) from exc
+
+
+@app.get("/api/v2/graph/knowledge/neighbors")
+async def get_knowledge_neighbors(
+    project_id: str,
+    request: Request,
+    user: CurrentUser,
+    node_id: str = Query(description="知识节点 ID"),
+):
+    """查询知识节点的邻域链接。"""
+    jwt = _extract_jwt(request)
+    params: dict = {"project_id": project_id, "node_type": "knowledge", "node_id": node_id}
+    try:
+        return await service_client.get_link_neighbors(project_id, params, jwt)
+    except httpx.HTTPStatusError as exc:
+        raise await _proxy_error(exc) from exc
+
+
 # ---------------------------------------------------------------------------
 # Trace 路由（C-04 §4.7）
 # ---------------------------------------------------------------------------

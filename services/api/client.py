@@ -384,6 +384,36 @@ class ServiceClient:
         )
         return resp.json()
 
+    async def create_link(self, project_id: str, data: dict, jwt: str | None = None) -> dict:
+        """创建实体链接。"""
+        client = await self._get_client()
+        resp = await client.post(
+            f"{self._index_url}/internal/v2/links/create",
+            json=data,
+            headers=self._headers(jwt),
+        )
+        return resp.json()
+
+    async def query_links(self, project_id: str, params: dict | None = None, jwt: str | None = None) -> dict:
+        """查询实体链接。"""
+        client = await self._get_client()
+        resp = await client.get(
+            f"{self._index_url}/internal/v2/links/query",
+            params=params or {},
+            headers=self._headers(jwt),
+        )
+        return resp.json()
+
+    async def get_link_neighbors(self, project_id: str, params: dict, jwt: str | None = None) -> dict:
+        """查询实体链接邻域。"""
+        client = await self._get_client()
+        resp = await client.get(
+            f"{self._index_url}/internal/v2/links/neighbors",
+            params=params,
+            headers=self._headers(jwt),
+        )
+        return resp.json()
+
     # ── Output Service ────────────────────────────────
 
     async def generate_report(
