@@ -935,7 +935,7 @@ async def create_link(req: EntityLinkCreate, request: Request):
             target_type=req.target_type,
             target_id=req.target_id,
             relation_type=req.relation_type,
-            confidence=req.confidence or 0.5,
+            confidence=req.confidence if req.confidence is not None else 0.5,
             source_session_id=req.source_session_id,
             evidence=req.evidence,
         )
@@ -986,15 +986,15 @@ async def get_neighbors(
     project_id: str,
     node_type: str,
     node_id: str,
-    depth: int = 1,
     request: Request = None,
 ):
     """获取指定节点的邻域链接。"""
+    from sqlalchemy import or_
+
     from reqradar.kernel.models import EntityLink as EntityLinkModel
 
     session = request.app.state.sync_db_session_factory()
     try:
-        from sqlalchemy import or_
         direct = session.query(EntityLinkModel).filter(
             EntityLinkModel.project_id == project_id,
             ~EntityLinkModel.is_stale,
