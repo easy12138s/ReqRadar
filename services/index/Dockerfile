@@ -5,10 +5,7 @@ WORKDIR /app
 COPY reqradar/ reqradar/
 COPY services/index/ services/index/
 
-RUN pip install --no-cache-dir --timeout 300 \
-    -i https://mirrors.aliyun.com/pypi/simple/ \
-    --trusted-host mirrors.aliyun.com \
-    fastapi uvicorn httpx sqlalchemy aiosqlite asyncpg pydantic
+RUN pip install --no-cache-dir --break-system-packages --timeout 300 fastapi uvicorn httpx sqlalchemy aiosqlite asyncpg pydantic
 
 EXPOSE 8003
 

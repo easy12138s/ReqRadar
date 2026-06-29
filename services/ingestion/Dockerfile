@@ -7,9 +7,6 @@ WORKDIR /app
 COPY reqradar/ reqradar/
 COPY services/ingestion/ services/ingestion/
 
-RUN pip install --no-cache-dir --timeout 300 \
-    -i https://mirrors.aliyun.com/pypi/simple/ \
-    --trusted-host mirrors.aliyun.com \
-    -r services/ingestion/requirements.txt
+RUN pip install --no-cache-dir --break-system-packages --timeout 300 -r services/ingestion/requirements.txt
 
 CMD ["uvicorn", "services.ingestion.app:app", "--host", "0.0.0.0", "--port", "8007"]

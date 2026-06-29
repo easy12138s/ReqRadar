@@ -5,7 +5,7 @@ WORKDIR /app
 COPY reqradar/ reqradar/
 COPY services/auth/ services/auth/
 
-RUN pip install --no-cache-dir --break-system-packages -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com fastapi uvicorn pyjwt sqlalchemy aiosqlite asyncpg pydantic
+RUN pip install --no-cache-dir --break-system-packages fastapi uvicorn pyjwt sqlalchemy aiosqlite asyncpg pydantic
 
 EXPOSE 8001
 
