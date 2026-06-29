@@ -71,6 +71,7 @@ class KeyManager:
         self._keys[ak.key_id] = ak
         # PG 持久化
         if self._db_session_factory:
+            session = None
             try:
                 from reqradar.kernel.models import MCPAccessKey
 
@@ -88,9 +89,11 @@ class KeyManager:
                     )
                 )
                 session.commit()
-                session.close()
             except Exception as e:
                 logger.warning("MCPKey PG 持久化失败: %s", e)
+            finally:
+                if session:
+                    session.close()
         logger.info("MCP 密钥已生成: name=%s, key_id=%s", name, ak.key_id)
         return raw_key, ak
 
@@ -120,6 +123,7 @@ class KeyManager:
         ak.revoked_at = datetime.now(UTC)
         # PG 持久化
         if self._db_session_factory:
+            session = None
             try:
                 from reqradar.kernel.models import MCPAccessKey
 
@@ -129,9 +133,11 @@ class KeyManager:
                     ak_db.is_active = False
                     ak_db.revoked_at = ak.revoked_at
                     session.commit()
-                session.close()
             except Exception as e:
                 logger.warning("MCPKey revoke PG 持久化失败: %s", e)
+            finally:
+                if session:
+                    session.close()
         logger.info("MCP 密钥已撤销: key_id=%s", key_id)
         return True
 

@@ -472,6 +472,7 @@ async def create_checkpoint(req: CheckpointCreateRequest, request: Request):
     session_cps.sort(key=lambda c: c["version"])
 
     # PG 持久化
+    session = None
     try:
         from uuid import UUID
 
@@ -493,9 +494,11 @@ async def create_checkpoint(req: CheckpointCreateRequest, request: Request):
         )
         session.add(db_cp)
         session.commit()
-        session.close()
     except Exception as e:
         logger.warning("Checkpoint PG 持久化失败: %s", e)
+    finally:
+        if session:
+            session.close()
 
     logger.info(
         "Checkpoint 创建: session=%s version=%d type=%s", req.session_id, req.version, req.type

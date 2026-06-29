@@ -92,6 +92,7 @@ class AuditLog:
         self._entries.append(entry)
         # PG 持久化
         if self._db_session_factory:
+            session = None
             try:
                 from reqradar.kernel.models import MCPToolCall
 
@@ -108,9 +109,11 @@ class AuditLog:
                     )
                 )
                 session.commit()
-                session.close()
             except Exception as e:
                 logger.warning("MCP audit PG 持久化失败: %s", e)
+            finally:
+                if session:
+                    session.close()
         logger.info("审计记录: tool=%s, duration=%dms", tool_name, duration_ms)
         return entry
 
