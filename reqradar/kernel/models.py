@@ -25,6 +25,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -777,6 +778,31 @@ class L3Knowledge(Base):
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"), nullable=False
+    )
+
+
+class EntityLink(Base):
+    __tablename__ = "entity_links"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    source_layer: Mapped[str] = mapped_column(String(8), nullable=False)
+    source_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    source_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    target_layer: Mapped[str] = mapped_column(String(8), nullable=False)
+    target_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    target_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    relation_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, server_default="0.5", nullable=False)
+    source_session_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    evidence: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_stale: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("project_id", "source_type", "source_id", "target_type", "target_id", "relation_type", name="uq_entity_link"),
+        Index("ix_entity_links_source", "project_id", "source_type", "source_id"),
+        Index("ix_entity_links_target", "project_id", "target_type", "target_id"),
     )
 
 
