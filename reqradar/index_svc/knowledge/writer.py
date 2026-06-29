@@ -15,7 +15,7 @@ from reqradar.index_svc.knowledge.models import (
     FreshnessStatus,
     L3KnowledgeBase,
 )
-from reqradar.index_svc.knowledge.relations import RelationStore
+from reqradar.index_svc.knowledge.relations import KnowledgeRelation, RelationStore
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +46,7 @@ class L3Writer:
         self._relation_store = relation_store or RelationStore()
         self._pending_tasks: set[asyncio.Task] = set()
 
-    def append(self, knowledge: L3KnowledgeBase, session_id: str = "", links: list | None = None) -> L3KnowledgeBase:
+    def append(self, knowledge: L3KnowledgeBase, session_id: str = "", links: list[KnowledgeRelation] | None = None) -> L3KnowledgeBase:
         """新增知识条目。"""
         knowledge.confidence.confidence_score = self._confidence.calculate(knowledge)
         self._store[knowledge.id] = knowledge

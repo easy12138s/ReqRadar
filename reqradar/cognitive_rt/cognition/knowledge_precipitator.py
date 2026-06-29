@@ -11,6 +11,9 @@ from typing import Any
 
 import httpx
 
+from reqradar.index_svc.knowledge.relations import KnowledgeRelation, RelationStore
+from reqradar.kernel.enums import RelationType
+
 logger = logging.getLogger("reqradar.cognitive_rt.cognition.knowledge_precipitator")
 
 # 重试配置
@@ -25,7 +28,7 @@ class KnowledgePrecipitator:
         self,
         service_url: str | None = None,
         internal_api_key: str | None = None,
-        relation_store=None,
+        relation_store: RelationStore | None = None,
     ) -> None:
         """初始化知识沉淀器。
 
@@ -34,8 +37,6 @@ class KnowledgePrecipitator:
             internal_api_key: 内部 API Key，默认从环境变量获取
             relation_store: 关系存储实例，默认自动创建
         """
-        from reqradar.index_svc.knowledge.relations import RelationStore
-
         self._service_url = service_url or os.environ.get(
             "REQRADAR_INDEX_SERVICE_URL", "http://index-service:8003"
         )
@@ -84,9 +85,6 @@ class KnowledgePrecipitator:
                 )
                 if knowledge_id:
                     success_count += 1
-                    from reqradar.index_svc.knowledge.relations import KnowledgeRelation
-                    from reqradar.kernel.enums import RelationType
-
                     link = KnowledgeRelation(
                         project_id=project_id,
                         source_layer="L3",

@@ -36,15 +36,9 @@ class RelationStore:
     def __init__(self) -> None:
         self._relations: list[KnowledgeRelation] = []
         self._db_session_factory = None
-        self._http_base_url = ""
-        self._http_api_key = ""
 
     def set_session_factory(self, factory):
         self._db_session_factory = factory
-
-    def set_http_client(self, base_url: str, api_key: str):
-        self._http_base_url = base_url
-        self._http_api_key = api_key
 
     def add(self, relation: KnowledgeRelation) -> KnowledgeRelation:
         """添加关系。"""
@@ -84,6 +78,7 @@ class RelationStore:
     def _persist(self, relation: KnowledgeRelation) -> None:
         if not self._db_session_factory:
             return
+        session = None
         try:
             from reqradar.kernel.models import EntityLink
 
@@ -108,9 +103,11 @@ class RelationStore:
                 )
             )
             session.commit()
-            session.close()
         except Exception as e:
             logger.warning("关系持久化失败: %s", e)
+        finally:
+            if session:
+                session.close()
 
     def add_batch(self, relations: list[KnowledgeRelation]) -> None:
         for r in relations:
