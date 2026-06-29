@@ -17,8 +17,11 @@ class KnowledgeRelation:
     """知识关系记录。"""
 
     id: str = field(default_factory=lambda: str(uuid4()))
+    project_id: str = ""
+    source_layer: str = ""
     source_type: str = ""
     source_id: str = ""
+    target_layer: str = ""
     relation_type: RelationType = RelationType.DEPENDS_ON
     target_type: str = ""
     target_id: str = ""
@@ -32,6 +35,16 @@ class RelationStore:
 
     def __init__(self) -> None:
         self._relations: list[KnowledgeRelation] = []
+        self._db_session_factory = None
+        self._http_base_url = ""
+        self._http_api_key = ""
+
+    def set_session_factory(self, factory):
+        self._db_session_factory = factory
+
+    def set_http_client(self, base_url: str, api_key: str):
+        self._http_base_url = base_url
+        self._http_api_key = api_key
 
     def add(self, relation: KnowledgeRelation) -> KnowledgeRelation:
         """添加关系。"""
@@ -67,3 +80,39 @@ class RelationStore:
                 self._relations.pop(i)
                 return True
         return False
+
+    def _persist(self, relation: KnowledgeRelation) -> None:
+        if not self._db_session_factory:
+            return
+        try:
+            from reqradar.kernel.models import EntityLink
+
+            session = self._db_session_factory()
+            session.add(
+                EntityLink(
+                    id=relation.id,
+                    project_id=relation.project_id,
+                    source_layer=relation.source_layer,
+                    source_type=relation.source_type,
+                    source_id=relation.source_id,
+                    target_layer=relation.target_layer,
+                    target_type=relation.target_type,
+                    target_id=relation.target_id,
+                    relation_type=(
+                        relation.relation_type.value
+                        if hasattr(relation.relation_type, "value")
+                        else str(relation.relation_type)
+                    ),
+                    confidence=relation.confidence,
+                    evidence=relation.evidence_ref,
+                )
+            )
+            session.commit()
+            session.close()
+        except Exception as e:
+            logger.warning("关系持久化失败: %s", e)
+
+    def add_batch(self, relations: list[KnowledgeRelation]) -> None:
+        for r in relations:
+            self.add(r)
+            self._persist(r)

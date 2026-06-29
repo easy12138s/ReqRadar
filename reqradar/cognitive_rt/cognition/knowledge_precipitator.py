@@ -25,19 +25,24 @@ class KnowledgePrecipitator:
         self,
         service_url: str | None = None,
         internal_api_key: str | None = None,
+        relation_store=None,
     ) -> None:
         """初始化知识沉淀器。
 
         Args:
             service_url: index-service 的 URL，默认从环境变量获取
             internal_api_key: 内部 API Key，默认从环境变量获取
+            relation_store: 关系存储实例，默认自动创建
         """
+        from reqradar.index_svc.knowledge.relations import RelationStore
+
         self._service_url = service_url or os.environ.get(
             "REQRADAR_INDEX_SERVICE_URL", "http://index-service:8003"
         )
         self._internal_api_key = internal_api_key or os.environ.get(
             "REQRADAR_INTERNAL_API_KEY", ""
         )
+        self._relation_store = relation_store or RelationStore()
 
     async def precipitate(
         self,
@@ -69,7 +74,7 @@ class KnowledgePrecipitator:
             # 写入 index-service
             success_count = 0
             for item in knowledge_items:
-                success = await self._write_knowledge(
+                knowledge_id = await self._write_knowledge(
                     project_id=project_id,
                     session_id=session_id,
                     knowledge_type=item["type"],
@@ -77,8 +82,24 @@ class KnowledgePrecipitator:
                     topic=item.get("topic", ""),
                     confidence=item.get("confidence", 0.5),
                 )
-                if success:
+                if knowledge_id:
                     success_count += 1
+                    from reqradar.index_svc.knowledge.relations import KnowledgeRelation
+                    from reqradar.kernel.enums import RelationType
+
+                    link = KnowledgeRelation(
+                        project_id=project_id,
+                        source_layer="L3",
+                        source_type="knowledge",
+                        source_id=knowledge_id,
+                        target_layer="L2",
+                        target_type="evidence",
+                        target_id=session_id,
+                        relation_type=RelationType.DERIVED_FROM,
+                        confidence=0.7,
+                        evidence_ref=f"Auto-created from session {session_id}",
+                    )
+                    self._relation_store.add_batch([link])
 
             logger.info(
                 "知识沉淀完成: project_id=%s, session_id=%s, total=%d, success=%d",
@@ -163,7 +184,7 @@ class KnowledgePrecipitator:
         content: str,
         topic: str = "",
         confidence: float = 0.5,
-    ) -> bool:
+    ) -> str | None:
         """写入知识到 index-service。
 
         Args:
@@ -175,7 +196,7 @@ class KnowledgePrecipitator:
             confidence: 置信度
 
         Returns:
-            是否成功写入
+            knowledge ID string if successful, None otherwise.
         """
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
@@ -191,10 +212,11 @@ class KnowledgePrecipitator:
                     },
                     headers={"X-Internal-API-Key": self._internal_api_key},
                 )
-                if resp.status_code != 200:
+                if resp.status_code not in (200, 201):
                     logger.warning("写入知识失败: HTTP %d", resp.status_code)
-                    return False
-                return True
+                    return None
+                data = resp.json()
+                return data.get("id")
         except Exception as e:
             logger.warning("写入知识异常: %s", e)
-            return False
+            return None

@@ -15,6 +15,7 @@ from reqradar.index_svc.knowledge.models import (
     FreshnessStatus,
     L3KnowledgeBase,
 )
+from reqradar.index_svc.knowledge.relations import RelationStore
 
 logger = logging.getLogger(__name__)
 
@@ -35,15 +36,17 @@ class L3Writer:
         confidence_calculator: ConfidenceCalculator | None = None,
         changelog: KnowledgeChangelog | None = None,
         db_session_factory: object | None = None,
+        relation_store: RelationStore | None = None,
     ) -> None:
         self._store: dict[str, L3KnowledgeBase] = {}
         self._freshness = freshness_manager or FreshnessManager()
         self._confidence = confidence_calculator or ConfidenceCalculator()
         self._changelog = changelog or KnowledgeChangelog()
         self._db_session_factory = db_session_factory
+        self._relation_store = relation_store or RelationStore()
         self._pending_tasks: set[asyncio.Task] = set()
 
-    def append(self, knowledge: L3KnowledgeBase, session_id: str = "") -> L3KnowledgeBase:
+    def append(self, knowledge: L3KnowledgeBase, session_id: str = "", links: list | None = None) -> L3KnowledgeBase:
         """新增知识条目。"""
         knowledge.confidence.confidence_score = self._confidence.calculate(knowledge)
         self._store[knowledge.id] = knowledge
@@ -63,6 +66,9 @@ class L3Writer:
                 task.add_done_callback(self._pending_tasks.discard)
             except RuntimeError:
                 logger.debug("无运行事件循环，跳过 L3 知识 PG 持久化")
+
+        if links:
+            self._relation_store.add_batch(links)
 
         return knowledge
 
