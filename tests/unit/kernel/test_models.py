@@ -9,6 +9,7 @@ from reqradar.kernel.models import (
     Checkpoint,
     CognitiveSession,
     DimensionResult,
+    EntityLink,
     Event,
     EvidenceRecord,
     EvidenceRelation,
@@ -76,6 +77,7 @@ class TestModelMapping:
             EvidenceRecord,
             EvidenceRelation,
             DimensionResult,
+            EntityLink,
         ]
         for model in models:
             assert hasattr(model, "__tablename__"), f"{model.__name__} missing __tablename__"
@@ -107,6 +109,7 @@ class TestModelMapping:
             "evidence_records",
             "evidence_relations",
             "dimension_results",
+            "entity_links",
         }
         actual_tables = set(Base.metadata.tables.keys())
         assert expected_tables.issubset(
